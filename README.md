@@ -437,12 +437,12 @@ meanul-data-studio/
     │   ├── osm/            # NYC OSM extract download + osm2pgrouting setup
     │   └── seed/           # initial drivers/passengers/city_zones data
     ├── services/           # long-running Faker-based app services
+    │   ├── f-cache-updater/   # CDC topics -> Redis
     │   ├── g-driver-service/
     │   ├── h-passenger-service/
     │   ├── i-dispatch-service/
-    │   ├── l-city-service/
     │   ├── k-clickhouse-sink/
-    │   └── f-cache-updater/   # CDC topics -> Redis
+    │   └── l-city-service/
     ├── infra/              # per-cluster configuration
     │   ├── a-postgres/     # Patroni (primary + 2 replicas) + etcd config
     │   ├── b-redis/        # Sentinel config
