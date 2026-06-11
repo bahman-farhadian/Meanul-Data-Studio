@@ -89,37 +89,203 @@ graph LR
 
 Version 1 simulates an online cab/ride-hailing platform: drivers and
 passengers, trip requests, real-time location streaming during a trip, real
-routes over the NYC street network, and the analytics built on top of the
-resulting activity.
+routes over the NYC street network, dynamic demand "hotspots", and the
+analytics built on top of all of the above.
 
-### Components
+### 2.1 Services
 
-- **Driver device generator** and **rider device generator** — two
-  independent Faker-based services. They create realistic driver/passenger
-  profiles and trip activity, and during an active trip they continuously
-  stream simulated GPS positions ("live trip" data) for both the driver's
-  and the rider's device, with configurable pacing (volume, rate,
-  time-of-day/weekday/seasonal weighting) following the weighted-sampling
-  style used in the original config-driven sketch.
-- **PostgreSQL** — system of truth for drivers, passengers, trips
-  (including pickup point, drop-off point, and the computed route), and the
-  NYC road network graph used for routing.
-- **Redis (Sentinel)** — caches driver/passenger profiles and active-trip
-  state. All lookups needed to enrich streamed events (e.g. resolving a
-  driver/trip ID to its current state) are served from Redis, not from
-  PostgreSQL directly.
-- **Kafka cluster (KRaft, sharded)** — carries live driver/rider location
-  streams and trip lifecycle events (created, accepted, started, completed,
-  cancelled).
-- **ClickHouse cluster (ClickHouse Keeper)** — sharded/replicated analytical
-  store, populated via Kafka consumers, holding both the live trip stream
-  (for live tracking) and historical/aggregated trip analytics.
-- **Grafana** — live/operational dashboards on top of ClickHouse (e.g. live
-  trips in progress, current driver positions).
-- **Apache Superset** — analytical BI dashboards and reports on top of
-  ClickHouse.
+The platform is split into one **one-shot init service** and several
+**long-running services**, each its own container:
 
-### NYC road network & routing
+| Service | Type | Responsibility |
+| --- | --- | --- |
+| `bootstrap` | one-shot, runs once | Runs DB migrations, imports the NYC OSM road network into PostgreSQL and builds the pgRouting topology, and seeds initial reference data (drivers, passengers, city zones). Exits and is removed once `docker-compose up` has finished bringing the stack up. |
+| `driver-service` | long-running | Simulates the pool of active drivers (not 1:1 containers — one service internally manages many simulated drivers). Produces driver status/location activity. |
+| `passenger-service` | long-running | Simulates the pool of riders. Produces trip requests and rider device location streams. |
+| `dispatch-service` | long-running | Matches trip requests from `passenger-service` to available drivers, computes the route via pgRouting, and assigns the trip. |
+| `city-service` | long-running | Watches live trip/location traffic, computes per-zone demand "hotspot" scores, and publishes them so drivers can be guided toward demand. |
+| `clickhouse-sink` | long-running | Consumes Kafka topics and writes into the ClickHouse cluster for analytics/dashboards. |
+
+Note: in the real world, driver-side and rider-side telemetry are **not**
+1:1 mirrors of each other (different devices, different sampling rates,
+different failure modes) — `driver-service` and `passenger-service` are
+independent generators that happen to refer to the same trips, not a single
+simulation duplicated into two streams.
+
+### 2.2 High-level overview (HLD)
+
+```mermaid
+graph TB
+    subgraph Init ["One-shot init (removed after startup)"]
+        BOOT[bootstrap]
+    end
+
+    subgraph Generators ["Activity generators"]
+        DRV[driver-service]
+        PSG[passenger-service]
+    end
+
+    DISP[dispatch-service]
+    CITY[city-service]
+    SINK[clickhouse-sink]
+
+    PG[(PostgreSQL\ndrivers / passengers / trips / NYC road network)]
+    REDIS[(Redis Sentinel\nprofiles, active trips, hotspots, geo index)]
+    KAFKA[(Kafka Cluster - KRaft, sharded)]
+    CH[(ClickHouse Cluster)]
+    GRAF[Grafana]
+    SUPER[Superset]
+
+    BOOT -->|migrations, OSM import + pgRouting topology, seed data| PG
+    BOOT -->|preload cache| REDIS
+
+    DRV -->|status/location writes| PG
+    PSG -->|trip request writes| PG
+    PG -.->|cache sync on change| REDIS
+
+    DRV -->|read profile, active trip, hotspots| REDIS
+    PSG -->|read profile, active trip| REDIS
+
+    DRV -->|stream: driver_location| KAFKA
+    PSG -->|stream: rider_location, trip_requests| KAFKA
+
+    KAFKA -->|trip_requests| DISP
+    DISP -->|geo lookup: nearby available drivers| REDIS
+    DISP -->|pgr_dijkstra route calc + assign trip| PG
+    DISP -.->|update active-trip cache| REDIS
+    DISP -->|publish: trip_lifecycle| KAFKA
+
+    KAFKA -->|driver_location, rider_location, trip_lifecycle| CITY
+    CITY -->|hotspot:{zone}:{period}, TTL 6h| REDIS
+    CITY -->|publish: city_hotspots| KAFKA
+
+    KAFKA --> SINK
+    SINK --> CH
+    CH --> GRAF
+    CH --> SUPER
+```
+
+### 2.3 PostgreSQL cluster (HLD)
+
+PostgreSQL (with PostGIS + pgRouting extensions) is the system of truth for
+all transactional/operational state and the NYC road network graph.
+
+```mermaid
+graph TB
+    BOOT[bootstrap] -->|1\. run migrations| SCHEMA[(schema: drivers, passengers,\ntrips, city_zones)]
+    BOOT -->|2\. import OSM extract,\nbuild pgRouting topology| ROADS[(ways / ways_vertices_pgr\nNYC road network)]
+    BOOT -->|3\. seed initial rows| SCHEMA
+
+    DRV[driver-service] -->|insert/update driver status| SCHEMA
+    PSG[passenger-service] -->|insert trip request\n(status=requested)| SCHEMA
+    DISP[dispatch-service] -->|pgr_dijkstra / pgr_astar\npickup -> drop-off| ROADS
+    DISP -->|update trip:\nassign driver, route, status| SCHEMA
+
+    SCHEMA -.->|logical replication / triggers\ncache sync| REDIS[(Redis)]
+```
+
+Core tables (conceptual):
+
+- `drivers` — driver profile + current status (offline/idle/en-route/on-trip).
+- `passengers` — passenger/rider profile.
+- `trips` — pickup point, drop-off point, assigned driver, computed route
+  geometry, status, timestamps.
+- `city_zones` — NYC zone/grid definitions used for hotspot aggregation.
+- `ways` / `ways_vertices_pgr` — pgRouting topology built from the NYC OSM
+  extract (see [2.7](#27-nyc-road-network--routing)).
+
+### 2.4 Redis cluster (HLD)
+
+Redis runs as a Sentinel-managed primary/replica set and is the **only**
+read path for cached reference and hot-path data — generators, dispatch,
+and the city service read from here, never directly from PostgreSQL.
+
+```mermaid
+graph TB
+    subgraph Sentinel ["Redis Sentinel"]
+        S1[Sentinel 1]
+        S2[Sentinel 2]
+        S3[Sentinel 3]
+    end
+
+    M[(Redis Primary)]
+    R1[(Replica 1)]
+    R2[(Replica 2)]
+
+    S1 -.->|monitor / failover| M
+    S2 -.->|monitor / failover| M
+    S3 -.->|monitor / failover| M
+    M --> R1
+    M --> R2
+```
+
+Key spaces (conceptual):
+
+| Key pattern | Written by | Read by | Notes |
+| --- | --- | --- | --- |
+| `driver:{id}` | PostgreSQL sync (on change) | `driver-service`, `dispatch-service` | profile + current status |
+| `passenger:{id}` | PostgreSQL sync (on change) | `passenger-service`, `dispatch-service` | profile |
+| `trip:{id}:active` | `dispatch-service` | `driver-service`, `passenger-service` | active-trip state |
+| `geo:drivers:available` | `driver-service` | `dispatch-service` | Redis GEO set for nearest-driver lookup |
+| `hotspot:{zone}:{period}` | `city-service` | `driver-service` | demand score, **TTL = 6h** (24h split into 4 periods) |
+
+### 2.5 Kafka cluster (HLD)
+
+Kafka runs as a sharded, multi-broker cluster in **KRaft mode** (combined
+broker/controller nodes, no ZooKeeper).
+
+```mermaid
+graph TB
+    subgraph Kafka ["Kafka Cluster (KRaft)"]
+        B1[Broker 1\nbroker+controller]
+        B2[Broker 2\nbroker+controller]
+        B3[Broker 3\nbroker+controller]
+    end
+
+    T1[["driver_location\n(N partitions)"]]
+    T2[["rider_location\n(N partitions)"]]
+    T3[["trip_requests\n(N partitions)"]]
+    T4[["trip_lifecycle\n(N partitions)"]]
+    T5[["city_hotspots\n(N partitions)"]]
+
+    B1 & B2 & B3 --- T1 & T2 & T3 & T4 & T5
+```
+
+| Topic | Producer | Consumer(s) |
+| --- | --- | --- |
+| `driver_location` | `driver-service` | `city-service`, `clickhouse-sink` |
+| `rider_location` | `passenger-service` | `city-service`, `clickhouse-sink` |
+| `trip_requests` | `passenger-service` | `dispatch-service`, `clickhouse-sink` |
+| `trip_lifecycle` | `dispatch-service` | `city-service`, `clickhouse-sink` |
+| `city_hotspots` | `city-service` | `clickhouse-sink` |
+
+### 2.6 ClickHouse cluster (HLD)
+
+ClickHouse is sharded/replicated and coordinated by a ClickHouse Keeper
+ensemble (no ZooKeeper). `clickhouse-sink` consumes every Kafka topic above
+and writes into denormalized analytics tables that back Grafana (live/ops)
+and Superset (BI).
+
+```mermaid
+graph TB
+    KAFKA[(Kafka Cluster)] --> SINK[clickhouse-sink]
+
+    subgraph OLAP ["ClickHouse Cluster"]
+        CH1[(Shard 1\nReplica 1/2)]
+        CH2[(Shard 2\nReplica 1/2)]
+        KEEPER[(ClickHouse Keeper Ensemble)]
+    end
+
+    SINK -->|live_driver_positions\nlive_rider_positions| CH1
+    SINK -->|trip_events\nhotspot_history| CH2
+    CH1 <-.->|coordination/replication| KEEPER
+    CH2 <-.->|coordination/replication| KEEPER
+
+    CH1 & CH2 --> GRAF[Grafana]
+    CH1 & CH2 --> SUPER[Superset]
+```
+
+### 2.7 NYC road network & routing
 
 The PostgreSQL OLTP database holds the NYC street network as a routable
 graph, used to compute a real route (pickup -> drop-off) for every trip:
@@ -127,72 +293,47 @@ graph, used to compute a real route (pickup -> drop-off) for every trip:
 - **Source data**: an OpenStreetMap extract for New York City (e.g. via
   Geofabrik or the OSM Overpass API), which provides accurate, freely
   licensed street geometry and metadata for the full road network.
-- **Loading**: the OSM extract is imported into PostgreSQL/PostGIS and
-  converted into a routable topology using `osm2pgrouting` (or
-  `osm2pgsql` + pgRouting's topology functions), producing the standard
-  pgRouting `ways` / `ways_vertices_pgr` tables.
-- **Routing**: for each trip, pgRouting (Dijkstra or A*) computes the
-  shortest/fastest path between the pickup and drop-off vertices; the
-  resulting route geometry is stored on the trip record.
+- **Loading**: the `bootstrap` service imports the OSM extract into
+  PostgreSQL/PostGIS and converts it into a routable topology using
+  `osm2pgrouting` (or `osm2pgsql` + pgRouting's topology functions),
+  producing the standard pgRouting `ways` / `ways_vertices_pgr` tables.
+- **Routing**: for each trip, `dispatch-service` calls pgRouting (Dijkstra
+  or A*) to compute the shortest/fastest path between the pickup and
+  drop-off vertices; the resulting route geometry is stored on the trip
+  record.
 - **Indexing**: spatial indexes (GiST on geometry columns) and pgRouting's
   vertex/edge indexes are applied so route lookups remain fast as trip
   volume grows.
 
-### Data flow
+### 2.8 Project structure (placeholder)
 
-```mermaid
-graph TD
-    subgraph Devices ["Simulated Devices (Faker, in containers)"]
-        DG[Driver Device Generator]
-        PSG[Rider Device Generator]
-    end
-
-    subgraph OLTP ["PostgreSQL"]
-        DB[(drivers / passengers / trips / NYC road network)]
-        ROUTE[pgRouting: Dijkstra / A* over OSM-derived graph]
-    end
-
-    subgraph Cache ["Redis (Sentinel)"]
-        REDIS[(driver/passenger profiles, active-trip state)]
-    end
-
-    subgraph Streaming ["Kafka Cluster (KRaft, sharded)"]
-        T1[[topic: driver_location]]
-        T2[[topic: rider_location]]
-        T3[[topic: trip_lifecycle]]
-    end
-
-    SINK[ClickHouse Sink Consumers]
-
-    subgraph OLAP ["ClickHouse Cluster"]
-        CHC[(live trip stream + trip analytics)]
-        KEEPER[(ClickHouse Keeper Ensemble)]
-    end
-
-    GRAF[Grafana - live trips & operations]
-    SUPER[Superset - BI dashboards]
-
-    DG -->|profile, status, location updates| DB
-    PSG -->|profile, trip request, location updates| DB
-    DB <-->|compute route at trip start| ROUTE
-    DB -.->|cache update on change| REDIS
-
-    DG -->|stream live GPS| T1
-    PSG -->|stream live GPS| T2
-    DB -.->|trip created/updated/completed| T3
-
-    REDIS -.->|lookups for enrichment| SINK
-    T1 --> SINK
-    T2 --> SINK
-    T3 --> SINK
-    SINK --> CHC
-    CHC <-.->|coordination/replication| KEEPER
-
-    CHC --> GRAF
-    CHC --> SUPER
+```
+meanul-data-studio/
+├── docker-compose.yml
+├── README.md
+├── .gitignore
+├── bootstrap/
+│   ├── Dockerfile
+│   ├── migrations/        # SQL schema migrations
+│   ├── osm/                # NYC OSM extract + osm2pgrouting setup
+│   └── seed/                # initial drivers/passengers/city_zones data
+├── services/
+│   ├── driver-service/
+│   ├── passenger-service/
+│   ├── dispatch-service/
+│   ├── city-service/
+│   └── clickhouse-sink/
+├── infra/
+│   ├── postgres/
+│   ├── redis/             # Sentinel config
+│   ├── kafka/              # KRaft broker config, topic definitions
+│   ├── clickhouse/         # cluster + Keeper config, table DDL
+│   ├── grafana/            # provisioned dashboards/datasources
+│   └── superset/           # provisioned datasets/dashboards
+└── docs/
 ```
 
-### Showcase
+### 2.9 Showcase
 
 _Screenshots of the running system (PostgreSQL data, Grafana dashboards,
 Superset dashboards, etc.) will be added here._
