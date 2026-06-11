@@ -4,7 +4,8 @@ The system of truth for all transactional/operational state of the
 not-uber-service stack: **three identical PostgreSQL nodes with automatic
 failover, managed by [Patroni](https://patroni.readthedocs.io/)** (the
 leader is elected — there is no fixed "primary" container), coordinated by
-**nus-etcd, a 3-node TLS-secured etcd cluster**.
+**nus-etcd, a 3-node TLS-secured etcd cluster**. Node naming starts at 1:
+`etcd-1/2/3`, `pg-1/2/3`.
 
 > **Naming:** the `nus-` prefix on shared resources (`nus-pg`, `nus-etcd`,
 > `nus-backbone`, the `nus/` image namespace) is the acronym of
@@ -17,16 +18,21 @@ Two clusters live in this component:
   created later by `h-bootstrap`'s migrations) and `wal_level = logical`
   preset for Debezium CDC (`d-infra-debezium`). All timestamps run in
   **UTC** (`TZ`, `timezone`, `log_timezone` all pinned).
-- **nus-etcd** — a real 3-node etcd cluster (`etcd-0/1/2`) with **mutual
+- **nus-etcd** — a real 3-node etcd cluster (`etcd-1/2/3`) with **mutual
   TLS on both client and peer connections**. It is the **stack's shared
   key-value/DCS store**: any future component that needs etcd must reuse
   this cluster — never deploy a second one.
 
+> **Base image note:** `select version();` reports
+> `PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) ... compiled by gcc (Debian 14.2.0-19)`.
+> The `pgdg13` means the package targets **Debian 13 "trixie" — the
+> current stable release**; the `14.2.0` is the **GCC compiler version**,
+> not a Debian release. The image is production-grade.
+
 Nothing publishes ports to the host here — clients enter through the
 stack's HAProxy pair defined in the root `docker-compose.yaml`
-(`lb-a` / `lb-b`): port **5432** routes to the current leader (writes),
-port **5433** round-robins the healthy replicas (reads), both driven by
-Patroni's REST API health endpoints.
+(`lb-a` / `lb-b`). For the full-stack, step-by-step runbook see
+[`../README.md`](../README.md).
 
 ## TLS (etcd)
 
@@ -43,8 +49,8 @@ What it produces (and never touches again — re-runs are no-ops):
 
 - **CA** (`ca.crt`/`ca.key`), a **server/peer certificate**, and a
   **client certificate** — all valid **10 years** (3650 days);
-- the server/peer certificate carries **SANs** for `etcd-0`, `etcd-1`,
-  `etcd-2`, `localhost`, and `127.0.0.1`, so one certificate is valid on
+- the server/peer certificate carries **SANs** for `etcd-1`, `etcd-2`,
+  `etcd-3`, `localhost`, and `127.0.0.1`, so one certificate is valid on
   every node for both client-to-server and peer-to-peer connections;
 - client certificate auth is **required** (`ETCD_CLIENT_CERT_AUTH=true`
   and the peer equivalent) — Patroni and the health checks authenticate
@@ -80,7 +86,7 @@ Each node exposes Patroni's REST API on port 8008:
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `etcd-0/1/2` + `pg-0/1/2`, plus `etcd-certgen` behind the `init` profile (run with `docker compose run --rm`); included by the root compose. |
+| `docker-compose.yaml` | `etcd-1/2/3` + `pg-1/2/3`, plus `etcd-certgen` behind the `init` profile (run with `docker compose run --rm`); included by the root compose. |
 | `Dockerfile` | `postgres:18.4` + PostGIS + pgRouting + Patroni (own venv). |
 | `patroni.yml` | Shared Patroni config (etcd3 TLS endpoints, REST API, DCS settings, initdb, pg_hba, UTC timezone). Per-node values/secrets injected as `PATRONI_*` env vars. |
 | `etcd.env` | Shared etcd cluster settings incl. TLS paths and `ETCD_INITIAL_CLUSTER_STATE` (committed — no secrets). |
@@ -121,36 +127,56 @@ Verify both clusters:
 
 ```bash
 # etcd: all three members healthy over TLS
-docker compose exec etcd-0 etcdctl \
-  --endpoints=https://etcd-0:2379,https://etcd-1:2379,https://etcd-2:2379 \
+docker compose exec etcd-1 etcdctl \
+  --endpoints=https://etcd-1:2379,https://etcd-2:2379,https://etcd-3:2379 \
   --cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
   endpoint health
 
 # Patroni: member list with roles (Leader / Replica) and lag
-docker compose exec pg-0 patronictl -c /etc/patroni/patroni.yml list
-
-# connect directly to a node (standalone testing only — in the stack,
-# always go through lb-a/lb-b)
-docker compose exec pg-0 psql -U postgres -c "select version();"
+docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml list
 ```
 
-Through the stack's entry tier (root compose running):
+## Connecting as a DBA
+
+**In the full stack, always connect through the HAProxy pair** — never to
+a `pg-*` container directly: the leader moves on failover, and only the
+proxies track it (via Patroni's REST API). This requires the **root**
+`docker-compose.yaml` to be up (it owns `lb-a`/`lb-b`); see the runbook in
+[`../README.md`](../README.md).
 
 ```bash
-psql -h localhost -p 5432 -U postgres   # writes -> current leader
-psql -h localhost -p 5433 -U postgres   # reads  -> replica pool
+# writes — always lands on the current leader (lb-a, canonical ports)
+psql -h localhost -p 5432 -U postgres
+
+# reads — round-robins across the healthy replicas
+psql -h localhost -p 5433 -U postgres
+
+# lb-b, the failover twin, exposes the same on alternate host ports
+psql -h localhost -p 15432 -U postgres   # writes
+psql -h localhost -p 15433 -U postgres   # reads
+```
+
+The password is `PG_SUPERUSER_PASSWORD` from your `.env`. From another
+container on `nus-backbone`, use `-h lb-a` (or `lb-b`) instead of
+`localhost`. HAProxy's live routing view: <http://localhost:8404/stats>.
+
+For standalone testing of this component only (no lb running), exec into
+a node directly:
+
+```bash
+docker compose exec pg-1 psql -U postgres -c "select version();"
 ```
 
 ## Failover demo
 
 ```bash
 # planned switchover to a chosen replica (REST credentials required)
-docker compose exec pg-0 patronictl -c /etc/patroni/patroni.yml switchover
+docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml switchover
 
-# or kill the current leader and watch Patroni promote a replica
-docker stop pg-0 && sleep 15
+# or kill the current leader (check `list` first; here assume pg-2 leads)
+docker stop pg-2 && sleep 15
 docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml list
-docker start pg-0   # rejoins as a replica (pg_rewind enabled)
+docker start pg-2   # rejoins as a replica (pg_rewind enabled)
 ```
 
 HAProxy follows the promotion automatically via the Patroni REST checks —

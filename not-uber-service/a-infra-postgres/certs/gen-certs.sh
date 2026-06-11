@@ -12,7 +12,7 @@
 #   REJECTS CAs without a keyUsage extension (Patroni would fail with
 #   "CA cert does not include key usage extension");
 # - the server/peer certificate carries SANs for every etcd node name
-#   (etcd-0/1/2), localhost and 127.0.0.1, so the same certificate is valid
+#   (etcd-1/2/3), localhost and 127.0.0.1, so the same certificate is valid
 #   for client-to-server and peer-to-peer TLS on every node.
 
 set -eu
@@ -61,9 +61,9 @@ subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid, issuer
 subjectAltName = @alt
 [alt]
-DNS.1 = etcd-0
-DNS.2 = etcd-1
-DNS.3 = etcd-2
+DNS.1 = etcd-1
+DNS.2 = etcd-2
+DNS.3 = etcd-3
 DNS.4 = localhost
 IP.1  = 127.0.0.1
 EOF

@@ -620,6 +620,7 @@ meanul-data-studio/
 ├── LICENSE
 ├── .gitignore
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
+    ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
     ├── .env.example                  # template for the untracked .env (stack-wide settings)
     ├── sketch/                       # superseded first-draft generator (reference only)

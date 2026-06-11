@@ -17,7 +17,7 @@ restapi:
 
 etcd3:
   protocol: https
-  hosts: etcd-0:2379,etcd-1:2379,etcd-2:2379
+  hosts: etcd-1:2379,etcd-2:2379,etcd-3:2379
   cacert: /certs/ca.crt
   cert: /certs/client.crt
   key: /certs/client.key
