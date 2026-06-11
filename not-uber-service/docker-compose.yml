@@ -2,12 +2,19 @@
 #
 # Placeholder. Will define, in startup order:
 #   1. Infrastructure clusters (PostgreSQL via Patroni: primary + 2 replicas
-#      + etcd, Redis + Sentinel, Kafka (KRaft) + Debezium Connect,
-#      ClickHouse 2 shards x 2 replicas + 3 Keepers, Grafana, Superset) —
-#      all with healthchecks.
+#      + etcd + HAProxy entry point, Redis + Sentinel, Kafka (KRaft) +
+#      Debezium Connect, ClickHouse 2 shards x 2 replicas + 3 Keepers,
+#      Grafana, Superset) — all with healthchecks.
 #   2. Long-running app services (driver-service, passenger-service,
 #      dispatch-service, city-service, clickhouse-sink, cache-updater) —
-#      start once the infrastructure is healthy, then stand by.
+#      start once the infrastructure is healthy, then stand by polling the
+#      system:bootstrap:done marker in Redis.
 #   3. bootstrap — the LAST container to start, gated on every other service
-#      being healthy. Runs migrations, OSM import + pgRouting topology, seed
-#      data + one week of historical mock activity, then exits and is removed.
+#      being healthy. Runs migrations, OSM download (skipped when already
+#      cached on its volume) + pgRouting topology, seed data + one week of
+#      historical mock activity (also bulk-loaded into ClickHouse), sets
+#      system:bootstrap:done, then exits and is removed.
+#
+# Resource profiles are applied as overrides — compose.laptop.yaml /
+# compose.server.yaml — with explicit CPU + memory limits per container and
+# memswap_limit equal to the memory limit (zero swap).
