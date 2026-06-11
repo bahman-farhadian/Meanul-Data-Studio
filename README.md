@@ -4,7 +4,7 @@
 
 Meanul Data Studio is a framework for simulating the **full backend data
 lifecycle of an online platform**, end to end, packaged as a set of Docker
-containers and run via a single `docker-compose.yml` on a single host.
+containers and run via a single `docker-compose.yaml` on a single host.
 
 Each "version" of the studio applies the same architectural pattern to a
 different product domain — for example a cab/ride-hailing platform, a
@@ -417,11 +417,24 @@ broker/controller nodes, no ZooKeeper). All events are encoded as **binary
 Avro**: a **Schema Registry** container holds every topic's schema,
 producers register/resolve schemas at startup, and consumers fetch them by
 the schema id embedded in each message. Debezium Connect uses its Avro
-converter, so the `cdc.*` topics share the same encoding. The
-`c-infra-kafka/` documentation includes the recipes for inspecting Avro
-topics from the CLI (e.g. `kcat -s avro -r http://schema-registry:8081`
-or `kafka-avro-console-consumer`). Topics are created with **replication
-factor 3** and `min.insync.replicas = 2` across the three brokers.
+converter, so the `cdc.*` topics share the same encoding. Topics are
+created with **replication factor 3** and `min.insync.replicas = 2`
+across the three brokers.
+
+Binary does **not** mean unreadable — every topic stays inspectable and
+queryable (the concrete recipes live in `c-infra-kafka/`'s docs):
+
+- **Live tail, decoded to JSON**:
+  `kcat -s avro -r http://schema-registry:8081` or
+  `kafka-avro-console-consumer` decode messages on the fly through the
+  Schema Registry.
+- **SQL directly over a live topic**: ClickHouse's Kafka table engine
+  reads topics with `format = 'AvroConfluent'` +
+  `format_avro_schema_registry_url`, so ad-hoc `SELECT`s can be run
+  against the stream itself — no extra component needed.
+- **SQL over the full history**: `clickhouse-sink` lands every event in
+  ClickHouse anyway, so anything that ever passed through Kafka is one
+  query away in `clickhouse-client`, Grafana, or Superset.
 
 ```mermaid
 graph TB
@@ -571,6 +584,14 @@ Each version of the studio lives in its own top-level directory; Version 1
 is `not-uber-service/` (fun naming intended). Future versions will sit next
 to it as siblings.
 
+**Modular compose:** every component directory ships its own
+`docker-compose.yaml` defining just its containers, volumes, and networks;
+the root `not-uber-service/docker-compose.yaml` stitches the full stack
+together with Compose's `include:` directive. Each component can therefore
+be brought up and tested **in isolation** (`docker compose up` inside its
+directory) — exactly matching the build/test order below — while the root
+file still provides the single-command full-stack deployment.
+
 Every component lives directly under `not-uber-service/` (no `infra/` /
 `services/` / `docs/` grouping) and is named
 `<letter>-infra-<name>` or `<letter>-service-<name>`, where the letter
@@ -590,9 +611,10 @@ meanul-data-studio/
 ├── LICENSE
 ├── .gitignore
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
-    ├── docker-compose.yml            # single-host deployment of the full stack
+    ├── docker-compose.yaml           # root file: include's every component's compose file
     ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
+    │   └── docker-compose.yaml       # component compose (every component dir has one)
     ├── b-infra-redis/                # Sentinel config
     ├── c-infra-kafka/                # KRaft broker config, topic definitions
     ├── d-infra-debezium/             # Kafka Connect + PostgreSQL CDC connector
@@ -648,7 +670,7 @@ tested in isolation before the next depends on it:
 ### 2.9 Resource allocation
 
 The stack ships with two resource profiles, applied as docker-compose
-override files on top of the base `docker-compose.yml`
+override files on top of the base `docker-compose.yaml`
 (`compose.laptop.yaml` / `compose.server.yaml`), setting explicit
 **memory and CPU limits** per container. Explicit limits are mandatory:
 the JVM-based components (Kafka, Debezium Connect) and ClickHouse will
