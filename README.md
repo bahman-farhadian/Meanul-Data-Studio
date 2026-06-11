@@ -32,7 +32,8 @@ versions over time**; the pattern itself is domain-agnostic:
   the source of truth.
 - **Streaming backbone (Kafka cluster, KRaft mode)** — A sharded,
   multi-broker Kafka cluster running in KRaft mode (no ZooKeeper).
-  Generators and/or the OLTP layer publish events onto Kafka topics.
+  Generators and/or the OLTP layer publish **binary Avro** events onto
+  Kafka topics, with schemas managed by a schema registry.
 - **OLAP layer (ClickHouse, ClickHouse Keeper)** — A sharded/replicated
   ClickHouse cluster fed from Kafka, coordinated via a ClickHouse Keeper
   ensemble (no ZooKeeper dependency).
@@ -121,18 +122,33 @@ the docker-compose service/container names; the alphabetic directory
 prefixes in [2.8](#28-project-structure) (`j-service-driver`, ...) encode
 build order only.
 
+#### Load-balancer tier (lb-a / lb-b)
+
+Two HAProxy containers form a single **active-passive** entry tier for the
+whole stack: every client lists both (`lb-a,lb-b`) and fails over
+client-side. The pair routes:
+
+- **5432 / 5433** -> PostgreSQL primary (writes) / replicas (reads),
+  driven by Patroni's REST health endpoints;
+- **8123 / 9000** -> healthy ClickHouse nodes (HTTP / native protocol);
+- **3000 / 8088** -> the Grafana / Superset UIs (single entry point for
+  host ports).
+
+Kafka and Redis are deliberately **not** proxied: both protocols perform
+their own server discovery (advertised listeners, Sentinel) and a TCP load
+balancer in the middle would break it.
+
 #### Trip lifecycle & fares
 
 Every trip walks a status machine, and terminal outcomes are drawn from
-config-driven weights (carrying over the sketch's 7:3 completed/cancelled
-spirit):
+config-driven weights:
 
 ```
 requested -> matched -> accepted -> en_route_pickup -> in_progress -> completed
 ```
 
 Terminal alternatives at the appropriate stages: `cancelled_by_passenger`,
-`cancelled_by_driver`, `no_driver_found` — defaults: ~70% `completed`,
+`cancelled_by_driver`, `no_driver_found` — defaults: ~70% `completed` and
 ~30% spread across the three, all tunable in the pacing config.
 
 Fares implement **surge pricing**, closing the loop with the hotspot
@@ -152,8 +168,9 @@ system:
 `docker-compose up` brings the stack up in a strict order, enforced through
 healthchecks and `depends_on: condition: service_healthy`:
 
-1. **Infrastructure clusters** start first: PostgreSQL (Patroni-managed),
-   Redis + Sentinel, Kafka (KRaft) + Debezium Connect, ClickHouse + Keeper,
+1. **Infrastructure clusters** start first: the HAProxy pair
+   (`lb-a` / `lb-b`), PostgreSQL (Patroni-managed), Redis + Sentinel,
+   Kafka (KRaft) + Schema Registry + Debezium Connect, ClickHouse + Keeper,
    Grafana, Superset — each with a healthcheck.
 2. **Long-running app services** (`driver-service`, `passenger-service`,
    `dispatch-service`, `city-service`, `clickhouse-sink`, `cache-updater`)
@@ -176,53 +193,75 @@ healthchecks and `depends_on: condition: service_healthy`:
 
 ### 2.2 High-level overview (HLD)
 
+The overview is split into three small diagrams — write path, feedback
+loops, and analytics path — so each stays readable.
+
+**Write path (live activity):**
+
 ```mermaid
-graph TB
-    BOOT["bootstrap<br/>(one-shot, starts last, removed after success)"]
-    DRV["driver-service"]
-    PSG["passenger-service"]
+graph LR
+    subgraph GEN ["Generators"]
+        DRV["driver-service"]
+        PSG["passenger-service"]
+    end
+
     DISP["dispatch-service"]
+    PG[("PostgreSQL<br/>Patroni cluster")]
+    KAFKA[("Kafka<br/>KRaft cluster")]
+
+    DRV -->|"status writes"| PG
+    PSG -->|"trip requests"| PG
+    DRV -->|"driver_location"| KAFKA
+    PSG -->|"rider_location"| KAFKA
+    KAFKA -->|"trip_requests"| DISP
+    DISP -->|"route + fare + assign"| PG
+    DISP -->|"trip_lifecycle"| KAFKA
+```
+
+**Feedback loops (cache sync, hotspots, init):**
+
+```mermaid
+graph LR
+    BOOT["bootstrap<br/>(one-shot)"]
     CITY["city-service"]
-    SINK["clickhouse-sink"]
     CUPD["cache-updater"]
 
-    PG[("PostgreSQL Cluster<br/>Patroni: primary + 2 replicas<br/>drivers / passengers / trips / NYC road network")]
-    REDIS[("Redis Sentinel<br/>profiles, active trips, hotspots, geo index")]
-    KAFKA[("Kafka Cluster<br/>KRaft, sharded")]
-    CH[("ClickHouse Cluster")]
+    PG[("PostgreSQL")]
+    REDIS[("Redis<br/>Sentinel set")]
+    KAFKA[("Kafka")]
+
+    BOOT -->|"schema, map, seed, history"| PG
+    BOOT -->|"done marker"| REDIS
+
+    PG -.->|"CDC (Debezium)"| KAFKA
+    KAFKA -->|"cdc topics"| CUPD
+    CUPD -->|"sync"| REDIS
+
+    KAFKA -->|"locations, lifecycle"| CITY
+    CITY -->|"hotspot scores"| REDIS
+    CITY -->|"traffic factors"| PG
+    CITY -->|"city_hotspots"| KAFKA
+```
+
+(Services read profiles, active trips, hotspot scores, and the driver geo
+index from Redis — never from PostgreSQL directly.)
+
+**Analytics path:**
+
+```mermaid
+graph LR
+    KAFKA[("Kafka")]
+    REDIS[("Redis")]
+    SINK["clickhouse-sink"]
+    CH[("ClickHouse<br/>cluster")]
+    BOOT["bootstrap"]
     GRAF["Grafana"]
     SUPER["Superset"]
 
-    BOOT -->|"migrations, OSM import + pgRouting topology, seed + 1 week of history"| PG
-    BOOT -->|"set system:bootstrap:done marker"| REDIS
-    BOOT -->|"backfill historical week"| CH
-
-    DRV -->|"status / location writes"| PG
-    PSG -->|"trip request writes"| PG
-    PG -.->|"CDC via Debezium"| KAFKA
-    KAFKA -.->|"cdc topics"| CUPD
-    CUPD -->|"apply changes"| REDIS
-
-    REDIS -.->|"profiles, active trips, hotspot scores"| DRV
-    REDIS -.->|"profiles, active trips"| PSG
-
-    DRV -->|"stream: driver_location"| KAFKA
-    PSG -->|"stream: rider_location, trip_requests"| KAFKA
-
-    KAFKA -->|"trip_requests"| DISP
-    REDIS -.->|"geo lookup: nearby available drivers"| DISP
-    DISP -->|"route calc (pgr_dijkstra) + fare estimate + assign trip"| PG
-    DISP -->|"update active-trip cache"| REDIS
-    DISP -->|"publish: trip_lifecycle"| KAFKA
-
-    KAFKA -->|"driver_location, rider_location, trip_lifecycle"| CITY
-    CITY -->|"hotspot score per zone and period, TTL 6h"| REDIS
-    CITY -->|"refresh segment_traffic congestion factors"| PG
-    CITY -->|"publish: city_hotspots"| KAFKA
-
-    KAFKA --> SINK
-    REDIS -.->|"enrichment: hotspot flags, predicted durations"| SINK
+    KAFKA -->|"all topics"| SINK
+    REDIS -.->|"enrichment"| SINK
     SINK --> CH
+    BOOT -->|"backfill history"| CH
     CH --> GRAF
     CH --> SUPER
 ```
@@ -246,11 +285,12 @@ by an etcd DCS) — and relies on three pillars:
   columns with GIN indexes where needed — PostgreSQL covers the
   document-store role, so no MongoDB is part of the stack.
 
-**Write/read entry point:** services never hard-code the primary. A
-lightweight **HAProxy** sits in front of the cluster and routes by querying
-Patroni's REST API: port **5432** -> current primary (read/write), port
-**5433** -> replicas (read-only pool). On failover Patroni promotes a
-replica and HAProxy follows automatically — clients just reconnect.
+**Entry point:** services never hard-code the primary — they connect
+through the stack's HAProxy pair (`lb-a` / `lb-b`, see
+[2.1](#load-balancer-tier-lb-a--lb-b)), which routes by querying Patroni's
+REST API: port **5432** -> current primary (read/write), port **5433** ->
+replicas (read-only pool). On failover Patroni promotes a replica and the
+proxies follow automatically — clients just reconnect.
 
 **Migrations** are plain, ordered SQL files
 (`h-bootstrap/migrations/001_*.sql`, `002_*.sql`, ...) applied exactly once
@@ -258,7 +298,7 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 
 ```mermaid
 graph TB
-    HAP["HAProxy<br/>5432: writes to primary, 5433: reads to replicas"]
+    HAP["lb-a / lb-b (HAProxy pair)<br/>5432: writes, 5433: reads"]
 
     subgraph PGCluster ["PostgreSQL Cluster (Patroni + etcd)"]
         PRIM[("Primary")]
@@ -276,27 +316,31 @@ graph TB
 ```
 
 ```mermaid
-graph TB
-    BOOT["bootstrap"]
-    DRV["driver-service"]
-    PSG["passenger-service"]
-    DISP["dispatch-service"]
+graph LR
+    subgraph WRITERS ["Writers"]
+        BOOT["bootstrap"]
+        DRV["driver-service"]
+        PSG["passenger-service"]
+        DISP["dispatch-service"]
+    end
 
-    SCHEMA[("schema: drivers, passengers, trips, city_zones")]
-    ROADS[("ways / ways_vertices_pgr<br/>NYC road network")]
+    subgraph PGDB ["PostgreSQL"]
+        SCHEMA[("core tables")]
+        ROADS[("road network")]
+    end
+
+    DBZ["Debezium"]
     REDIS[("Redis")]
 
-    BOOT -->|"1: run migrations"| SCHEMA
-    BOOT -->|"2: import OSM extract, build pgRouting topology"| ROADS
-    BOOT -->|"3: seed reference rows + 1 week of historical activity"| SCHEMA
+    BOOT -->|"migrations, seed, history"| SCHEMA
+    BOOT -->|"OSM import"| ROADS
+    DRV -->|"driver status"| SCHEMA
+    PSG -->|"trip requests"| SCHEMA
+    DISP -->|"route query"| ROADS
+    DISP -->|"assign trip"| SCHEMA
 
-    DRV -->|"insert / update driver status"| SCHEMA
-    PSG -->|"insert trip request, status = requested"| SCHEMA
-    DISP -->|"pgr_dijkstra / pgr_astar: pickup to drop-off"| ROADS
-    DISP -->|"update trip: assign driver, route, status"| SCHEMA
-
-    SCHEMA -.->|"logical replication slot"| DBZ["Debezium CDC"]
-    DBZ -.->|"Kafka cdc topics, applied by cache-updater"| REDIS
+    SCHEMA -.->|"WAL"| DBZ
+    DBZ -.->|"cdc topics"| REDIS
 ```
 
 Core tables (conceptual):
@@ -315,6 +359,10 @@ Core tables (conceptual):
   from live streams; consumed by pgRouting as edge-cost multipliers.
 - `ways` / `ways_vertices_pgr` — pgRouting topology built from the NYC OSM
   extract (see [2.7](#27-nyc-road-network--routing)).
+
+> **Note:** this table list is a conceptual demonstration only. The final
+> schema is settled during development against the running PostgreSQL —
+> additional tables may well be added along the way.
 
 ### 2.4 Redis cluster (HLD)
 
@@ -358,14 +406,22 @@ cache is filled by Debezium's CDC replay of the bootstrap-seeded rows
 rather than an explicit preload, so replays and service restarts are
 harmless by construction.
 
+> **Note:** the key spaces above are a conceptual demonstration only. The
+> final key layout is settled during development against the running
+> Redis — additional key spaces may well be added.
+
 ### 2.5 Kafka cluster (HLD)
 
 Kafka runs as a sharded, multi-broker cluster in **KRaft mode** (combined
-broker/controller nodes, no ZooKeeper). All events are **plain JSON** in
-version 1 — human-debuggable and Debezium's default envelope; Avro + a
-schema registry is deliberately deferred. Topics are created with
-**replication factor 3** and `min.insync.replicas = 2` across the three
-brokers.
+broker/controller nodes, no ZooKeeper). All events are encoded as **binary
+Avro**: a **Schema Registry** container holds every topic's schema,
+producers register/resolve schemas at startup, and consumers fetch them by
+the schema id embedded in each message. Debezium Connect uses its Avro
+converter, so the `cdc.*` topics share the same encoding. The
+`c-infra-kafka/` documentation includes the recipes for inspecting Avro
+topics from the CLI (e.g. `kcat -s avro -r http://schema-registry:8081`
+or `kafka-avro-console-consumer`). Topics are created with **replication
+factor 3** and `min.insync.replicas = 2` across the three brokers.
 
 ```mermaid
 graph TB
@@ -374,6 +430,9 @@ graph TB
         B2["Broker 2<br/>broker + controller"]
         B3["Broker 3<br/>broker + controller"]
     end
+
+    SR["Schema Registry<br/>Avro schemas"]
+    SR -.- B2
 
     T1[["driver_location<br/>(N partitions)"]]
     T2[["rider_location<br/>(N partitions)"]]
@@ -401,6 +460,10 @@ The high-volume location topics get 6 partitions (keyed by driver/rider id
 so per-entity ordering is preserved); everything else gets 3, one per
 broker.
 
+> **Note:** the topic map above is a conceptual demonstration only. The
+> final topic/partition layout is settled during development against the
+> running Kafka cluster — topics may be added or resized.
+
 ### 2.6 ClickHouse cluster (HLD)
 
 ClickHouse runs as **2 shards x 2 replicas** coordinated by a **3-node
@@ -417,15 +480,19 @@ duration cached on `trip:{id}:active` to flag trips that **took longer than
 predicted** so Grafana can surface them. This keeps all such lookups off
 the PostgreSQL OLTP cluster, per the cache-first rule in Section 1.
 
-**Client entry point:** unlike the early sketch, there is **no HAProxy
-tier** in front of ClickHouse — every client (`clickhouse-sink`, Grafana,
-Superset) uses a multi-host connection listing all four nodes with
-client-side failover, and `Distributed` tables route queries inside the
-cluster. `bootstrap` bulk-loads the historical week here so dashboards are
-populated from the first minute. Grafana connects through the official
-ClickHouse datasource plugin; Superset connects via `clickhouse-connect`
-and keeps its own application metadata in **SQLite on a named volume**
-(sufficient for the single-user setup — the OLTP cluster stays untouched).
+**Client entry point:** clients (`clickhouse-sink`, Grafana, Superset)
+reach the cluster through the stack's HAProxy pair (`lb-a` / `lb-b`),
+which balances ports 8123 (HTTP) and 9000 (native) across healthy nodes;
+`Distributed` tables then route queries inside the cluster. `bootstrap`
+bulk-loads the historical week here so dashboards are populated from the
+first minute. Grafana connects through the official ClickHouse datasource
+plugin; Superset connects via `clickhouse-connect` and keeps its own
+application metadata in **SQLite on a named volume** (sufficient for the
+single-user setup — the OLTP cluster stays untouched).
+
+> **Note:** the analytics tables shown are a conceptual demonstration
+> only. The final ClickHouse schema is settled during development against
+> the running cluster — more tables and materialized views may be added.
 
 ```mermaid
 graph TB
@@ -549,9 +616,10 @@ meanul-data-studio/
 long-support release) with **[uv](https://docs.astral.sh/uv/)** as the
 dependency manager — each component carries its own `pyproject.toml` +
 `uv.lock` and a multi-stage Dockerfile (`uv sync` in the build stage, slim
-runtime stage; no venv ever touches the host). The HAProxy entry-point
-config lives inside `a-infra-postgres/`, next to the Patroni setup it
-fronts.
+runtime stage; no venv ever touches the host). The HAProxy pair's config
+lives inside `a-infra-postgres/haproxy/` — it fronts the Patroni cluster
+first and gains its ClickHouse and UI routes as those components land —
+and the Schema Registry config lives in `c-infra-kafka/`.
 
 #### 2.8.1 Build & test order
 
@@ -606,25 +674,26 @@ Docker Desktop VM settings for this profile: **8 CPUs, 20 GB memory (the
 VM-level cap), swap = 0** (see the swap note below). The stack is budgeted
 to stay **under 18 GB at steady state**; only the transient `bootstrap`
 phase may approach the 20 GB VM ceiling. macOS keeps the remaining 4 GB
-plus whatever the VM has not faulted in. CPU limits sum to **7.8 of the
+plus whatever the VM has not faulted in. CPU limits sum to **7.95 of the
 VM's 8 CPUs — no overcommitment**.
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
 | PostgreSQL primary (Patroni) | 1 | 1.0 | 2 GB | 2 GB |
 | PostgreSQL replicas (Patroni) | 2 | 0.5 | 1 GB | 2 GB |
-| HAProxy (PostgreSQL entry point) | 1 | 0.05 | 64 MB | 0.06 GB |
+| HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.05 | 64 MB | 0.13 GB |
 | etcd (Patroni DCS) | 1 | 0.1 | 256 MB | 0.25 GB |
 | Redis primary / replicas | 1 / 2 | 0.4 / 0.2 | 768 MB / 512 MB | 1.75 GB |
 | Redis Sentinel | 3 | 0.05 | 64 MB | 0.2 GB |
 | Kafka brokers (KRaft) | 3 | 0.4 | 768 MB (512 MB heap) | 2.25 GB |
+| Schema Registry | 1 | 0.1 | 384 MB | 0.38 GB |
 | Debezium Connect | 1 | 0.25 | 1 GB (768 MB heap) | 1 GB |
 | ClickHouse nodes (2x2) | 4 | 0.5 | 1.25 GB | 5 GB |
-| ClickHouse Keeper | 3 | 0.1 | 256 MB | 0.75 GB |
-| Grafana | 1 | 0.1 | 256 MB | 0.25 GB |
-| Superset (single user, single worker, SQLite metadata) | 1 | 0.25 | 1 GB | 1 GB |
+| ClickHouse Keeper | 3 | 0.1 | 192 MB | 0.56 GB |
+| Grafana | 1 | 0.1 | 192 MB | 0.19 GB |
+| Superset (single user, single worker, SQLite metadata) | 1 | 0.25 | 896 MB | 0.88 GB |
 | App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.1 | 192 MB | 1.15 GB |
-| **Steady-state total** | **30** | **7.8 (of 8, no overcommit)** | | **~17.7 GB** |
+| **Steady-state total** | **32** | **7.95 (of 8, no overcommit)** | | **~17.7 GB** |
 | `bootstrap` (transient, exits after init) | 1 | 1.0 | 2 GB | peak ~19.7 GB |
 
 Steady state (~17.7 GB) stays under the 18 GB line. The transient
@@ -698,24 +767,25 @@ infrastructure layers can absorb — headroom, not a cliff.
 
 On the server the same topology simply gets room to breathe — no component
 count changes, only limits. Memory is committed up to the 120 GB line
-(~119 GB, leaving 8+ GB for the host OS), and CPU limits sum to **~23.9 of
-24 vCPU — no overcommitment**:
+(~119.5 GB, leaving 8+ GB for the host OS), and CPU limits sum to **~23.9
+of 24 vCPU — no overcommitment**:
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
 | PostgreSQL primary / replicas | 1 / 2 | 3 / 1.5 | 12 GB / 8 GB | 28 GB |
-| HAProxy (PostgreSQL entry point) | 1 | 0.1 | 128 MB | 0.13 GB |
+| HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.1 | 128 MB | 0.25 GB |
 | etcd | 1 | 0.25 | 1 GB | 1 GB |
 | Redis primary / replicas | 1 / 2 | 0.75 / 0.5 | 6 GB / 4 GB | 14 GB |
 | Redis Sentinel | 3 | 0.1 | 256 MB | 0.75 GB |
 | Kafka brokers | 3 | 1.5 | 6 GB (4 GB heap) | 18 GB |
-| Debezium Connect | 1 | 0.75 | 3 GB | 3 GB |
+| Schema Registry | 1 | 0.25 | 1 GB | 1 GB |
+| Debezium Connect | 1 | 0.5 | 2.5 GB | 2.5 GB |
 | ClickHouse nodes | 4 | 1.75 | 10 GB | 40 GB |
-| ClickHouse Keeper | 3 | 0.25 | 1.5 GB | 4.5 GB |
+| ClickHouse Keeper | 3 | 0.2 | 1.5 GB | 4.5 GB |
 | Grafana | 1 | 0.25 | 1 GB | 1 GB |
 | Superset | 1 | 0.75 | 4 GB | 4 GB |
 | App services | 6 | 0.25 | 768 MB | 4.5 GB |
-| **Total** | **30** | **~23.9 (of 24, no overcommit)** | | **~119 GB** |
+| **Total** | **32** | **~23.9 (of 24, no overcommit)** | | **~119.5 GB** |
 | `bootstrap` (transient, exits after init) | 1 | 2 | 8 GB | peak only |
 
 With the server profile the generation pacing config can be turned up
