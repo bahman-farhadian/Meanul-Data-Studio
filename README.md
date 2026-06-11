@@ -415,34 +415,39 @@ The map is stored by the **PostGIS** extension and routed by the
 
 ### 2.8 Project structure
 
+Each version of the studio lives in its own top-level directory; Version 1
+is `not-uber-service/` (fun naming intended). Future versions will sit next
+to it as siblings.
+
 ```
 meanul-data-studio/
-├── docker-compose.yml      # single-host deployment of the full stack
 ├── README.md
 ├── LICENSE
 ├── .gitignore
-├── bootstrap/              # one-shot init service (starts last, then removed)
-│   ├── migrations/         # SQL schema migrations
-│   ├── osm/                # NYC OSM extract download + osm2pgrouting setup
-│   └── seed/               # initial drivers/passengers/city_zones data
-├── services/               # long-running Faker-based app services
-│   ├── driver-service/
-│   ├── passenger-service/
-│   ├── dispatch-service/
-│   ├── city-service/
-│   ├── clickhouse-sink/
-│   └── cache-updater/      # CDC topics -> Redis
-├── infra/                  # per-cluster configuration
-│   ├── postgres/           # Patroni (primary + 2 replicas) + etcd config
-│   ├── redis/              # Sentinel config
-│   ├── kafka/              # KRaft broker config, topic definitions
-│   ├── debezium/           # Kafka Connect + PostgreSQL CDC connector
-│   ├── clickhouse/         # cluster + Keeper config, table DDL
-│   ├── grafana/            # provisioned dashboards/datasources
-│   └── superset/           # provisioned datasets/dashboards
-└── docs/
-    ├── clickhouse-cluster-design.md   # early cluster topology notes
-    └── sketch/                        # superseded first-draft generator (reference only)
+└── not-uber-service/       # Version 1 — cab / ride-hailing platform
+    ├── docker-compose.yml  # single-host deployment of the full stack
+    ├── bootstrap/          # one-shot init service (starts last, then removed)
+    │   ├── migrations/     # SQL schema migrations
+    │   ├── osm/            # NYC OSM extract download + osm2pgrouting setup
+    │   └── seed/           # initial drivers/passengers/city_zones data
+    ├── services/           # long-running Faker-based app services
+    │   ├── driver-service/
+    │   ├── passenger-service/
+    │   ├── dispatch-service/
+    │   ├── city-service/
+    │   ├── clickhouse-sink/
+    │   └── cache-updater/  # CDC topics -> Redis
+    ├── infra/              # per-cluster configuration
+    │   ├── postgres/       # Patroni (primary + 2 replicas) + etcd config
+    │   ├── redis/          # Sentinel config
+    │   ├── kafka/          # KRaft broker config, topic definitions
+    │   ├── debezium/       # Kafka Connect + PostgreSQL CDC connector
+    │   ├── clickhouse/     # cluster + Keeper config, table DDL
+    │   ├── grafana/        # provisioned dashboards/datasources
+    │   └── superset/       # provisioned datasets/dashboards
+    └── docs/
+        ├── clickhouse-cluster-design.md   # early cluster topology notes
+        └── sketch/                        # superseded first-draft generator (reference only)
 ```
 
 ### 2.9 Showcase
