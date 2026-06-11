@@ -450,7 +450,69 @@ meanul-data-studio/
         └── sketch/                        # superseded first-draft generator (reference only)
 ```
 
-### 2.9 Showcase
+### 2.9 Resource allocation
+
+The stack ships with two resource profiles, applied as docker-compose
+override files on top of the base `docker-compose.yml`
+(`compose.laptop.yaml` / `compose.server.yaml`), setting explicit memory
+limits per container. Explicit limits are mandatory: the JVM-based
+components (Kafka, Debezium Connect) and ClickHouse will otherwise size
+themselves against all visible host RAM.
+
+Two assumptions keep the budget realistic: generation pacing is configured
+for **moderate volumes** (this is a simulation, not Uber-scale traffic),
+and Grafana/Superset serve a **single dashboard user**.
+
+#### Laptop profile (24 GB host, stack capped at ~17 GB steady / 20 GB peak)
+
+| Component | Containers | Limit each | Subtotal |
+| --- | --- | --- | --- |
+| PostgreSQL primary (Patroni) | 1 | 1.5 GB | 1.5 GB |
+| PostgreSQL replicas (Patroni) | 2 | 1 GB | 2 GB |
+| etcd (Patroni DCS) | 1 | 256 MB | 0.25 GB |
+| Redis (primary + 2 replicas) | 3 | 512 MB | 1.5 GB |
+| Redis Sentinel | 3 | 64 MB | 0.2 GB |
+| Kafka brokers (KRaft) | 3 | 768 MB (512 MB heap) | 2.25 GB |
+| Debezium Connect | 1 | 1 GB (768 MB heap) | 1 GB |
+| ClickHouse nodes (2x2) | 4 | 1.25 GB | 5 GB |
+| ClickHouse Keeper | 3 | 256 MB | 0.75 GB |
+| Grafana | 1 | 256 MB | 0.25 GB |
+| Superset (single user) | 1 | 1 GB | 1 GB |
+| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 192 MB | 1.15 GB |
+| **Steady-state total** | **29** | | **~16.9 GB** |
+| `bootstrap` (transient, exits after init) | 1 | 1 GB | peak only |
+
+This leaves ~4 GB of host headroom for macOS + Docker Desktop at steady
+state, and the 20 GB peak ceiling absorbs the transient `bootstrap`
+container (OSM import is the hungriest one-off step) plus query spikes.
+Key tuning that makes it fit: `KAFKA_HEAP_OPTS` capped per broker,
+ClickHouse `max_server_memory_usage` set below its container limit,
+PostgreSQL `shared_buffers`/`work_mem` sized to its limit, and Superset
+running in single-worker mode.
+
+#### Server profile (resource-generous host)
+
+On a beefy server the same topology simply gets room to breathe — no
+component count changes, only limits:
+
+| Component | Containers | Limit each | Subtotal |
+| --- | --- | --- | --- |
+| PostgreSQL primary + replicas | 3 | 4 GB | 12 GB |
+| etcd | 1 | 512 MB | 0.5 GB |
+| Redis + Sentinel | 6 | 2 GB / 128 MB | 6.4 GB |
+| Kafka brokers | 3 | 2 GB (1.5 GB heap) | 6 GB |
+| Debezium Connect | 1 | 2 GB | 2 GB |
+| ClickHouse nodes | 4 | 4 GB | 16 GB |
+| ClickHouse Keeper | 3 | 512 MB | 1.5 GB |
+| Grafana + Superset | 2 | 512 MB / 2 GB | 2.5 GB |
+| App services | 6 | 512 MB | 3 GB |
+| **Total** | **29** | | **~50 GB** |
+
+With the server profile the generation pacing config can be turned up
+(higher base rate, more simulated drivers/passengers) without touching the
+topology.
+
+### 2.10 Showcase
 
 _Screenshots of the running system (PostgreSQL data, Grafana dashboards,
 Superset dashboards, etc.) will be added here._
