@@ -75,7 +75,7 @@ graph LR
 
     G1 -->|"writes: profiles, trips, state"| PG
     G2 -->|"writes: profiles, trips, state"| PG
-    PG -.->|"change notification / cache sync"| R
+    PG -.->|"CDC via Debezium over Kafka"| R
 
     G1 -->|"publish events"| K
     G2 -->|"publish events"| K
@@ -102,10 +102,10 @@ The platform is split into one **one-shot init service** and several
 
 | Service | Type | Responsibility |
 | --- | --- | --- |
-| `bootstrap` | one-shot | Runs DB migrations, imports the NYC OSM road network into PostgreSQL and builds the pgRouting topology, seeds initial reference data (drivers, passengers, city zones), and generates **one week of historical mock activity** (trips, locations, per-segment traffic) so the ecosystem starts with a realistic baseline. Exits and is removed when done. |
+| `bootstrap` | one-shot | Runs DB migrations (plain ordered SQL), downloads the NYC OSM extract (**skipped when already present on its volume**), imports it into PostgreSQL and builds the pgRouting topology, seeds initial reference data (drivers, passengers, city zones), generates **one week of historical mock activity** (trips, locations, per-segment traffic), bulk-loads that week into ClickHouse so dashboards start populated, and finally sets the `system:bootstrap:done` marker in Redis. Exits and is removed when done. |
 | `driver-service` | long-running | Simulates the pool of active drivers (not one container per driver — one service internally manages many simulated drivers). Produces driver status/location activity. |
 | `passenger-service` | long-running | Simulates the pool of riders. Produces trip requests and rider device location streams. |
-| `dispatch-service` | long-running | Matches trip requests from `passenger-service` to available drivers, computes the route via pgRouting, and assigns the trip. |
+| `dispatch-service` | long-running | Matches trip requests from `passenger-service` to available drivers, computes the route via pgRouting, calculates the fare estimate (base + distance + time, surge-adjusted), and assigns the trip. |
 | `city-service` | long-running | Watches live trip/location traffic, computes per-zone demand "hotspot" scores and per-road-segment congestion factors (refreshing `segment_traffic` used by routing), and publishes hotspots so drivers can be guided toward demand. |
 | `clickhouse-sink` | long-running | Consumes Kafka topics, enriches events via Redis, and writes into the ClickHouse cluster for analytics/dashboards. |
 | `cache-updater` | long-running | Consumes the Debezium CDC topics and applies PostgreSQL changes to Redis, keeping the cache in sync with the source of truth. |
@@ -115,6 +115,37 @@ Note: in the real world, driver-side and rider-side telemetry are **not**
 different failure modes) — `driver-service` and `passenger-service` are
 independent generators that happen to refer to the same trips, not a single
 simulation duplicated into two streams.
+
+Naming: the plain names above (`driver-service`, `cache-updater`, ...) are
+the docker-compose service/container names; the alphabetic directory
+prefixes in [2.8](#28-project-structure) (`j-service-driver`, ...) encode
+build order only.
+
+#### Trip lifecycle & fares
+
+Every trip walks a status machine, and terminal outcomes are drawn from
+config-driven weights (carrying over the sketch's 7:3 completed/cancelled
+spirit):
+
+```
+requested -> matched -> accepted -> en_route_pickup -> in_progress -> completed
+```
+
+Terminal alternatives at the appropriate stages: `cancelled_by_passenger`,
+`cancelled_by_driver`, `no_driver_found` — defaults: ~70% `completed`,
+~30% spread across the three, all tunable in the pacing config.
+
+Fares implement **surge pricing**, closing the loop with the hotspot
+system:
+
+- **Estimate at assignment**:
+  `fare_estimate = (base_fare + per_km * route_km + per_min * predicted_min) * surge`,
+  where `surge` is derived from the pickup zone's `hotspot:{zone}:{period}`
+  score at request time.
+- **Final fare at completion** recomputes the time component from the
+  actual duration.
+- The estimate, the final fare, and the surge multiplier used are all
+  stored on the trip and flow into ClickHouse for revenue/surge analytics.
 
 #### Container startup procedure
 
@@ -129,14 +160,19 @@ healthchecks and `depends_on: condition: service_healthy`:
    start once the infrastructure they depend on is healthy, and wait in
    standby until the data layer is initialized.
 3. **`bootstrap` is the last container to come up**, gated on every other
-   service being healthy. It runs migrations, imports the NYC OSM extract
-   and builds the pgRouting topology, seeds initial drivers/passengers/city
-   zones, generates one week of historical mock activity (including
-   per-segment traffic baselines), preloads the cache, then exits
-   successfully and is removed.
-4. Once `bootstrap` has completed, the standby app services detect the
-   initialized data layer and begin generating live activity; from this
-   point the whole ecosystem runs purely from its configuration.
+   service being healthy. It runs migrations, downloads the NYC OSM extract
+   (skipped if already cached on its volume), builds the pgRouting
+   topology, seeds reference data plus one week of historical mock activity
+   (including per-segment traffic baselines), bulk-loads that week into
+   ClickHouse, then — as its final act — sets the `system:bootstrap:done`
+   marker key in Redis and exits successfully. During this phase the stack
+   may briefly approach the 20 GB VM ceiling on the laptop profile (see
+   [2.9](#29-resource-allocation)).
+4. The standby app services poll `system:bootstrap:done`; once it appears
+   they begin generating live activity, and from this point the whole
+   ecosystem runs purely from its configuration. The cache needs no
+   explicit preload — Debezium replays the seeded rows from the WAL and
+   `cache-updater`'s idempotent upserts fill Redis.
 
 ### 2.2 High-level overview (HLD)
 
@@ -158,7 +194,8 @@ graph TB
     SUPER["Superset"]
 
     BOOT -->|"migrations, OSM import + pgRouting topology, seed + 1 week of history"| PG
-    BOOT -->|"preload cache"| REDIS
+    BOOT -->|"set system:bootstrap:done marker"| REDIS
+    BOOT -->|"backfill historical week"| CH
 
     DRV -->|"status / location writes"| PG
     PSG -->|"trip request writes"| PG
@@ -174,7 +211,7 @@ graph TB
 
     KAFKA -->|"trip_requests"| DISP
     REDIS -.->|"geo lookup: nearby available drivers"| DISP
-    DISP -->|"route calc (pgr_dijkstra) + assign trip"| PG
+    DISP -->|"route calc (pgr_dijkstra) + fare estimate + assign trip"| PG
     DISP -->|"update active-trip cache"| REDIS
     DISP -->|"publish: trip_lifecycle"| KAFKA
 
@@ -209,8 +246,20 @@ by an etcd DCS) — and relies on three pillars:
   columns with GIN indexes where needed — PostgreSQL covers the
   document-store role, so no MongoDB is part of the stack.
 
+**Write/read entry point:** services never hard-code the primary. A
+lightweight **HAProxy** sits in front of the cluster and routes by querying
+Patroni's REST API: port **5432** -> current primary (read/write), port
+**5433** -> replicas (read-only pool). On failover Patroni promotes a
+replica and HAProxy follows automatically — clients just reconnect.
+
+**Migrations** are plain, ordered SQL files
+(`h-bootstrap/migrations/001_*.sql`, `002_*.sql`, ...) applied exactly once
+by `bootstrap` — no migration framework is needed for a one-shot init.
+
 ```mermaid
 graph TB
+    HAP["HAProxy<br/>5432: writes to primary, 5433: reads to replicas"]
+
     subgraph PGCluster ["PostgreSQL Cluster (Patroni + etcd)"]
         PRIM[("Primary")]
         REP1[("Replica 1")]
@@ -218,6 +267,9 @@ graph TB
         ETCD[("etcd DCS")]
     end
 
+    HAP -->|"routes via Patroni REST health checks"| PRIM
+    HAP -.->|"read pool"| REP1
+    HAP -.->|"read pool"| REP2
     PRIM -->|"streaming replication"| REP1
     PRIM -->|"streaming replication"| REP2
     ETCD -.->|"leader election / failover"| PRIM
@@ -254,8 +306,9 @@ Core tables (conceptual):
 - `passengers` — passenger/rider profile; preferences/device metadata in
   `JSONB`.
 - `trips` — pickup point, drop-off point (PostGIS points), assigned driver,
-  computed route geometry (PostGIS linestring), predicted duration, status,
-  timestamps; flexible attributes in `JSONB`.
+  computed route geometry (PostGIS linestring), predicted duration, status
+  (lifecycle in [2.1](#21-services)), fare estimate / final fare / surge
+  multiplier, timestamps; flexible attributes in `JSONB`.
 - `city_zones` — NYC zone/grid definitions used for hotspot aggregation.
 - `segment_traffic` — per-road-segment congestion factors: baseline from the
   bootstrap-seeded historical week, continuously refreshed by `city-service`
@@ -297,12 +350,22 @@ Key spaces (conceptual):
 | `passenger:{id}` | `cache-updater` (CDC) | `passenger-service`, `dispatch-service`, `clickhouse-sink` | profile |
 | `trip:{id}:active` | `dispatch-service` | `driver-service`, `passenger-service`, `clickhouse-sink` | active-trip state incl. route + predicted duration |
 | `geo:drivers:available` | `driver-service` | `dispatch-service` | Redis GEO set for nearest-driver lookup |
-| `hotspot:{zone}:{period}` | `city-service` | `driver-service`, `clickhouse-sink` | demand score, **TTL = 6h** (24h split into 4 periods) |
+| `hotspot:{zone}:{period}` | `city-service` | `driver-service`, `dispatch-service` (surge), `clickhouse-sink` | demand score, **TTL = 6h** (24h split into 4 periods) |
+| `system:bootstrap:done` | `bootstrap` (final act) | all app services (startup poll) | readiness marker, no TTL |
+
+`cache-updater` upserts are **idempotent (last-write-wins per key)** — the
+cache is filled by Debezium's CDC replay of the bootstrap-seeded rows
+rather than an explicit preload, so replays and service restarts are
+harmless by construction.
 
 ### 2.5 Kafka cluster (HLD)
 
 Kafka runs as a sharded, multi-broker cluster in **KRaft mode** (combined
-broker/controller nodes, no ZooKeeper).
+broker/controller nodes, no ZooKeeper). All events are **plain JSON** in
+version 1 — human-debuggable and Debezium's default envelope; Avro + a
+schema registry is deliberately deferred. Topics are created with
+**replication factor 3** and `min.insync.replicas = 2` across the three
+brokers.
 
 ```mermaid
 graph TB
@@ -325,14 +388,18 @@ graph TB
     B3 --- T5
 ```
 
-| Topic | Producer | Consumer(s) |
-| --- | --- | --- |
-| `driver_location` | `driver-service` | `city-service`, `clickhouse-sink` |
-| `rider_location` | `passenger-service` | `city-service`, `clickhouse-sink` |
-| `trip_requests` | `passenger-service` | `dispatch-service`, `clickhouse-sink` |
-| `trip_lifecycle` | `dispatch-service` | `city-service`, `clickhouse-sink` |
-| `city_hotspots` | `city-service` | `clickhouse-sink` |
-| `cdc.*` (per table) | Debezium Connect (from PostgreSQL WAL) | `cache-updater` |
+| Topic | Partitions | Producer | Consumer(s) |
+| --- | --- | --- | --- |
+| `driver_location` | 6 | `driver-service` | `city-service`, `clickhouse-sink` |
+| `rider_location` | 6 | `passenger-service` | `city-service`, `clickhouse-sink` |
+| `trip_requests` | 3 | `passenger-service` | `dispatch-service`, `clickhouse-sink` |
+| `trip_lifecycle` | 3 | `dispatch-service` | `city-service`, `clickhouse-sink` |
+| `city_hotspots` | 3 | `city-service` | `clickhouse-sink` |
+| `cdc.*` (per table) | 3 | Debezium Connect (from PostgreSQL WAL) | `cache-updater` |
+
+The high-volume location topics get 6 partitions (keyed by driver/rider id
+so per-entity ordering is preserved); everything else gets 3, one per
+broker.
 
 ### 2.6 ClickHouse cluster (HLD)
 
@@ -349,6 +416,16 @@ trip arrives it looks up `hotspot:{zone}:{period}` to mark whether it was a
 duration cached on `trip:{id}:active` to flag trips that **took longer than
 predicted** so Grafana can surface them. This keeps all such lookups off
 the PostgreSQL OLTP cluster, per the cache-first rule in Section 1.
+
+**Client entry point:** unlike the early sketch, there is **no HAProxy
+tier** in front of ClickHouse — every client (`clickhouse-sink`, Grafana,
+Superset) uses a multi-host connection listing all four nodes with
+client-side failover, and `Distributed` tables route queries inside the
+cluster. `bootstrap` bulk-loads the historical week here so dashboards are
+populated from the first minute. Grafana connects through the official
+ClickHouse datasource plugin; Superset connects via `clickhouse-connect`
+and keeps its own application metadata in **SQLite on a named volume**
+(sufficient for the single-user setup — the OLTP cluster stays untouched).
 
 ```mermaid
 graph TB
@@ -390,10 +467,13 @@ The map is stored by the **PostGIS** extension and routed by the
 - **Source data**: an OpenStreetMap extract for New York City (e.g. via
   Geofabrik or the OSM Overpass API), which provides accurate, freely
   licensed street geometry and metadata for the full road network.
-- **Loading**: the `bootstrap` service imports the OSM extract into
-  PostgreSQL/**PostGIS** and converts it into a routable topology using
-  `osm2pgrouting` (or `osm2pgsql` + pgRouting's topology functions),
-  producing the standard pgRouting `ways` / `ways_vertices_pgr` tables.
+- **Loading**: the `bootstrap` service downloads the extract onto a named
+  volume — **the download is skipped entirely when the file is already
+  present and checksum-valid**, so repeated `docker-compose up` runs never
+  re-fetch it — then imports it into PostgreSQL/**PostGIS** and converts it
+  into a routable topology using `osm2pgrouting` (or `osm2pgsql` +
+  pgRouting's topology functions), producing the standard pgRouting
+  `ways` / `ways_vertices_pgr` tables.
 - **Traffic-aware best path**: routing does not use raw geometric distance
   alone. Each road segment's cost is its base travel time (length /
   segment speed) multiplied by a **congestion factor** from the
@@ -412,6 +492,11 @@ The map is stored by the **PostGIS** extension and routed by the
 - **Indexing**: spatial indexes (GiST on geometry columns) and pgRouting's
   vertex/edge indexes are applied so route lookups remain fast as trip
   volume grows.
+- **Simulation clock**: the bootstrap-seeded week carries real past
+  timestamps (now − 7 days ... now); live services run on the wall clock.
+  All timestamps are stored in UTC, while the pacing weights
+  (hourly/daily/monthly) are interpreted in NYC local time
+  (`America/New_York`) — rush hour means NYC rush hour.
 
 ### 2.8 Project structure
 
@@ -458,6 +543,15 @@ meanul-data-studio/
     ├── m-service-city/
     └── n-service-clickhouse-sink/
 ```
+
+**Toolchain:** every Python component (`h-bootstrap` and the six
+`*-service-*` directories) targets **Python 3.13** (the latest
+long-support release) with **[uv](https://docs.astral.sh/uv/)** as the
+dependency manager — each component carries its own `pyproject.toml` +
+`uv.lock` and a multi-stage Dockerfile (`uv sync` in the build stage, slim
+runtime stage; no venv ever touches the host). The HAProxy entry-point
+config lives inside `a-infra-postgres/`, next to the Patroni setup it
+fronts.
 
 #### 2.8.1 Build & test order
 
@@ -506,38 +600,42 @@ Reference hosts:
 Storage is not a constraint on either host (see the capacity estimates
 below — the stack produces low single-digit GB per day at laptop pacing).
 
-#### Laptop profile (24 GB host, stack capped at ~14 GB steady / 16 GB Docker VM)
+#### Laptop profile (24 GB host, 20 GB Docker VM: ≤18 GB steady, ≤20 GB during bootstrap)
 
-Docker Desktop VM settings for this profile: **8 CPUs, 16 GB memory,
-swap = 0** (see the swap note below). macOS is itself memory-hungry, so
-only 16 of the 24 GB are handed to Docker — a full 8 GB stays with the OS.
-CPU limits sum to **7.75 of the VM's 8 CPUs — no overcommitment**.
+Docker Desktop VM settings for this profile: **8 CPUs, 20 GB memory (the
+VM-level cap), swap = 0** (see the swap note below). The stack is budgeted
+to stay **under 18 GB at steady state**; only the transient `bootstrap`
+phase may approach the 20 GB VM ceiling. macOS keeps the remaining 4 GB
+plus whatever the VM has not faulted in. CPU limits sum to **7.8 of the
+VM's 8 CPUs — no overcommitment**.
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
-| PostgreSQL primary (Patroni) | 1 | 1.0 | 1.25 GB | 1.25 GB |
-| PostgreSQL replicas (Patroni) | 2 | 0.5 | 768 MB | 1.5 GB |
+| PostgreSQL primary (Patroni) | 1 | 1.0 | 2 GB | 2 GB |
+| PostgreSQL replicas (Patroni) | 2 | 0.5 | 1 GB | 2 GB |
+| HAProxy (PostgreSQL entry point) | 1 | 0.05 | 64 MB | 0.06 GB |
 | etcd (Patroni DCS) | 1 | 0.1 | 256 MB | 0.25 GB |
-| Redis primary / replicas | 1 / 2 | 0.4 / 0.2 | 512 MB / 384 MB | 1.25 GB |
+| Redis primary / replicas | 1 / 2 | 0.4 / 0.2 | 768 MB / 512 MB | 1.75 GB |
 | Redis Sentinel | 3 | 0.05 | 64 MB | 0.2 GB |
-| Kafka brokers (KRaft) | 3 | 0.4 | 640 MB (448 MB heap) | 1.9 GB |
-| Debezium Connect | 1 | 0.25 | 768 MB (512 MB heap) | 0.75 GB |
-| ClickHouse nodes (2x2) | 4 | 0.5 | 1 GB | 4 GB |
+| Kafka brokers (KRaft) | 3 | 0.4 | 768 MB (512 MB heap) | 2.25 GB |
+| Debezium Connect | 1 | 0.25 | 1 GB (768 MB heap) | 1 GB |
+| ClickHouse nodes (2x2) | 4 | 0.5 | 1.25 GB | 5 GB |
 | ClickHouse Keeper | 3 | 0.1 | 256 MB | 0.75 GB |
 | Grafana | 1 | 0.1 | 256 MB | 0.25 GB |
-| Superset (single user, single worker) | 1 | 0.25 | 768 MB | 0.75 GB |
+| Superset (single user, single worker, SQLite metadata) | 1 | 0.25 | 1 GB | 1 GB |
 | App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.1 | 192 MB | 1.15 GB |
-| **Steady-state total** | **29** | **7.75 (of 8, no overcommit)** | | **~14 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 1.0 | 1 GB | peak only |
+| **Steady-state total** | **30** | **7.8 (of 8, no overcommit)** | | **~17.7 GB** |
+| `bootstrap` (transient, exits after init) | 1 | 1.0 | 2 GB | peak ~19.7 GB |
 
-Steady state plus the transient `bootstrap` peaks at ~15 GB, inside the
-16 GB VM — about 5 GB under the original 20 GB ceiling. `bootstrap`'s
-1.0 CPU also stays inside the envelope because it runs while the app
-services are still in standby (near-zero usage). Key tuning that makes it
-fit: `KAFKA_HEAP_OPTS` capped per broker, ClickHouse
+Steady state (~17.7 GB) stays under the 18 GB line. The transient
+`bootstrap` gets a deliberately generous **2 GB** — `osm2pgrouting` is
+memory-hungry on the NYC extract — taking the peak to ~19.7 GB, just
+inside the 20 GB VM ceiling; its 1.0 CPU also fits because the app
+services are still in standby (near-zero usage) while it runs. Key tuning
+that makes it fit: `KAFKA_HEAP_OPTS` capped per broker, ClickHouse
 `max_server_memory_usage` set below its container limit, PostgreSQL
 `shared_buffers`/`work_mem` sized to its limit, and Superset running in
-single-worker mode.
+single-worker mode with SQLite metadata.
 
 #### No-swap policy (macOS / Docker Desktop)
 
@@ -600,12 +698,13 @@ infrastructure layers can absorb — headroom, not a cliff.
 
 On the server the same topology simply gets room to breathe — no component
 count changes, only limits. Memory is committed up to the 120 GB line
-(~119 GB, leaving 8+ GB for the host OS), and CPU limits sum to **~23.8 of
+(~119 GB, leaving 8+ GB for the host OS), and CPU limits sum to **~23.9 of
 24 vCPU — no overcommitment**:
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
 | PostgreSQL primary / replicas | 1 / 2 | 3 / 1.5 | 12 GB / 8 GB | 28 GB |
+| HAProxy (PostgreSQL entry point) | 1 | 0.1 | 128 MB | 0.13 GB |
 | etcd | 1 | 0.25 | 1 GB | 1 GB |
 | Redis primary / replicas | 1 / 2 | 0.75 / 0.5 | 6 GB / 4 GB | 14 GB |
 | Redis Sentinel | 3 | 0.1 | 256 MB | 0.75 GB |
@@ -616,7 +715,8 @@ count changes, only limits. Memory is committed up to the 120 GB line
 | Grafana | 1 | 0.25 | 1 GB | 1 GB |
 | Superset | 1 | 0.75 | 4 GB | 4 GB |
 | App services | 6 | 0.25 | 768 MB | 4.5 GB |
-| **Total** | **29** | **~23.8 (of 24, no overcommit)** | | **~119 GB** |
+| **Total** | **30** | **~23.9 (of 24, no overcommit)** | | **~119 GB** |
+| `bootstrap` (transient, exits after init) | 1 | 2 | 8 GB | peak only |
 
 With the server profile the generation pacing config can be turned up
 (higher base rate, more simulated drivers/passengers — roughly 5–10x the
