@@ -1,17 +1,26 @@
 # Shared Patroni configuration — identical on every node. Per-node values
 # (PATRONI_NAME, PATRONI_*_CONNECT_ADDRESS) and secrets (superuser /
-# replication passwords) are injected as PATRONI_* environment variables in
-# docker-compose.yaml, which take precedence over this file.
+# replication / REST API passwords) are injected as PATRONI_* environment
+# variables in docker-compose.yaml, which take precedence over this file.
 
-scope: nus-pg
+scope: nus-pg          # "nus" = not-uber-service
 namespace: /service/
 
 restapi:
   listen: 0.0.0.0:8008
   connect_address: localhost:8008   # overridden per node via env
+  # Credentials come from PATRONI_RESTAPI_USERNAME / PATRONI_RESTAPI_PASSWORD.
+  # They protect the unsafe endpoints (switchover, failover, restart,
+  # reload, config changes); the read-only monitoring GETs (/primary,
+  # /replica, /health) stay open by design — the lb-a/lb-b HAProxy health
+  # checks depend on them.
 
 etcd3:
-  hosts: etcd:2379
+  protocol: https
+  hosts: etcd-0:2379,etcd-1:2379,etcd-2:2379
+  cacert: /certs/ca.crt
+  cert: /certs/client.crt
+  key: /certs/client.key
 
 bootstrap:
   dcs:
@@ -30,6 +39,10 @@ bootstrap:
         max_wal_senders: 10
         max_replication_slots: 10
         password_encryption: scram-sha-256
+        # the whole stack runs in UTC; only the simulation pacing config
+        # is interpreted in America/New_York (see the root README)
+        timezone: UTC
+        log_timezone: UTC
   initdb:
     - encoding: UTF8
     - data-checksums
