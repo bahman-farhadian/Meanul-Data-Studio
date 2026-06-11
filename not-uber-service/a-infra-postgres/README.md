@@ -31,7 +31,15 @@ Patroni's REST API health endpoints.
 ## TLS (etcd)
 
 A one-shot `etcd-certgen` container generates everything into the
-`etcd-certs` volume on first start and never touches it again:
+`etcd-certs` volume. It sits behind the `init` compose profile, so
+`docker compose up` never starts it — it is run explicitly and **removes
+itself on exit**:
+
+```bash
+docker compose run --rm etcd-certgen
+```
+
+What it produces (and never touches again — re-runs are no-ops):
 
 - **CA** (`ca.crt`/`ca.key`), a **server/peer certificate**, and a
   **client certificate** — all valid **10 years** (3650 days);
@@ -40,7 +48,10 @@ A one-shot `etcd-certgen` container generates everything into the
   every node for both client-to-server and peer-to-peer connections;
 - client certificate auth is **required** (`ETCD_CLIENT_CERT_AUTH=true`
   and the peer equivalent) — Patroni and the health checks authenticate
-  with `client.crt`/`client.key`.
+  with `client.crt`/`client.key`;
+- the CA carries explicit `basicConstraints`/`keyUsage` extensions —
+  Python 3.13 (which runs Patroni) verifies TLS in strict X.509 mode and
+  rejects CAs without them.
 
 ## etcd cluster lifecycle — `new` vs `existing`
 
@@ -69,7 +80,7 @@ Each node exposes Patroni's REST API on port 8008:
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `etcd-certgen` (one-shot TLS bootstrap) + `etcd-0/1/2` + `pg-0/1/2`; included by the root compose. |
+| `docker-compose.yaml` | `etcd-0/1/2` + `pg-0/1/2`, plus `etcd-certgen` behind the `init` profile (run with `docker compose run --rm`); included by the root compose. |
 | `Dockerfile` | `postgres:18.4` + PostGIS + pgRouting + Patroni (own venv). |
 | `patroni.yml` | Shared Patroni config (etcd3 TLS endpoints, REST API, DCS settings, initdb, pg_hba, UTC timezone). Per-node values/secrets injected as `PATRONI_*` env vars. |
 | `etcd.env` | Shared etcd cluster settings incl. TLS paths and `ETCD_INITIAL_CLUSTER_STATE` (committed — no secrets). |
@@ -96,6 +107,10 @@ Each node exposes Patroni's REST API on port 8008:
 docker network create nus-backbone
 
 cp .env.example .env        # then edit the passwords
+
+# one-shot TLS bootstrap (removes itself on exit; re-runs are no-ops)
+docker compose run --rm etcd-certgen
+
 docker compose up -d --build
 
 # >>> after the first successful start:
