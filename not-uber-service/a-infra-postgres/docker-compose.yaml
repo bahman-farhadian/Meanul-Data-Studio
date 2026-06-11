@@ -6,6 +6,7 @@
 # Standalone test:
 #   docker network create nus-backbone   (once, shared by the whole stack)
 #   cp .env.example .env                 (edit the passwords)
+#   docker compose run --rm etcd-certgen (one-shot TLS bootstrap, removes itself)
 #   docker compose up -d --build
 #   ... then flip ETCD_INITIAL_CLUSTER_STATE to 'existing' in etcd.env.
 #
@@ -18,9 +19,6 @@ x-etcd-node: &etcd-node
   image: ${ETCD_IMAGE:-quay.io/coreos/etcd:v3.6.12}
   restart: unless-stopped
   env_file: etcd.env
-  depends_on:
-    etcd-certgen:
-      condition: service_completed_successfully
   healthcheck:
     test:
       - CMD
@@ -75,13 +73,14 @@ x-pg-env: &pg-env
   PATRONI_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?set it in a-infra-postgres/.env}
 
 services:
-  # One-shot: generates the etcd CA + server/peer + client certificates
-  # (10-year validity, SANs for etcd-0/1/2) into the etcd-certs volume,
-  # then exits. Skips everything if the certs already exist.
+  # One-shot TLS bootstrap: generates the etcd CA + server/peer + client
+  # certificates (10-year validity, SANs for etcd-0/1/2) into the
+  # etcd-certs volume. Lives behind the "init" profile so `up` never
+  # starts it — run it explicitly and it removes itself on exit:
+  #   docker compose run --rm etcd-certgen
   etcd-certgen:
     image: ${OPENSSL_IMAGE:-alpine/openssl:3.3.2}
-    container_name: etcd-certgen
-    restart: "no"
+    profiles: ["init"]
     entrypoint: ["/bin/sh", "/gen-certs.sh"]
     volumes:
       - ./certs/gen-certs.sh:/gen-certs.sh:ro

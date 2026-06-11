@@ -10,6 +10,7 @@
 # Then:
 #   cp .env.example .env                          (root, lb settings)
 #   cp a-infra-postgres/.env.example a-infra-postgres/.env   (+ edit passwords)
+#   docker compose run --rm etcd-certgen          (one-shot, removes itself)
 #   docker compose up -d
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
