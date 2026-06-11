@@ -1,1 +1,16 @@
-tmp/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# Environment / secrets
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Large data artifacts (NYC OSM extracts are downloaded, not committed)
+*.osm.pbf
+*.osm
