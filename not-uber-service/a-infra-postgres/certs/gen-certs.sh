@@ -44,10 +44,12 @@ subjectKeyIdentifier = hash
 authorityKeyIdentifier = keyid:always, issuer
 EOF
 
+# NOTE: the [ext] sections below are applied at SIGNING time (-extfile),
+# not at CSR time — authorityKeyIdentifier needs the issuer certificate,
+# which only exists when the CA signs.
 cat > server.cnf <<'EOF'
 [req]
 distinguished_name = dn
-req_extensions = ext
 prompt = no
 [dn]
 CN = nus-etcd
@@ -69,7 +71,6 @@ EOF
 cat > client.cnf <<'EOF'
 [req]
 distinguished_name = dn
-req_extensions = ext
 prompt = no
 [dn]
 CN = nus-etcd-client
