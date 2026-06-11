@@ -419,41 +419,41 @@ Each version of the studio lives in its own top-level directory; Version 1
 is `not-uber-service/` (fun naming intended). Future versions will sit next
 to it as siblings.
 
-Within `not-uber-service/`, every component directory under `infra/`,
-`services/`, and the top-level `bootstrap/` carries an **alphabetic
-build/test-order prefix** (`a-`, `b-`, `c-`, ...) shared across all three
-locations — see [2.8.1](#281-build--test-order) for the full sequence and
-the dependency reasoning behind it.
+Every component lives directly under `not-uber-service/` (no `infra/` /
+`services/` / `docs/` grouping) and is named
+`<letter>-infra-<name>` or `<letter>-service-<name>`, where the letter
+encodes a single **alphabetic build/test-order** (`a-`, `b-`, `c-`, ...)
+across the whole stack — sorting the directory alphabetically shows
+exactly the order each piece should be written and tested in. See
+[2.8.1](#281-build--test-order) for the dependency reasoning behind the
+sequence.
 
 ```
 meanul-data-studio/
 ├── README.md
 ├── LICENSE
 ├── .gitignore
-└── not-uber-service/       # Version 1 — cab / ride-hailing platform
-    ├── docker-compose.yml  # single-host deployment of the full stack
-    ├── c-bootstrap/        # one-shot init service (starts last, then removed)
-    │   ├── migrations/     # SQL schema migrations
-    │   ├── osm/            # NYC OSM extract download + osm2pgrouting setup
-    │   └── seed/           # initial drivers/passengers/city_zones data
-    ├── services/           # long-running Faker-based app services
-    │   ├── f-cache-updater/   # CDC topics -> Redis
-    │   ├── g-driver-service/
-    │   ├── h-passenger-service/
-    │   ├── i-dispatch-service/
-    │   ├── k-clickhouse-sink/
-    │   └── l-city-service/
-    ├── infra/              # per-cluster configuration
-    │   ├── a-postgres/     # Patroni (primary + 2 replicas) + etcd config
-    │   ├── b-redis/        # Sentinel config
-    │   ├── d-kafka/        # KRaft broker config, topic definitions
-    │   ├── e-debezium/     # Kafka Connect + PostgreSQL CDC connector
-    │   ├── j-clickhouse/   # cluster + Keeper config, table DDL
-    │   ├── m-grafana/      # provisioned dashboards/datasources
-    │   └── n-superset/     # provisioned datasets/dashboards
-    └── docs/
-        ├── clickhouse-cluster-design.md   # early cluster topology notes
-        └── sketch/                        # superseded first-draft generator (reference only)
+└── not-uber-service/                 # Version 1 — cab / ride-hailing platform
+    ├── docker-compose.yml            # single-host deployment of the full stack
+    ├── clickhouse-cluster-design.md  # early cluster topology notes
+    ├── sketch/                       # superseded first-draft generator (reference only)
+    ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
+    ├── b-infra-redis/                # Sentinel config
+    ├── c-bootstrap/                  # one-shot init service (starts last, then removed)
+    │   ├── migrations/               # SQL schema migrations
+    │   ├── osm/                      # NYC OSM extract download + osm2pgrouting setup
+    │   └── seed/                     # initial drivers/passengers/city_zones data
+    ├── d-infra-kafka/                # KRaft broker config, topic definitions
+    ├── e-infra-debezium/             # Kafka Connect + PostgreSQL CDC connector
+    ├── f-service-cache-updater/      # CDC topics -> Redis
+    ├── g-service-driver/
+    ├── h-service-passenger/
+    ├── i-service-dispatch/
+    ├── j-infra-clickhouse/           # cluster + Keeper config, table DDL
+    ├── k-service-clickhouse-sink/
+    ├── l-service-city/
+    ├── m-infra-grafana/              # provisioned dashboards/datasources
+    └── n-infra-superset/             # provisioned datasets/dashboards
 ```
 
 #### 2.8.1 Build & test order
@@ -464,20 +464,20 @@ depends on it:
 
 | Step | Component | Why this point in the sequence |
 | --- | --- | --- |
-| `a-` | `infra/a-postgres` | Foundation: schema, PostGIS/pgRouting extensions, Patroni cluster — testable standalone with raw SQL. |
-| `b-` | `infra/b-redis` | Sentinel cache cluster — testable standalone (set/get, failover) before anything depends on it. |
+| `a-` | `a-infra-postgres` | Foundation: schema, PostGIS/pgRouting extensions, Patroni cluster — testable standalone with raw SQL. |
+| `b-` | `b-infra-redis` | Sentinel cache cluster — testable standalone (set/get, failover) before anything depends on it. |
 | `c-` | `c-bootstrap` | Needs `a` + `b` running: migrations, OSM import/topology build, seed data, historical week, cache preload. |
-| `d-` | `infra/d-kafka` | Streaming backbone — testable standalone (produce/consume) before any producer/consumer exists. |
-| `e-` | `infra/e-debezium` | Needs `a` + `d`: CDC connector turning Postgres WAL into Kafka `cdc.*` topics. |
-| `f-` | `services/f-cache-updater` | Needs `b` + `e`: consumes `cdc.*`, proves the cache-sync loop end-to-end. |
-| `g-` | `services/g-driver-service` | Needs `a`, `b`, `d`, `f`: first activity generator — profiles, status, location stream. |
-| `h-` | `services/h-passenger-service` | Same dependencies as `g`; built second since dispatch needs both. |
-| `i-` | `services/i-dispatch-service` | Needs `g` + `h`: matching, pgRouting route calc, trip assignment. |
-| `j-` | `infra/j-clickhouse` | OLAP cluster — testable standalone (DDL, inserts, replication) before the sink exists. |
-| `k-` | `services/k-clickhouse-sink` | Needs `d`, `b`, `j`: Kafka -> Redis-enriched -> ClickHouse. |
-| `l-` | `services/l-city-service` | Needs `d` + `b` (and benefits from `k` for validation): hotspot scoring, traffic factors. |
-| `m-` | `infra/m-grafana` | Needs `j` + `k`: live/operational dashboards on real data. |
-| `n-` | `infra/n-superset` | Needs `j` + `k`: BI dashboards on real data — last, since it benefits most from data already flowing. |
+| `d-` | `d-infra-kafka` | Streaming backbone — testable standalone (produce/consume) before any producer/consumer exists. |
+| `e-` | `e-infra-debezium` | Needs `a` + `d`: CDC connector turning Postgres WAL into Kafka `cdc.*` topics. |
+| `f-` | `f-service-cache-updater` | Needs `b` + `e`: consumes `cdc.*`, proves the cache-sync loop end-to-end. |
+| `g-` | `g-service-driver` | Needs `a`, `b`, `d`, `f`: first activity generator — profiles, status, location stream. |
+| `h-` | `h-service-passenger` | Same dependencies as `g`; built second since dispatch needs both. |
+| `i-` | `i-service-dispatch` | Needs `g` + `h`: matching, pgRouting route calc, trip assignment. |
+| `j-` | `j-infra-clickhouse` | OLAP cluster — testable standalone (DDL, inserts, replication) before the sink exists. |
+| `k-` | `k-service-clickhouse-sink` | Needs `d`, `b`, `j`: Kafka -> Redis-enriched -> ClickHouse. |
+| `l-` | `l-service-city` | Needs `d` + `b` (and benefits from `k` for validation): hotspot scoring, traffic factors. |
+| `m-` | `m-infra-grafana` | Needs `j` + `k`: live/operational dashboards on real data. |
+| `n-` | `n-infra-superset` | Needs `j` + `k`: BI dashboards on real data — last, since it benefits most from data already flowing. |
 
 ### 2.9 Resource allocation
 
