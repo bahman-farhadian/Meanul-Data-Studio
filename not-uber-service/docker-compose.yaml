@@ -1,38 +1,91 @@
 # Meanul Data Studio — Version 1 (Cab / Ride-Hailing Platform)
 #
-# Root compose file: stitches the stack together via the `include:`
-# directive. Every component directory ships its own docker-compose.yaml
-# (testable in isolation); entries below are uncommented as each lands.
+# Root compose file. Defines the stack-wide pieces (the lb-a/lb-b HAProxy
+# entry tier) and stitches the components together via `include:` — every
+# component directory ships its own docker-compose.yaml and is testable in
+# isolation. Include entries are uncommented as each component lands.
 #
-# include:
-#   - path: a-infra-postgres/docker-compose.yaml
-#   - path: b-infra-redis/docker-compose.yaml
-#   - path: c-infra-kafka/docker-compose.yaml
-#   - path: d-infra-debezium/docker-compose.yaml
-#   - path: e-infra-clickhouse/docker-compose.yaml
-#   - path: f-infra-grafana/docker-compose.yaml
-#   - path: g-infra-superset/docker-compose.yaml
-#   - path: h-bootstrap/docker-compose.yaml
-#   - path: i-service-cache-updater/docker-compose.yaml
-#   - path: j-service-driver/docker-compose.yaml
-#   - path: k-service-passenger/docker-compose.yaml
-#   - path: l-service-dispatch/docker-compose.yaml
-#   - path: m-service-city/docker-compose.yaml
-#   - path: n-service-clickhouse-sink/docker-compose.yaml
-#
-# Startup order (enforced with healthchecks + depends_on):
-#   1. Infrastructure clusters (HAProxy pair lb-a/lb-b, PostgreSQL via
-#      Patroni: primary + 2 replicas + etcd, Redis + Sentinel, Kafka (KRaft)
-#      + Schema Registry + Debezium Connect, ClickHouse 2 shards x 2
-#      replicas + 3 Keepers, Grafana, Superset).
-#   2. Long-running app services — start once the infrastructure is
-#      healthy, then stand by polling the system:bootstrap:done marker.
-#   3. bootstrap — the LAST container to start. Runs migrations, OSM
-#      download (skipped when already cached) + pgRouting topology, seed
-#      data + one week of historical mock activity (also bulk-loaded into
-#      ClickHouse), sets system:bootstrap:done, then exits and is removed.
+# One-time setup (the shared network all components join):
+#   docker network create nus-backbone
+# Then:
+#   cp .env.example .env                          (root, lb settings)
+#   cp a-infra-postgres/.env.example a-infra-postgres/.env   (+ edit passwords)
+#   docker compose up -d
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
 # Resource profiles are applied as overrides — compose.laptop.yaml /
 # compose.server.yaml — with explicit CPU + memory limits per container and
 # memswap_limit equal to the memory limit (zero swap).
+
+name: not-uber-service
+
+include:
+  - path: a-infra-postgres/docker-compose.yaml
+    env_file: a-infra-postgres/.env
+  # - path: b-infra-redis/docker-compose.yaml
+  # - path: c-infra-kafka/docker-compose.yaml
+  # - path: d-infra-debezium/docker-compose.yaml
+  # - path: e-infra-clickhouse/docker-compose.yaml
+  # - path: f-infra-grafana/docker-compose.yaml
+  # - path: g-infra-superset/docker-compose.yaml
+  # - path: h-bootstrap/docker-compose.yaml
+  # - path: i-service-cache-updater/docker-compose.yaml
+  # - path: j-service-driver/docker-compose.yaml
+  # - path: k-service-passenger/docker-compose.yaml
+  # - path: l-service-dispatch/docker-compose.yaml
+  # - path: m-service-city/docker-compose.yaml
+  # - path: n-service-clickhouse-sink/docker-compose.yaml
+
+services:
+  lb-a:
+    image: ${HAPROXY_IMAGE:-haproxy:3.2}
+    container_name: lb-a
+    restart: unless-stopped
+    volumes:
+      - ./z-config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "${LB_A_PG_WRITE_PORT:-5432}:5432"
+      - "${LB_A_PG_READ_PORT:-5433}:5433"
+      - "${LB_A_STATS_PORT:-8404}:8404"
+      # Uncomment as the corresponding components land:
+      # - "${LB_A_CH_HTTP_PORT:-8123}:8123"
+      # - "${LB_A_CH_NATIVE_PORT:-9000}:9000"
+      # - "${LB_A_GRAFANA_PORT:-3000}:3000"
+      # - "${LB_A_SUPERSET_PORT:-8088}:8088"
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backbone
+
+  # Passive twin: identical config, alternate host ports. In-network
+  # clients list both (lb-a,lb-b) and fail over client-side.
+  lb-b:
+    image: ${HAPROXY_IMAGE:-haproxy:3.2}
+    container_name: lb-b
+    restart: unless-stopped
+    volumes:
+      - ./z-config/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    ports:
+      - "${LB_B_PG_WRITE_PORT:-15432}:5432"
+      - "${LB_B_PG_READ_PORT:-15433}:5433"
+      - "${LB_B_STATS_PORT:-18404}:8404"
+      # Uncomment as the corresponding components land:
+      # - "${LB_B_CH_HTTP_PORT:-18123}:8123"
+      # - "${LB_B_CH_NATIVE_PORT:-19000}:9000"
+      # - "${LB_B_GRAFANA_PORT:-13000}:3000"
+      # - "${LB_B_SUPERSET_PORT:-18088}:8088"
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backbone
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

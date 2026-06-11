@@ -1,0 +1,49 @@
+# Shared Patroni configuration — identical on every node. Per-node values
+# (PATRONI_NAME, PATRONI_*_CONNECT_ADDRESS) and secrets (superuser /
+# replication passwords) are injected as PATRONI_* environment variables in
+# docker-compose.yaml, which take precedence over this file.
+
+scope: nus-pg
+namespace: /service/
+
+restapi:
+  listen: 0.0.0.0:8008
+  connect_address: localhost:8008   # overridden per node via env
+
+etcd3:
+  hosts: etcd:2379
+
+bootstrap:
+  dcs:
+    ttl: 30
+    loop_wait: 10
+    retry_timeout: 10
+    maximum_lag_on_failover: 1048576
+    postgresql:
+      use_pg_rewind: true
+      parameters:
+        # logical WAL level is required by Debezium CDC (d-infra-debezium)
+        wal_level: logical
+        wal_log_hints: "on"
+        hot_standby: "on"
+        max_connections: 200
+        max_wal_senders: 10
+        max_replication_slots: 10
+        password_encryption: scram-sha-256
+  initdb:
+    - encoding: UTF8
+    - data-checksums
+
+postgresql:
+  listen: 0.0.0.0:5432
+  connect_address: localhost:5432   # overridden per node via env
+  data_dir: /var/lib/postgresql/pgdata
+  pg_hba:
+    - local all all trust
+    - host all all 0.0.0.0/0 scram-sha-256
+    - host replication replicator 0.0.0.0/0 scram-sha-256
+  authentication:
+    superuser:
+      username: postgres
+    replication:
+      username: replicator
