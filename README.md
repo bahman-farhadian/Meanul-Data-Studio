@@ -473,37 +473,38 @@ Reference hosts:
 Storage is not a constraint on either host (see the capacity estimates
 below — the stack produces low single-digit GB per day at laptop pacing).
 
-#### Laptop profile (24 GB host, stack capped at ~17 GB steady / 20 GB peak)
+#### Laptop profile (24 GB host, stack capped at ~14 GB steady / 16 GB Docker VM)
 
-Docker Desktop VM settings for this profile: **8 CPUs, 21 GB memory,
-swap = 0** (see the swap note below). CPU limits below intentionally sum
-to more than 8 — they are ceilings, not reservations, and the components
-do not peak simultaneously.
+Docker Desktop VM settings for this profile: **8 CPUs, 16 GB memory,
+swap = 0** (see the swap note below). macOS is itself memory-hungry, so
+only 16 of the 24 GB are handed to Docker — a full 8 GB stays with the OS.
+CPU limits sum to **7.75 of the VM's 8 CPUs — no overcommitment**.
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
-| PostgreSQL primary (Patroni) | 1 | 1.5 | 1.5 GB | 1.5 GB |
-| PostgreSQL replicas (Patroni) | 2 | 0.75 | 1 GB | 2 GB |
-| etcd (Patroni DCS) | 1 | 0.25 | 256 MB | 0.25 GB |
-| Redis primary / replicas | 1 / 2 | 0.5 / 0.25 | 512 MB | 1.5 GB |
-| Redis Sentinel | 3 | 0.1 | 64 MB | 0.2 GB |
-| Kafka brokers (KRaft) | 3 | 0.75 | 768 MB (512 MB heap) | 2.25 GB |
-| Debezium Connect | 1 | 0.5 | 1 GB (768 MB heap) | 1 GB |
-| ClickHouse nodes (2x2) | 4 | 1.0 | 1.25 GB | 5 GB |
-| ClickHouse Keeper | 3 | 0.25 | 256 MB | 0.75 GB |
-| Grafana | 1 | 0.25 | 256 MB | 0.25 GB |
-| Superset (single user, single worker) | 1 | 0.5 | 1 GB | 1 GB |
-| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.25 | 192 MB | 1.15 GB |
-| **Steady-state total** | **29** | **~14.3 limit-sum** | | **~16.9 GB** |
+| PostgreSQL primary (Patroni) | 1 | 1.0 | 1.25 GB | 1.25 GB |
+| PostgreSQL replicas (Patroni) | 2 | 0.5 | 768 MB | 1.5 GB |
+| etcd (Patroni DCS) | 1 | 0.1 | 256 MB | 0.25 GB |
+| Redis primary / replicas | 1 / 2 | 0.4 / 0.2 | 512 MB / 384 MB | 1.25 GB |
+| Redis Sentinel | 3 | 0.05 | 64 MB | 0.2 GB |
+| Kafka brokers (KRaft) | 3 | 0.4 | 640 MB (448 MB heap) | 1.9 GB |
+| Debezium Connect | 1 | 0.25 | 768 MB (512 MB heap) | 0.75 GB |
+| ClickHouse nodes (2x2) | 4 | 0.5 | 1 GB | 4 GB |
+| ClickHouse Keeper | 3 | 0.1 | 256 MB | 0.75 GB |
+| Grafana | 1 | 0.1 | 256 MB | 0.25 GB |
+| Superset (single user, single worker) | 1 | 0.25 | 768 MB | 0.75 GB |
+| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.1 | 192 MB | 1.15 GB |
+| **Steady-state total** | **29** | **7.75 (of 8, no overcommit)** | | **~14 GB** |
 | `bootstrap` (transient, exits after init) | 1 | 1.0 | 1 GB | peak only |
 
-This leaves ~3 GB of host headroom for macOS outside the Docker VM at
-steady state, and the 20 GB peak ceiling absorbs the transient `bootstrap`
-container (OSM import is the hungriest one-off step) plus query spikes.
-Key tuning that makes it fit: `KAFKA_HEAP_OPTS` capped per broker,
-ClickHouse `max_server_memory_usage` set below its container limit,
-PostgreSQL `shared_buffers`/`work_mem` sized to its limit, and Superset
-running in single-worker mode.
+Steady state plus the transient `bootstrap` peaks at ~15 GB, inside the
+16 GB VM — about 5 GB under the original 20 GB ceiling. `bootstrap`'s
+1.0 CPU also stays inside the envelope because it runs while the app
+services are still in standby (near-zero usage). Key tuning that makes it
+fit: `KAFKA_HEAP_OPTS` capped per broker, ClickHouse
+`max_server_memory_usage` set below its container limit, PostgreSQL
+`shared_buffers`/`work_mem` sized to its limit, and Superset running in
+single-worker mode.
 
 #### No-swap policy (macOS / Docker Desktop)
 
@@ -565,23 +566,24 @@ infrastructure layers can absorb — headroom, not a cliff.
 #### Server profile (24 vCPU / 128 GB / 1 TB NVMe)
 
 On the server the same topology simply gets room to breathe — no component
-count changes, only limits (CPU limit-sum ~44 on 24 vCPU, same
-oversubscription rationale; ~92 GB of 128 GB committed):
+count changes, only limits. Memory is committed up to the 120 GB line
+(~119 GB, leaving 8+ GB for the host OS), and CPU limits sum to **~23.8 of
+24 vCPU — no overcommitment**:
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
-| PostgreSQL primary / replicas | 1 / 2 | 4 / 2 | 8 GB / 6 GB | 20 GB |
-| etcd | 1 | 0.5 | 512 MB | 0.5 GB |
-| Redis primary / replicas | 1 / 2 | 1 / 0.5 | 4 GB | 12 GB |
-| Redis Sentinel | 3 | 0.25 | 128 MB | 0.4 GB |
-| Kafka brokers | 3 | 2 | 4 GB (3 GB heap) | 12 GB |
-| Debezium Connect | 1 | 1 | 2 GB | 2 GB |
-| ClickHouse nodes | 4 | 4 | 8 GB | 32 GB |
-| ClickHouse Keeper | 3 | 0.5 | 1 GB | 3 GB |
-| Grafana | 1 | 0.5 | 512 MB | 0.5 GB |
-| Superset | 1 | 2 | 4 GB | 4 GB |
-| App services | 6 | 1 | 1 GB | 6 GB |
-| **Total** | **29** | **~44 limit-sum** | | **~92 GB** |
+| PostgreSQL primary / replicas | 1 / 2 | 3 / 1.5 | 12 GB / 8 GB | 28 GB |
+| etcd | 1 | 0.25 | 1 GB | 1 GB |
+| Redis primary / replicas | 1 / 2 | 0.75 / 0.5 | 6 GB / 4 GB | 14 GB |
+| Redis Sentinel | 3 | 0.1 | 256 MB | 0.75 GB |
+| Kafka brokers | 3 | 1.5 | 6 GB (4 GB heap) | 18 GB |
+| Debezium Connect | 1 | 0.75 | 3 GB | 3 GB |
+| ClickHouse nodes | 4 | 1.75 | 10 GB | 40 GB |
+| ClickHouse Keeper | 3 | 0.25 | 1.5 GB | 4.5 GB |
+| Grafana | 1 | 0.25 | 1 GB | 1 GB |
+| Superset | 1 | 0.75 | 4 GB | 4 GB |
+| App services | 6 | 0.25 | 768 MB | 4.5 GB |
+| **Total** | **29** | **~23.8 (of 24, no overcommit)** | | **~119 GB** |
 
 With the server profile the generation pacing config can be turned up
 (higher base rate, more simulated drivers/passengers — roughly 5–10x the
