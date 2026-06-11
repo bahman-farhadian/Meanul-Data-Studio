@@ -120,7 +120,10 @@ simulation duplicated into two streams.
 Naming: the plain names above (`driver-service`, `cache-updater`, ...) are
 the docker-compose service/container names; the alphabetic directory
 prefixes in [2.8](#28-project-structure) (`j-service-driver`, ...) encode
-build order only.
+build order only. Shared resources carry the **`nus-` prefix — the acronym
+of *n*ot-*u*ber-*s*ervice**: the `nus-backbone` Docker network, the
+`nus-pg` Patroni scope, the `nus-etcd` cluster, and the `nus/` image
+namespace.
 
 #### Load-balancer tier (lb-a / lb-b)
 
@@ -270,8 +273,12 @@ graph LR
 
 PostgreSQL is the system of truth for all transactional/operational state
 and the NYC road network graph. It runs as a real cluster — **one primary +
-two streaming replicas with automatic failover managed by Patroni** (backed
-by an etcd DCS) — and relies on three pillars:
+two streaming replicas with automatic failover managed by Patroni**, backed
+by **nus-etcd: a 3-node, mutually-TLS-secured etcd cluster** (certificates
+auto-generated for 10 years with per-node SANs). nus-etcd doubles as the
+**stack's shared key-value/DCS store** — any future component that needs
+etcd reuses this cluster rather than deploying its own. The PostgreSQL
+layer relies on three pillars:
 
 - **[PostGIS](https://postgis.net/)** — the extension that stores the NYC
   map: road geometries, pickup/drop-off points, and route linestrings live
@@ -304,7 +311,7 @@ graph TB
         PRIM[("Primary")]
         REP1[("Replica 1")]
         REP2[("Replica 2")]
-        ETCD[("etcd DCS")]
+        ETCD[("nus-etcd<br/>3 nodes, mutual TLS")]
     end
 
     HAP -->|"routes via Patroni REST health checks"| PRIM
@@ -572,11 +579,13 @@ The map is stored by the **PostGIS** extension and routed by the
 - **Indexing**: spatial indexes (GiST on geometry columns) and pgRouting's
   vertex/edge indexes are applied so route lookups remain fast as trip
   volume grows.
-- **Simulation clock**: the bootstrap-seeded week carries real past
-  timestamps (now − 7 days ... now); live services run on the wall clock.
-  All timestamps are stored in UTC, while the pacing weights
-  (hourly/daily/monthly) are interpreted in NYC local time
-  (`America/New_York`) — rush hour means NYC rush hour.
+- **Simulation clock & timezones**: the bootstrap-seeded week carries real
+  past timestamps (now − 7 days ... now); live services run on the wall
+  clock. The timezone policy is explicit and stack-wide: **every container
+  runs with `TZ=UTC`** (set via each `.env`), PostgreSQL pins `timezone`
+  and `log_timezone` to UTC, and all stored timestamps are UTC. The single
+  deliberate exception is the pacing config, interpreted in NYC local time
+  (`SIM_TIMEZONE=America/New_York`) — rush hour means NYC rush hour.
 
 ### 2.8 Project structure
 
@@ -701,7 +710,7 @@ Docker Desktop VM settings for this profile: **8 CPUs, 20 GB memory (the
 VM-level cap), swap = 0** (see the swap note below). The stack is budgeted
 to stay **under 18 GB at steady state**; only the transient `bootstrap`
 phase may approach the 20 GB VM ceiling. macOS keeps the remaining 4 GB
-plus whatever the VM has not faulted in. CPU limits sum to **7.95 of the
+plus whatever the VM has not faulted in. CPU limits sum to **7.85 of the
 VM's 8 CPUs — no overcommitment**.
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
@@ -709,23 +718,23 @@ VM's 8 CPUs — no overcommitment**.
 | PostgreSQL primary (Patroni) | 1 | 1.0 | 2 GB | 2 GB |
 | PostgreSQL replicas (Patroni) | 2 | 0.5 | 1 GB | 2 GB |
 | HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.05 | 64 MB | 0.13 GB |
-| etcd (Patroni DCS) | 1 | 0.1 | 256 MB | 0.25 GB |
+| nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.05 | 128 MB | 0.38 GB |
 | Redis primary / replicas | 1 / 2 | 0.4 / 0.2 | 768 MB / 512 MB | 1.75 GB |
 | Redis Sentinel | 3 | 0.05 | 64 MB | 0.2 GB |
 | Kafka brokers (KRaft) | 3 | 0.4 | 768 MB (512 MB heap) | 2.25 GB |
 | Schema Registry | 1 | 0.1 | 384 MB | 0.38 GB |
 | Debezium Connect | 1 | 0.25 | 1 GB (768 MB heap) | 1 GB |
 | ClickHouse nodes (2x2) | 4 | 0.5 | 1.25 GB | 5 GB |
-| ClickHouse Keeper | 3 | 0.1 | 192 MB | 0.56 GB |
+| ClickHouse Keeper | 3 | 0.05 | 192 MB | 0.56 GB |
 | Grafana | 1 | 0.1 | 192 MB | 0.19 GB |
 | Superset (single user, single worker, SQLite metadata) | 1 | 0.25 | 896 MB | 0.88 GB |
 | App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.1 | 192 MB | 1.15 GB |
-| **Steady-state total** | **32** | **7.95 (of 8, no overcommit)** | | **~17.7 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 1.0 | 2 GB | peak ~19.7 GB |
+| **Steady-state total** | **34** | **7.85 (of 8, no overcommit)** | | **~17.9 GB** |
+| `bootstrap` (transient, exits after init) | 1 | 1.0 | 2 GB | peak ~19.9 GB |
 
-Steady state (~17.7 GB) stays under the 18 GB line. The transient
+Steady state (~17.9 GB) stays under the 18 GB line. The transient
 `bootstrap` gets a deliberately generous **2 GB** — `osm2pgrouting` is
-memory-hungry on the NYC extract — taking the peak to ~19.7 GB, just
+memory-hungry on the NYC extract — taking the peak to ~19.9 GB, just
 inside the 20 GB VM ceiling; its 1.0 CPU also fits because the app
 services are still in standby (near-zero usage) while it runs. Key tuning
 that makes it fit: `KAFKA_HEAP_OPTS` capped per broker, ClickHouse
@@ -801,18 +810,18 @@ of 24 vCPU — no overcommitment**:
 | --- | --- | --- | --- | --- |
 | PostgreSQL primary / replicas | 1 / 2 | 3 / 1.5 | 12 GB / 8 GB | 28 GB |
 | HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.1 | 128 MB | 0.25 GB |
-| etcd | 1 | 0.25 | 1 GB | 1 GB |
+| nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.2 | 512 MB | 1.5 GB |
 | Redis primary / replicas | 1 / 2 | 0.75 / 0.5 | 6 GB / 4 GB | 14 GB |
 | Redis Sentinel | 3 | 0.1 | 256 MB | 0.75 GB |
 | Kafka brokers | 3 | 1.5 | 6 GB (4 GB heap) | 18 GB |
 | Schema Registry | 1 | 0.25 | 1 GB | 1 GB |
-| Debezium Connect | 1 | 0.5 | 2.5 GB | 2.5 GB |
+| Debezium Connect | 1 | 0.5 | 2 GB | 2 GB |
 | ClickHouse nodes | 4 | 1.75 | 10 GB | 40 GB |
-| ClickHouse Keeper | 3 | 0.2 | 1.5 GB | 4.5 GB |
+| ClickHouse Keeper | 3 | 0.1 | 1.5 GB | 4.5 GB |
 | Grafana | 1 | 0.25 | 1 GB | 1 GB |
 | Superset | 1 | 0.75 | 4 GB | 4 GB |
 | App services | 6 | 0.25 | 768 MB | 4.5 GB |
-| **Total** | **32** | **~23.9 (of 24, no overcommit)** | | **~119.5 GB** |
+| **Total** | **34** | **~23.9 (of 24, no overcommit)** | | **~119.5 GB** |
 | `bootstrap` (transient, exits after init) | 1 | 2 | 8 GB | peak only |
 
 With the server profile the generation pacing config can be turned up
