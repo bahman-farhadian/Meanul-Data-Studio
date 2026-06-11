@@ -1,11 +1,13 @@
 # Meanul Data Studio — Version 1 (Cab / Ride-Hailing Platform)
 #
 # Placeholder. Will define, in startup order:
-#   1. Infrastructure clusters (PostgreSQL, Redis + Sentinel, Kafka (KRaft),
-#      ClickHouse + Keeper, Grafana, Superset) — all with healthchecks.
+#   1. Infrastructure clusters (PostgreSQL via Patroni: primary + 2 replicas
+#      + etcd, Redis + Sentinel, Kafka (KRaft) + Debezium Connect,
+#      ClickHouse 2 shards x 2 replicas + 3 Keepers, Grafana, Superset) —
+#      all with healthchecks.
 #   2. Long-running app services (driver-service, passenger-service,
-#      dispatch-service, city-service, clickhouse-sink) — start once the
-#      infrastructure is healthy, then stand by.
+#      dispatch-service, city-service, clickhouse-sink, cache-updater) —
+#      start once the infrastructure is healthy, then stand by.
 #   3. bootstrap — the LAST container to start, gated on every other service
-#      being healthy. Runs migrations, OSM import + pgRouting topology, and
-#      seed data, then exits and is removed.
+#      being healthy. Runs migrations, OSM import + pgRouting topology, seed
+#      data + one week of historical mock activity, then exits and is removed.
