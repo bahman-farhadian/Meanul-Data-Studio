@@ -38,7 +38,7 @@ include:
 
 services:
   lb-a:
-    image: ${HAPROXY_IMAGE:-haproxy:3.2}
+    image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
     container_name: lb-a
     restart: unless-stopped
     volumes:
@@ -63,7 +63,7 @@ services:
   # Passive twin: identical config, alternate host ports. In-network
   # clients list both (lb-a,lb-b) and fail over client-side.
   lb-b:
-    image: ${HAPROXY_IMAGE:-haproxy:3.2}
+    image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
     container_name: lb-b
     restart: unless-stopped
     volumes:
