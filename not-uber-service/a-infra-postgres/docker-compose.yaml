@@ -1,0 +1,110 @@
+# a-infra-postgres — Patroni-managed PostgreSQL cluster (primary + 2
+# replicas) with an etcd DCS. Standalone test:
+#   docker network create nus-backbone   (once, shared by the whole stack)
+#   cp .env.example .env                 (edit the passwords)
+#   docker compose up -d --build
+# In the full stack this file is include'd by the root docker-compose.yaml;
+# writes/reads enter through the lb-a/lb-b HAProxy pair (5432/5433).
+
+name: a-infra-postgres
+
+x-pg-node: &pg-node
+  build:
+    context: .
+    args:
+      PG_IMAGE: ${PG_IMAGE:-postgres:18.4}
+  image: nus/patroni-postgres:18.4
+  restart: unless-stopped
+  depends_on:
+    etcd:
+      condition: service_healthy
+  healthcheck:
+    test: ["CMD-SHELL", "curl -fsS http://localhost:8008/health || exit 1"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 30s
+  networks:
+    - backbone
+
+services:
+  etcd:
+    image: ${ETCD_IMAGE:-quay.io/coreos/etcd:v3.6.5}
+    container_name: etcd
+    restart: unless-stopped
+    command:
+      - /usr/local/bin/etcd
+      - --name=etcd0
+      - --data-dir=/etcd-data
+      - --listen-client-urls=http://0.0.0.0:2379
+      - --advertise-client-urls=http://etcd:2379
+      - --listen-peer-urls=http://0.0.0.0:2380
+      - --initial-advertise-peer-urls=http://etcd:2380
+      - --initial-cluster=etcd0=http://etcd:2380
+      - --initial-cluster-state=new
+      - --initial-cluster-token=nus-etcd
+    volumes:
+      - etcd-data:/etcd-data
+    healthcheck:
+      test: ["CMD", "etcdctl", "--endpoints=http://localhost:2379", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - backbone
+
+  pg-0:
+    <<: *pg-node
+    container_name: pg-0
+    hostname: pg-0
+    environment:
+      PATRONI_NAME: pg-0
+      PATRONI_SCOPE: ${PATRONI_SCOPE:-nus-pg}
+      PATRONI_ETCD3_HOSTS: etcd:2379
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-0:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-0:5432
+      PATRONI_SUPERUSER_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set it in a-infra-postgres/.env}
+      PATRONI_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?set it in a-infra-postgres/.env}
+    volumes:
+      - pgdata-0:/var/lib/postgresql
+
+  pg-1:
+    <<: *pg-node
+    container_name: pg-1
+    hostname: pg-1
+    environment:
+      PATRONI_NAME: pg-1
+      PATRONI_SCOPE: ${PATRONI_SCOPE:-nus-pg}
+      PATRONI_ETCD3_HOSTS: etcd:2379
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-1:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-1:5432
+      PATRONI_SUPERUSER_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set it in a-infra-postgres/.env}
+      PATRONI_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?set it in a-infra-postgres/.env}
+    volumes:
+      - pgdata-1:/var/lib/postgresql
+
+  pg-2:
+    <<: *pg-node
+    container_name: pg-2
+    hostname: pg-2
+    environment:
+      PATRONI_NAME: pg-2
+      PATRONI_SCOPE: ${PATRONI_SCOPE:-nus-pg}
+      PATRONI_ETCD3_HOSTS: etcd:2379
+      PATRONI_RESTAPI_CONNECT_ADDRESS: pg-2:8008
+      PATRONI_POSTGRESQL_CONNECT_ADDRESS: pg-2:5432
+      PATRONI_SUPERUSER_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set it in a-infra-postgres/.env}
+      PATRONI_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?set it in a-infra-postgres/.env}
+    volumes:
+      - pgdata-2:/var/lib/postgresql
+
+volumes:
+  etcd-data:
+  pgdata-0:
+  pgdata-1:
+  pgdata-2:
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

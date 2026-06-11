@@ -611,7 +611,8 @@ meanul-data-studio/
 ├── LICENSE
 ├── .gitignore
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
-    ├── docker-compose.yaml           # root file: include's every component's compose file
+    ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
+    ├── .env.example                  # template for the untracked .env (stack-wide settings)
     ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
     │   └── docker-compose.yaml       # component compose (every component dir has one)
@@ -630,7 +631,9 @@ meanul-data-studio/
     ├── k-service-passenger/
     ├── l-service-dispatch/
     ├── m-service-city/
-    └── n-service-clickhouse-sink/
+    ├── n-service-clickhouse-sink/
+    └── z-config/                     # stack-level config (sorts last on purpose)
+        └── haproxy/                  # lb-a / lb-b config
 ```
 
 **Toolchain:** every Python component (`h-bootstrap` and the six
@@ -638,10 +641,12 @@ meanul-data-studio/
 long-support release) with **[uv](https://docs.astral.sh/uv/)** as the
 dependency manager — each component carries its own `pyproject.toml` +
 `uv.lock` and a multi-stage Dockerfile (`uv sync` in the build stage, slim
-runtime stage; no venv ever touches the host). The HAProxy pair's config
-lives inside `a-infra-postgres/haproxy/` — it fronts the Patroni cluster
-first and gains its ClickHouse and UI routes as those components land —
-and the Schema Registry config lives in `c-infra-kafka/`.
+runtime stage; no venv ever touches the host). The HAProxy pair is
+stack-wide, so its two services are defined in the root
+`docker-compose.yaml` with their config under `z-config/haproxy/`
+(`z-config/` sorts last and collects stack-level config files; the
+ClickHouse and UI routes are enabled there as those components land). The
+Schema Registry config lives in `c-infra-kafka/`.
 
 #### 2.8.1 Build & test order
 
