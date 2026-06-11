@@ -1,0 +1,38 @@
+# Meanul Data Studio — Version 1 (Cab / Ride-Hailing Platform)
+#
+# Root compose file: stitches the stack together via the `include:`
+# directive. Every component directory ships its own docker-compose.yaml
+# (testable in isolation); entries below are uncommented as each lands.
+#
+# include:
+#   - path: a-infra-postgres/docker-compose.yaml
+#   - path: b-infra-redis/docker-compose.yaml
+#   - path: c-infra-kafka/docker-compose.yaml
+#   - path: d-infra-debezium/docker-compose.yaml
+#   - path: e-infra-clickhouse/docker-compose.yaml
+#   - path: f-infra-grafana/docker-compose.yaml
+#   - path: g-infra-superset/docker-compose.yaml
+#   - path: h-bootstrap/docker-compose.yaml
+#   - path: i-service-cache-updater/docker-compose.yaml
+#   - path: j-service-driver/docker-compose.yaml
+#   - path: k-service-passenger/docker-compose.yaml
+#   - path: l-service-dispatch/docker-compose.yaml
+#   - path: m-service-city/docker-compose.yaml
+#   - path: n-service-clickhouse-sink/docker-compose.yaml
+#
+# Startup order (enforced with healthchecks + depends_on):
+#   1. Infrastructure clusters (HAProxy pair lb-a/lb-b, PostgreSQL via
+#      Patroni: primary + 2 replicas + etcd, Redis + Sentinel, Kafka (KRaft)
+#      + Schema Registry + Debezium Connect, ClickHouse 2 shards x 2
+#      replicas + 3 Keepers, Grafana, Superset).
+#   2. Long-running app services — start once the infrastructure is
+#      healthy, then stand by polling the system:bootstrap:done marker.
+#   3. bootstrap — the LAST container to start. Runs migrations, OSM
+#      download (skipped when already cached) + pgRouting topology, seed
+#      data + one week of historical mock activity (also bulk-loaded into
+#      ClickHouse), sets system:bootstrap:done, then exits and is removed.
+#
+# Events on Kafka are binary Avro; schemas live in the Schema Registry.
+# Resource profiles are applied as overrides — compose.laptop.yaml /
+# compose.server.yaml — with explicit CPU + memory limits per container and
+# memswap_limit equal to the memory limit (zero swap).
