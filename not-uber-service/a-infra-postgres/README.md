@@ -137,6 +137,14 @@ Each node exposes Patroni's REST API on port 8008:
 
 ## Standalone quickstart
 
+> Standalone runs use the `a-infra-postgres` project scope. The `nus-*`
+> volumes are shared with the full stack, but Docker labels each volume
+> with the project that created it — mixing standalone and full-stack
+> scopes therefore triggers a harmless
+> `volume ... was created for project ...` warning on `up`. For
+> stack assembly, run everything (one-shots included) through the root
+> compose per the [runbook](../README.md).
+
 ```bash
 # one-time: the shared network every stack component joins
 docker network create nus-backbone

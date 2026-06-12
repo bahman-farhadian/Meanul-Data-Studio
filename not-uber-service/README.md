@@ -11,8 +11,12 @@ All commands run from this directory (`not-uber-service/`). Two rules
 apply to every piece:
 
 - **One-shot containers** (cert generation and the like) run via
-  `docker compose run --rm` against the component's compose file — they do
-  their job and remove themselves.
+  `docker compose run --rm <name>` from this directory, against the root
+  compose file — they do their job and remove themselves. Running them
+  against a component's own compose file works too, but the volumes they
+  create get labelled with that component's project name, and every later
+  root `up` warns `volume ... was created for project "a-infra-postgres"`
+  (harmless, but noisy — keep one project scope and it never appears).
 - **Everything else comes up through the root compose file only** —
   never `up` a component's own compose file when assembling the stack
   (volumes carry fixed `nus-*` names, so the one-shot output is shared
@@ -41,7 +45,7 @@ cp .env.example .env
 cp a-infra-postgres/.env.example a-infra-postgres/.env
 
 # one-shot: generate the nus-etcd TLS certificates (removes itself on exit)
-docker compose -f a-infra-postgres/docker-compose.yaml run --rm etcd-certgen
+docker compose run --rm etcd-certgen
 
 # bring everything assembled so far up — ALWAYS via the root compose file,
 # with the resource profile for this host (server: compose.server.yaml)
@@ -63,15 +67,18 @@ vim a-infra-postgres/etcd.env
 docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d
 ```
 
+This flip is **local operational state — never commit it**; the repository
+keeps `new` so a fresh clone can bootstrap from empty volumes.
+
 Why this flip matters (split-brain protection when a volume is ever lost):
 [a-infra-postgres/README.md](a-infra-postgres/README.md#etcd-cluster-lifecycle--new-vs-existing).
 
 ## 2. Next pieces — b ... n
 
 Added here as each component lands, in the same shape as piece a: copy its
-`.env.example` if it has one, run its one-shot containers (if any) with
-`docker compose -f <component>/docker-compose.yaml run --rm <name>`,
-activate its `include:` entry in the root [`docker-compose.yaml`](docker-compose.yaml),
+`.env.example` if it has one, activate its `include:` entry in the root
+[`docker-compose.yaml`](docker-compose.yaml), run its one-shot containers
+(if any) with `docker compose run --rm <name>`,
 add its limits to both resource profiles, run the profile-applied `up`
 from piece a, then its post-bootstrap commands (if any) — verification
 always per the component README.
