@@ -65,7 +65,8 @@ What it produces (and never touches again — re-runs are no-ops):
 configuration. The critical knob is:
 
 ```
-ETCD_INITIAL_CLUSTER_STATE=new        # FIRST bootstrap only
+# FIRST bootstrap only
+ETCD_INITIAL_CLUSTER_STATE=new
 ```
 
 **After the first successful start, flip it to `existing`.**
