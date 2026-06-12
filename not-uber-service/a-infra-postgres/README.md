@@ -72,6 +72,28 @@ ETCD_INITIAL_CLUSTER_STATE=new        # FIRST bootstrap only
 valid while the cluster is being formed from empty data volumes; once
 `etcd-data-*` exist, members rejoin an *existing* cluster on restart.
 
+The exact procedure:
+
+```bash
+# 1. confirm the cluster actually bootstrapped (all three healthy)
+docker compose exec etcd-1 etcdctl \
+  --endpoints=https://etcd-1:2379,https://etcd-2:2379,https://etcd-3:2379 \
+  --cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
+  endpoint health
+
+# 2. flip the value in etcd.env (or edit the file by hand)
+#    macOS:  sed -i '' 's/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/' etcd.env
+#    Linux:  sed -i  's/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/' etcd.env
+
+# 3. re-apply — compose recreates only the etcd containers (config changed);
+#    the data volumes persist, so the members rejoin the existing cluster
+docker compose up -d
+
+# 4. verify the new value was picked up and the cluster is still healthy
+docker compose logs etcd-1 | grep -i initial-cluster-state
+docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml list
+```
+
 ## Patroni REST API
 
 Each node exposes Patroni's REST API on port 8008:

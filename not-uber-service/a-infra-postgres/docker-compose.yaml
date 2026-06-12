@@ -167,14 +167,26 @@ services:
       - pgdata-3:/var/lib/postgresql
       - etcd-certs:/certs:ro
 
+# Fixed volume names (no project prefix): the same volumes are used whether
+# this file runs standalone (project a-infra-postgres) or include'd by the
+# root compose (project not-uber-service) — otherwise the certs generated
+# by a standalone `run --rm etcd-certgen` would land in a different volume
+# than the one the full stack mounts.
 volumes:
   etcd-certs:
+    name: nus-etcd-certs
   etcd-data-1:
+    name: nus-etcd-data-1
   etcd-data-2:
+    name: nus-etcd-data-2
   etcd-data-3:
+    name: nus-etcd-data-3
   pgdata-1:
+    name: nus-pgdata-1
   pgdata-2:
+    name: nus-pgdata-2
   pgdata-3:
+    name: nus-pgdata-3
 
 networks:
   backbone:

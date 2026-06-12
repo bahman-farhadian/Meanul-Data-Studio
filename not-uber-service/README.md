@@ -37,9 +37,24 @@ docker compose -f a-infra-postgres/docker-compose.yaml exec pg-1 \
   patronictl -c /etc/patroni/patroni.yml list
 ```
 
-Expect one `Leader` + two streaming `Replica`s. **Then flip
-`ETCD_INITIAL_CLUSTER_STATE` to `existing` in `a-infra-postgres/etcd.env`**
-(see the [component README](a-infra-postgres/README.md) for why).
+Expect one `Leader` + two streaming `Replica`s. **Then flip the etcd
+cluster state from `new` to `existing`** — `new` is only valid for the
+very first bootstrap from empty volumes:
+
+```bash
+# macOS (BSD sed); on Linux drop the ''
+sed -i '' 's/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/' \
+  a-infra-postgres/etcd.env
+
+# re-apply: recreates only the etcd containers, data volumes persist
+docker compose -f a-infra-postgres/docker-compose.yaml up -d
+```
+
+(Why this matters and how to verify: [component README](a-infra-postgres/README.md).)
+
+> **Note on volumes:** every volume in this stack has a fixed `nus-*` name,
+> so the standalone `-f` commands above and the root `docker compose up`
+> share the same data — including the certs volume written by the one-shot.
 
 ## 2. The entry tier — lb-a / lb-b (root compose)
 
