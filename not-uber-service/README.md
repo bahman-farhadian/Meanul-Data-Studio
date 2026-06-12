@@ -17,6 +17,12 @@ apply to every piece:
   never `up` a component's own compose file when assembling the stack
   (volumes carry fixed `nus-*` names, so the one-shot output is shared
   either way).
+- **Always apply a resource profile** on `up`:
+  [`compose.laptop.yaml`](compose.laptop.yaml) on the laptop,
+  [`compose.server.yaml`](compose.server.yaml) on the server. They enforce
+  the per-container CPU/memory limits and the no-swap policy from the main
+  README, section 2.9 — a plain `docker compose up` runs unlimited and is
+  acceptable only for a quick functional check.
 
 ## 0. One-time groundwork
 
@@ -37,8 +43,9 @@ cp a-infra-postgres/.env.example a-infra-postgres/.env
 # one-shot: generate the nus-etcd TLS certificates (removes itself on exit)
 docker compose -f a-infra-postgres/docker-compose.yaml run --rm etcd-certgen
 
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
+# bring everything assembled so far up — ALWAYS via the root compose file,
+# with the resource profile for this host (server: compose.server.yaml)
+docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d --build
 ```
 
 Verify it: [a-infra-postgres/README.md](a-infra-postgres/README.md)
@@ -53,7 +60,7 @@ cluster state from `new` to `existing`:
 vim a-infra-postgres/etcd.env
 
 # re-apply: recreates only the etcd containers; data persists
-docker compose up -d
+docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d
 ```
 
 Why this flip matters (split-brain protection when a volume is ever lost):
@@ -65,8 +72,9 @@ Added here as each component lands, in the same shape as piece a: copy its
 `.env.example` if it has one, run its one-shot containers (if any) with
 `docker compose -f <component>/docker-compose.yaml run --rm <name>`,
 activate its `include:` entry in the root [`docker-compose.yaml`](docker-compose.yaml),
-run `docker compose up -d --build`, then its post-bootstrap commands (if
-any) — verification always per the component README.
+add its limits to both resource profiles, run the profile-applied `up`
+from piece a, then its post-bootstrap commands (if any) — verification
+always per the component README.
 
 ## Teardown
 
