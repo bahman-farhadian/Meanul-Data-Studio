@@ -88,15 +88,9 @@ docker compose exec etcd-1 etcdctl \
   --cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
   endpoint health
 
-# 2. flip the value in etcd.env with vim
+# 2. edit etcd.env: set ETCD_INITIAL_CLUSTER_STATE=existing
 vim etcd.env
-```
 
-Inside vim: type `:%s/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/`
-and press Enter (a substitute command over the whole file: `%s` = all
-lines, `^` anchors at line start), then save and quit with `:wq`.
-
-```bash
 # 3. re-apply — compose recreates only the etcd containers (config changed);
 #    the data volumes persist, so the members rejoin the existing cluster
 docker compose up -d
@@ -146,7 +140,8 @@ Each node exposes Patroni's REST API on port 8008:
 # one-time: the shared network every stack component joins
 docker network create nus-backbone
 
-cp .env.example .env        # then edit the passwords
+# copy the settings template, then edit the passwords
+cp .env.example .env
 
 # one-shot TLS bootstrap (removes itself on exit; re-runs are no-ops)
 docker compose run --rm etcd-certgen
@@ -185,9 +180,11 @@ psql -h localhost -p 5432 -U postgres
 # reads — round-robins across the healthy replicas
 psql -h localhost -p 5433 -U postgres
 
-# lb-b, the failover twin, exposes the same on alternate host ports
-psql -h localhost -p 15432 -U postgres   # writes
-psql -h localhost -p 15433 -U postgres   # reads
+# writes via lb-b, the failover twin (alternate host ports)
+psql -h localhost -p 15432 -U postgres
+
+# reads via lb-b
+psql -h localhost -p 15433 -U postgres
 ```
 
 The password is `PG_SUPERUSER_PASSWORD` from your `.env`. From another
@@ -222,7 +219,9 @@ docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml switchover
 # or kill the current leader (check `list` first; here assume pg-2 leads)
 docker stop pg-2 && sleep 15
 docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml list
-docker start pg-2   # rejoins as a replica (pg_rewind enabled)
+
+# the stopped node rejoins as a replica (pg_rewind enabled)
+docker start pg-2
 ```
 
 HAProxy follows the promotion automatically via the Patroni REST checks —
@@ -231,7 +230,10 @@ clients on 5432 just reconnect and land on the new leader.
 ## Teardown
 
 ```bash
-docker compose down          # keep data volumes
-docker compose down -v       # destroy data + certs volumes too
-# after a full -v teardown, set ETCD_INITIAL_CLUSTER_STATE back to 'new'
+# keep data volumes
+docker compose down
+
+# destroy data + certs volumes too
+# (afterwards, set ETCD_INITIAL_CLUSTER_STATE back to 'new')
+docker compose down -v
 ```
