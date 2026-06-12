@@ -80,7 +80,7 @@ services:
   # starts it — run it explicitly and it removes itself on exit:
   #   docker compose run --rm etcd-certgen
   etcd-certgen:
-    image: ${OPENSSL_IMAGE:-alpine/openssl:3.3.2}
+    image: ${OPENSSL_IMAGE:-alpine/openssl:3.5.6}
     profiles: ["init"]
     entrypoint: ["/bin/sh", "/gen-certs.sh"]
     volumes:
