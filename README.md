@@ -693,6 +693,20 @@ override files on top of the base `docker-compose.yaml`
 the JVM-based components (Kafka, Debezium Connect) and ClickHouse will
 otherwise size themselves against all visible host RAM.
 
+**How the profiles work:** they are plain Compose override files, not a
+separate mechanism. Passing several `-f` files —
+
+```bash
+docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d
+```
+
+— makes Compose deep-merge them in order, matching services by name. The
+base file defines *what runs* (and stays host-agnostic); the override
+contributes only `cpus`, `mem_limit`, and `memswap_limit` for each
+service, with `memswap_limit` equal to `mem_limit` so no container can
+swap. Switching hosts means switching the second `-f` file — nothing in
+the stack definition changes.
+
 Two assumptions keep the budget realistic: generation pacing is configured
 for **moderate volumes** (this is a simulation, not Uber-scale traffic),
 and Grafana/Superset serve a **single dashboard user**.
