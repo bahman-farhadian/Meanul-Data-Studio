@@ -3,11 +3,20 @@
 How to bring the full stack up with the root
 [`docker-compose.yaml`](docker-compose.yaml), piece by piece, in the
 alphabetic build order (`a-` ... `n-`). **This file covers assembly order
-only** — what each component is, how to verify it, and how to operate it
-lives in that component's own README. Architecture: the repository's main
+only** — what each component is and how to verify it lives in that
+component's own README. Architecture: the repository's main
 [README](../README.md).
 
-All commands run from this directory (`not-uber-service/`).
+All commands run from this directory (`not-uber-service/`). Two rules
+apply to every piece:
+
+- **One-shot containers** (cert generation and the like) run via
+  `docker compose run --rm` against the component's compose file — they do
+  their job and remove themselves.
+- **Everything else comes up through the root compose file only** —
+  never `up` a component's own compose file when assembling the stack
+  (volumes carry fixed `nus-*` names, so the one-shot output is shared
+  either way).
 
 ## 0. One-time groundwork
 
@@ -16,41 +25,45 @@ docker network create nus-backbone   # shared network ("nus" = not-uber-service)
 cp .env.example .env                 # stack-wide settings (lb-a/lb-b entry tier)
 ```
 
-## 1. Assemble a piece
-
-Every component follows the same four steps — one-shots always run via
-`docker compose run --rm` (they remove themselves) and are never part of
-`up`; volumes carry fixed `nus-*` names, so standalone `-f` runs and the
-root stack share the same data:
+## 1. Piece a — a-infra-postgres (+ lb-a/lb-b entry tier)
 
 ```bash
-cp <component>/.env.example <component>/.env                            # 1. settings (edit secrets!)
-docker compose -f <component>/docker-compose.yaml run --rm <one-shot>   # 2. one-shots, if any
-docker compose -f <component>/docker-compose.yaml up -d --build         # 3. verify standalone
-# 4. make sure its include: entry is active in ./docker-compose.yaml
+# settings — EDIT THE PASSWORDS
+cp a-infra-postgres/.env.example a-infra-postgres/.env
+
+# one-shot: generate the nus-etcd TLS certificates (removes itself on exit)
+docker compose -f a-infra-postgres/docker-compose.yaml run --rm etcd-certgen
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
 ```
 
-Then follow the **component README** for its verification and any
-post-bootstrap steps.
+Verify it: [a-infra-postgres/README.md](a-infra-postgres/README.md)
+(etcd health, `patronictl list`, connecting as a DBA, reading the HAProxy
+stats page at <http://localhost:8404/stats>).
 
-| Piece | One-shot(s) | Post-bootstrap | Details |
-| --- | --- | --- | --- |
-| `a-infra-postgres` | `etcd-certgen` | flip etcd to `existing` | [README](a-infra-postgres/README.md) |
-| `b-` ... `n-` | _added as each component lands_ | | |
-
-## 2. Run the whole stack
-
-The root compose owns the lb-a/lb-b entry tier and `include:`s every
-landed component — once a piece is assembled, this is the single
-"everything up" command:
+**Post-bootstrap (once, after the first successful start):** flip the etcd
+cluster state from `new` to `existing`:
 
 ```bash
-docker compose up -d
+vim a-infra-postgres/etcd.env
+# in vim:  :%s/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/
+# then save and quit with  :wq
+
+docker compose up -d    # recreates only the etcd containers; data persists
 ```
 
-Entry points (HAProxy stats: <http://localhost:8404/stats>) and DBA access
-are documented in
-[a-infra-postgres/README.md](a-infra-postgres/README.md#connecting-as-a-dba).
+Why this flip matters (split-brain protection when a volume is ever lost):
+[a-infra-postgres/README.md](a-infra-postgres/README.md#etcd-cluster-lifecycle--new-vs-existing).
+
+## 2. Next pieces — b ... n
+
+Added here as each component lands, in the same shape as piece a: copy its
+`.env.example` if it has one, run its one-shot containers (if any) with
+`docker compose -f <component>/docker-compose.yaml run --rm <name>`,
+activate its `include:` entry in the root [`docker-compose.yaml`](docker-compose.yaml),
+run `docker compose up -d --build`, then its post-bootstrap commands (if
+any) — verification always per the component README.
 
 ## Teardown
 
@@ -60,5 +73,6 @@ docker compose down -v           # whole stack, destroy data volumes
 docker network rm nus-backbone   # only if removing the stack for good
 ```
 
-After a `-v` teardown, each component's one-shot and post-bootstrap steps
-must be repeated on the next bring-up (see the component READMEs).
+After a `-v` teardown, repeat each piece's one-shot and post-bootstrap
+steps on the next bring-up (for piece a: regenerate certs, set
+`ETCD_INITIAL_CLUSTER_STATE` back to `new` first, flip again after).
