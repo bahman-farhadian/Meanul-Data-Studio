@@ -68,9 +68,16 @@ configuration. The critical knob is:
 ETCD_INITIAL_CLUSTER_STATE=new        # FIRST bootstrap only
 ```
 
-**After the first successful start, flip it to `existing`.** `new` is only
-valid while the cluster is being formed from empty data volumes; once
-`etcd-data-*` exist, members rejoin an *existing* cluster on restart.
+**After the first successful start, flip it to `existing`.**
+
+**Why this matters:** etcd only reads the `ETCD_INITIAL_*` settings when a
+member starts with an *empty* data dir. While the volumes exist, `new` is
+harmlessly ignored — the danger is the day a member's volume is lost or
+recreated. With `new` still set, that member would **bootstrap a brand-new
+one-node cluster** instead of rejoining its peers — a split brain, with
+Patroni potentially talking to two different "clusters". With `existing`,
+the same member refuses to self-bootstrap and joins the running cluster.
+The flip costs nothing and removes that failure mode permanently.
 
 The exact procedure:
 
@@ -81,10 +88,15 @@ docker compose exec etcd-1 etcdctl \
   --cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
   endpoint health
 
-# 2. flip the value in etcd.env (or edit the file by hand)
-#    macOS:  sed -i '' 's/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/' etcd.env
-#    Linux:  sed -i  's/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/' etcd.env
+# 2. flip the value in etcd.env with vim
+vim etcd.env
+```
 
+Inside vim: type `:%s/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/`
+and press Enter (a substitute command over the whole file: `%s` = all
+lines, `^` anchors at line start), then save and quit with `:wq`.
+
+```bash
 # 3. re-apply — compose recreates only the etcd containers (config changed);
 #    the data volumes persist, so the members rejoin the existing cluster
 docker compose up -d
@@ -122,7 +134,7 @@ Each node exposes Patroni's REST API on port 8008:
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
 | `PG_IMAGE` | `postgres:18.4` | Pinned base image for the node build. |
 | `ETCD_IMAGE` | `quay.io/coreos/etcd:v3.6.12` | etcd image. |
-| `OPENSSL_IMAGE` | `alpine/openssl:3.3.2` | Image used by the cert one-shot. |
+| `OPENSSL_IMAGE` | `alpine/openssl:3.5.6` | Image used by the cert one-shot. |
 | `PATRONI_SCOPE` | `nus-pg` | Patroni cluster name. |
 | `PATRONI_REST_USER` / `PATRONI_REST_PASSWORD` | `patroni` / — (required) | REST API credentials for unsafe endpoints. |
 | `PG_SUPERUSER_PASSWORD` | — (required) | `postgres` superuser password. |
@@ -181,6 +193,18 @@ psql -h localhost -p 15433 -U postgres   # reads
 The password is `PG_SUPERUSER_PASSWORD` from your `.env`. From another
 container on `nus-backbone`, use `-h lb-a` (or `lb-b`) instead of
 `localhost`. HAProxy's live routing view: <http://localhost:8404/stats>.
+
+**Reading the stats page — red rows are normal here.** The health checks
+ask Patroni *which role a node holds*, not whether it is alive, so with a
+healthy 3-node cluster the page always looks "partially down":
+
+- `pg_write`: exactly **one** server UP (the current leader — it alone
+  answers 200 on `/primary`); both replicas show DOWN with `L7STS/503`.
+- `pg_read`: the **two replicas** UP (200 on `/replica`); the leader shows
+  DOWN with `L7STS/503`.
+
+A node DOWN in *both* backends is a real failure. After a switchover the
+UP/DOWN pattern migrates to the new leader within a few check intervals.
 
 For standalone testing of this component only (no lb running), exec into
 a node directly:

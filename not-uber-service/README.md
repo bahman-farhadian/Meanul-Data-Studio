@@ -1,104 +1,64 @@
-# not-uber-service — running the stack
+# not-uber-service — stack runbook
 
-Step-by-step runbook for bringing the full stack up with the root
-[`docker-compose.yaml`](docker-compose.yaml). The stack assembles like a
-puzzle: shared groundwork first, then each component piece by piece, in
-the alphabetic build order (`a-` ... `n-`). One-shot containers are always
-run explicitly with `docker compose run --rm` (they remove themselves) and
-are never part of `up`.
+How to bring the full stack up with the root
+[`docker-compose.yaml`](docker-compose.yaml), piece by piece, in the
+alphabetic build order (`a-` ... `n-`). **This file covers assembly order
+only** — what each component is, how to verify it, and how to operate it
+lives in that component's own README. Architecture: the repository's main
+[README](../README.md).
 
-All commands below are run from this directory
-(`not-uber-service/`). The architecture itself is documented in the
-repository's main [README](../README.md).
+All commands run from this directory (`not-uber-service/`).
 
 ## 0. One-time groundwork
 
 ```bash
-# the shared Docker network every component joins
-# ("nus" = not-uber-service)
-docker network create nus-backbone
-
-# stack-wide settings for the lb-a/lb-b entry tier (untracked)
-cp .env.example .env
+docker network create nus-backbone   # shared network ("nus" = not-uber-service)
+cp .env.example .env                 # stack-wide settings (lb-a/lb-b entry tier)
 ```
 
-## 1. Piece a — PostgreSQL OLTP cluster (a-infra-postgres)
+## 1. Assemble a piece
+
+Every component follows the same four steps — one-shots always run via
+`docker compose run --rm` (they remove themselves) and are never part of
+`up`; volumes carry fixed `nus-*` names, so standalone `-f` runs and the
+root stack share the same data:
 
 ```bash
-# component settings — EDIT THE PASSWORDS
-cp a-infra-postgres/.env.example a-infra-postgres/.env
-
-# one-shot TLS bootstrap for the etcd cluster (full path, removes itself)
-docker compose -f a-infra-postgres/docker-compose.yaml run --rm etcd-certgen
-
-# bring the component up on its own and verify it before stacking more
-docker compose -f a-infra-postgres/docker-compose.yaml up -d --build
-docker compose -f a-infra-postgres/docker-compose.yaml exec pg-1 \
-  patronictl -c /etc/patroni/patroni.yml list
+cp <component>/.env.example <component>/.env                            # 1. settings (edit secrets!)
+docker compose -f <component>/docker-compose.yaml run --rm <one-shot>   # 2. one-shots, if any
+docker compose -f <component>/docker-compose.yaml up -d --build         # 3. verify standalone
+# 4. make sure its include: entry is active in ./docker-compose.yaml
 ```
 
-Expect one `Leader` + two streaming `Replica`s. **Then flip the etcd
-cluster state from `new` to `existing`** — `new` is only valid for the
-very first bootstrap from empty volumes:
+Then follow the **component README** for its verification and any
+post-bootstrap steps.
 
-```bash
-# macOS (BSD sed); on Linux drop the ''
-sed -i '' 's/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/' \
-  a-infra-postgres/etcd.env
+| Piece | One-shot(s) | Post-bootstrap | Details |
+| --- | --- | --- | --- |
+| `a-infra-postgres` | `etcd-certgen` | flip etcd to `existing` | [README](a-infra-postgres/README.md) |
+| `b-` ... `n-` | _added as each component lands_ | | |
 
-# re-apply: recreates only the etcd containers, data volumes persist
-docker compose -f a-infra-postgres/docker-compose.yaml up -d
-```
+## 2. Run the whole stack
 
-(Why this matters and how to verify: [component README](a-infra-postgres/README.md).)
-
-> **Note on volumes:** every volume in this stack has a fixed `nus-*` name,
-> so the standalone `-f` commands above and the root `docker compose up`
-> share the same data — including the certs volume written by the one-shot.
-
-## 2. The entry tier — lb-a / lb-b (root compose)
-
-The root file owns the stack-wide HAProxy pair and `include:`s every
-component that has landed, so this single command is also the "everything
-up" command from now on:
+The root compose owns the lb-a/lb-b entry tier and `include:`s every
+landed component — once a piece is assembled, this is the single
+"everything up" command:
 
 ```bash
 docker compose up -d
 ```
 
-Verify the routing:
-
-```bash
-psql -h localhost -p 5432 -U postgres   # writes -> current PG leader
-psql -h localhost -p 5433 -U postgres   # reads  -> replica pool
-open http://localhost:8404/stats        # HAProxy live routing view
-```
-
-DBA access always goes through the proxies — `lb-a` on the canonical
-host ports (5432/5433), `lb-b` on the alternate ones (15432/15433); see
+Entry points (HAProxy stats: <http://localhost:8404/stats>) and DBA access
+are documented in
 [a-infra-postgres/README.md](a-infra-postgres/README.md#connecting-as-a-dba).
-
-## 3. Next pieces (as they land)
-
-Each future component follows the same pattern, one piece at a time:
-
-```bash
-cp <component>/.env.example <component>/.env             # if it has one
-docker compose -f <component>/docker-compose.yaml run --rm <one-shot>   # if it has one
-docker compose -f <component>/docker-compose.yaml up -d --build         # verify standalone
-# then uncomment its include: entry in ./docker-compose.yaml and:
-docker compose up -d
-```
-
-Build order and per-component details: main README, section 2.8.1.
 
 ## Teardown
 
 ```bash
-docker compose down          # whole stack, keep data volumes
-docker compose down -v       # whole stack, destroy data volumes
+docker compose down              # whole stack, keep data volumes
+docker compose down -v           # whole stack, destroy data volumes
 docker network rm nus-backbone   # only if removing the stack for good
 ```
 
-After a `-v` teardown, repeat the one-shot steps on the next bring-up
-(certs are gone) and set `ETCD_INITIAL_CLUSTER_STATE` back to `new`.
+After a `-v` teardown, each component's one-shot and post-bootstrap steps
+must be repeated on the next bring-up (see the component READMEs).
