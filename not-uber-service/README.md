@@ -21,8 +21,11 @@ apply to every piece:
 ## 0. One-time groundwork
 
 ```bash
-docker network create nus-backbone   # shared network ("nus" = not-uber-service)
-cp .env.example .env                 # stack-wide settings (lb-a/lb-b entry tier)
+# shared network ("nus" = not-uber-service)
+docker network create nus-backbone
+
+# stack-wide settings (lb-a/lb-b entry tier)
+cp .env.example .env
 ```
 
 ## 1. Piece a — a-infra-postgres (+ lb-a/lb-b entry tier)
@@ -46,11 +49,11 @@ stats page at <http://localhost:8404/stats>).
 cluster state from `new` to `existing`:
 
 ```bash
+# set ETCD_INITIAL_CLUSTER_STATE=existing
 vim a-infra-postgres/etcd.env
-# in vim:  :%s/^ETCD_INITIAL_CLUSTER_STATE=new/ETCD_INITIAL_CLUSTER_STATE=existing/
-# then save and quit with  :wq
 
-docker compose up -d    # recreates only the etcd containers; data persists
+# re-apply: recreates only the etcd containers; data persists
+docker compose up -d
 ```
 
 Why this flip matters (split-brain protection when a volume is ever lost):
@@ -68,9 +71,14 @@ any) — verification always per the component README.
 ## Teardown
 
 ```bash
-docker compose down              # whole stack, keep data volumes
-docker compose down -v           # whole stack, destroy data volumes
-docker network rm nus-backbone   # only if removing the stack for good
+# whole stack, keep data volumes
+docker compose down
+
+# whole stack, destroy data volumes
+docker compose down -v
+
+# only if removing the stack for good
+docker network rm nus-backbone
 ```
 
 After a `-v` teardown, repeat each piece's one-shot and post-bootstrap
