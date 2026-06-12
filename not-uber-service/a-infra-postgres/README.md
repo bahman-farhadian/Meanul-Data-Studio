@@ -204,6 +204,13 @@ healthy 3-node cluster the page always looks "partially down":
 A node DOWN in *both* backends is a real failure. After a switchover the
 UP/DOWN pattern migrates to the new leader within a few check intervals.
 
+**Patroni log noise:** the HAProxy checks use the `OPTIONS` method (as in
+Patroni's official template) because Patroni answers it with the status
+line only. With `GET`, HAProxy resets the socket after reading the status
+and every probe leaves a harmless-but-noisy `ConnectionResetError`
+traceback in the Patroni logs — if those tracebacks ever appear, a check
+somewhere is using `GET` again.
+
 For standalone testing of this component only (no lb running), exec into
 a node directly:
 
