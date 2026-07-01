@@ -1,5 +1,5 @@
-# Resource limits — server profile (24 vCPU / 128 GB / 1 TB NVMe Docker
-# host; budget in the main README, section 2.9).
+# Resource limits — server profile (20 CPU cores / 96 GB RAM Docker host;
+# budget in the main README, section 2.9).
 #
 # Apply on top of the root file:
 #   docker compose -f docker-compose.yaml -f compose.server.yaml up -d
@@ -24,19 +24,19 @@ services:
     memswap_limit: 128m
 
   etcd-1:
-    cpus: 0.2
-    mem_limit: 512m
-    memswap_limit: 512m
+    cpus: 0.15
+    mem_limit: 384m
+    memswap_limit: 384m
 
   etcd-2:
-    cpus: 0.2
-    mem_limit: 512m
-    memswap_limit: 512m
+    cpus: 0.15
+    mem_limit: 384m
+    memswap_limit: 384m
 
   etcd-3:
-    cpus: 0.2
-    mem_limit: 512m
-    memswap_limit: 512m
+    cpus: 0.15
+    mem_limit: 384m
+    memswap_limit: 384m
 
   etcd-certgen:
     cpus: 0.25
@@ -44,16 +44,16 @@ services:
     memswap_limit: 64m
 
   pg-1:
-    cpus: 2
-    mem_limit: 9g
-    memswap_limit: 9g
+    cpus: 1.6
+    mem_limit: 7g
+    memswap_limit: 7g
 
   pg-2:
-    cpus: 2
-    mem_limit: 9g
-    memswap_limit: 9g
+    cpus: 1.6
+    mem_limit: 7g
+    memswap_limit: 7g
 
   pg-3:
-    cpus: 2
-    mem_limit: 9g
-    memswap_limit: 9g
+    cpus: 1.6
+    mem_limit: 7g
+    memswap_limit: 7g

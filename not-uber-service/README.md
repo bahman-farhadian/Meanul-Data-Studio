@@ -21,12 +21,12 @@ apply to every piece:
   never `up` a component's own compose file when assembling the stack
   (volumes carry fixed `nus-*` names, so the one-shot output is shared
   either way).
-- **Always apply a resource profile** on `up`:
-  [`compose.laptop.yaml`](compose.laptop.yaml) on the laptop,
-  [`compose.server.yaml`](compose.server.yaml) on the server. They enforce
-  the per-container CPU/memory limits and the no-swap policy from the main
-  README, section 2.9 — a plain `docker compose up` runs unlimited and is
-  acceptable only for a quick functional check.
+- **Always apply the server resource profile** on `up`:
+  [`compose.server.yaml`](compose.server.yaml). The stack targets a
+  dedicated Docker server with 20 CPU cores and 96 GB RAM; the profile
+  enforces the per-container CPU/memory limits and the no-swap policy from
+  the main README, section 2.9. A plain `docker compose up` runs unlimited
+  and is acceptable only for a quick functional check.
 
 ## 0. One-time groundwork
 
@@ -48,8 +48,8 @@ cp a-infra-postgres/.env.example a-infra-postgres/.env
 docker compose run --rm etcd-certgen
 
 # bring everything assembled so far up — ALWAYS via the root compose file,
-# with the resource profile for this host (server: compose.server.yaml)
-docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d --build
+# with the server resource profile
+docker compose -f docker-compose.yaml -f compose.server.yaml up -d --build
 ```
 
 Verify it: [a-infra-postgres/README.md](a-infra-postgres/README.md)
@@ -64,7 +64,7 @@ cluster state from `new` to `existing`:
 vim a-infra-postgres/etcd.env
 
 # re-apply: recreates only the etcd containers; data persists
-docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d
+docker compose -f docker-compose.yaml -f compose.server.yaml up -d
 ```
 
 This flip is **local operational state — never commit it**; the repository
@@ -79,9 +79,9 @@ Added here as each component lands, in the same shape as piece a: copy its
 `.env.example` if it has one, activate its `include:` entry in the root
 [`docker-compose.yaml`](docker-compose.yaml), run its one-shot containers
 (if any) with `docker compose run --rm <name>`,
-add its limits to both resource profiles, run the profile-applied `up`
-from piece a, then its post-bootstrap commands (if any) — verification
-always per the component README.
+add its limits to `compose.server.yaml`, run the profile-applied `up` from
+piece a, then its post-bootstrap commands (if any) — verification always
+per the component README.
 
 ## Teardown
 
