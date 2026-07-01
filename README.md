@@ -622,7 +622,6 @@ meanul-data-studio/
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
-    ├── compose.server.yaml           # resource-limit override (20-core / 96 GB server profile)
     ├── .env.example                  # template for the untracked .env (stack-wide settings)
     ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
@@ -690,23 +689,21 @@ RAM, and NVMe storage**. The complete topology has many stateful
 containers, JVM services, and OLAP nodes, so the project is documented and
 sized for that server class only.
 
-Resource limits are applied through the server-only Compose override file
-(`compose.server.yaml`) on top of the base `docker-compose.yaml`. Explicit
-limits are mandatory: the JVM-based components (Kafka, Debezium Connect)
-and ClickHouse will otherwise size themselves against all visible host
-RAM.
+Resource limits are declared directly in each component's Compose file.
+Explicit limits are mandatory: the JVM-based components (Kafka, Debezium
+Connect) and ClickHouse will otherwise size themselves against all visible
+host RAM.
 
-**How the server profile works:** it is a plain Compose override file, not
-a separate mechanism. Passing several `-f` files —
+The stack is brought up with the root compose file:
 
 ```bash
-docker compose -f docker-compose.yaml -f compose.server.yaml up -d
+docker compose up -d
 ```
 
-— makes Compose deep-merge them in order, matching services by name. The
-base file defines *what runs*; the override contributes only `cpus`,
-`mem_limit`, and `memswap_limit` for each service, with `memswap_limit`
-equal to `mem_limit` so no container can swap.
+The root file defines stack-level services such as `lb-a`/`lb-b` and
+includes each component compose file as that component lands. Each service
+sets `cpus`, `mem_limit`, and `memswap_limit`, with `memswap_limit` equal
+to `mem_limit` so no container can swap.
 
 Two assumptions keep the budget realistic: generation pacing is configured
 for **moderate volumes** (this is a simulation, not Uber-scale traffic),
@@ -747,9 +744,8 @@ Superset running in single-worker mode with SQLite metadata.
 
 #### No-swap policy
 
-Every service in `compose.server.yaml` sets `memswap_limit` equal to its
-memory limit. Under Linux semantics memory+swap = memory, i.e. **zero
-swap per container**.
+Every service sets `memswap_limit` equal to its memory limit. Under Linux
+semantics memory+swap = memory, i.e. **zero swap per container**.
 
 The consequence is deliberate: an undersized container gets **OOM-killed
 and restarted** (visible in `docker ps`/restart counts) instead of

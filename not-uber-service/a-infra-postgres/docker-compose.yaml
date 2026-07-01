@@ -19,6 +19,9 @@ name: a-infra-postgres
 x-etcd-node: &etcd-node
   image: ${ETCD_IMAGE:-quay.io/coreos/etcd:v3.6.12}
   restart: unless-stopped
+  cpus: 0.15
+  mem_limit: 384m
+  memswap_limit: 384m
   env_file: etcd.env
   healthcheck:
     test:
@@ -44,6 +47,9 @@ x-pg-node: &pg-node
       PG_IMAGE: ${PG_IMAGE:-postgres:18.4}
   image: nus/patroni-postgres:18.4
   restart: unless-stopped
+  cpus: 1.6
+  mem_limit: 7g
+  memswap_limit: 7g
   depends_on:
     etcd-1:
       condition: service_healthy
@@ -82,6 +88,9 @@ services:
   etcd-certgen:
     image: ${OPENSSL_IMAGE:-alpine/openssl:3.5.6}
     profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
     entrypoint: ["/bin/sh", "/gen-certs.sh"]
     volumes:
       - ./certs/gen-certs.sh:/gen-certs.sh:ro

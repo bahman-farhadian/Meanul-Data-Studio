@@ -7,7 +7,7 @@ only** — what each component is and how to verify it lives in that
 component's own README. Architecture: the repository's main
 [README](../README.md).
 
-All commands run from this directory (`not-uber-service/`). Two rules
+All commands run from this directory (`not-uber-service/`). These rules
 apply to every piece:
 
 - **One-shot containers** (cert generation and the like) run via
@@ -21,12 +21,9 @@ apply to every piece:
   never `up` a component's own compose file when assembling the stack
   (volumes carry fixed `nus-*` names, so the one-shot output is shared
   either way).
-- **Always apply the server resource profile** on `up`:
-  [`compose.server.yaml`](compose.server.yaml). The stack targets a
-  dedicated Docker server with 20 CPU cores and 96 GB RAM; the profile
-  enforces the per-container CPU/memory limits and the no-swap policy from
-  the main README, section 2.9. A plain `docker compose up` runs unlimited
-  and is acceptable only for a quick functional check.
+- The stack targets a dedicated Docker server with 20 CPU cores and 96 GB
+  RAM. Per-container CPU/memory limits and the no-swap policy are declared
+  directly in the compose files; see the main README, section 2.9.
 
 ## 0. One-time groundwork
 
@@ -47,9 +44,8 @@ cp a-infra-postgres/.env.example a-infra-postgres/.env
 # one-shot: generate the nus-etcd TLS certificates (removes itself on exit)
 docker compose run --rm etcd-certgen
 
-# bring everything assembled so far up — ALWAYS via the root compose file,
-# with the server resource profile
-docker compose -f docker-compose.yaml -f compose.server.yaml up -d --build
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
 ```
 
 Verify it: [a-infra-postgres/README.md](a-infra-postgres/README.md)
@@ -64,7 +60,7 @@ cluster state from `new` to `existing`:
 vim a-infra-postgres/etcd.env
 
 # re-apply: recreates only the etcd containers; data persists
-docker compose -f docker-compose.yaml -f compose.server.yaml up -d
+docker compose up -d
 ```
 
 This flip is **local operational state — never commit it**; the repository
@@ -79,9 +75,9 @@ Added here as each component lands, in the same shape as piece a: copy its
 `.env.example` if it has one, activate its `include:` entry in the root
 [`docker-compose.yaml`](docker-compose.yaml), run its one-shot containers
 (if any) with `docker compose run --rm <name>`,
-add its limits to `compose.server.yaml`, run the profile-applied `up` from
-piece a, then its post-bootstrap commands (if any) — verification always
-per the component README.
+add its resource limits to its compose file, run the root `up` from piece
+a, then its post-bootstrap commands (if any) — verification always per the
+component README.
 
 ## Teardown
 

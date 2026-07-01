@@ -14,9 +14,9 @@
 #   docker compose up -d
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
-# Resource limits are applied through the server override
-# (compose.server.yaml), targeting a 20-core / 96 GB Docker host with
-# memswap_limit equal to the memory limit (zero swap).
+# Resource limits are declared directly in the component compose files,
+# targeting a 20-core / 96 GB Docker host with memswap_limit equal to the
+# memory limit (zero swap).
 
 name: not-uber-service
 
@@ -42,6 +42,9 @@ services:
     image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
     container_name: lb-a
     restart: unless-stopped
+    cpus: 0.1
+    mem_limit: 128m
+    memswap_limit: 128m
     environment:
       TZ: ${TZ:-UTC}
     volumes:
@@ -69,6 +72,9 @@ services:
     image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
     container_name: lb-b
     restart: unless-stopped
+    cpus: 0.1
+    mem_limit: 128m
+    memswap_limit: 128m
     environment:
       TZ: ${TZ:-UTC}
     volumes:
