@@ -14,8 +14,8 @@
 #   docker compose up -d
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
-# Resource profiles are applied as overrides — compose.laptop.yaml /
-# compose.server.yaml — with explicit CPU + memory limits per container and
+# Resource limits are applied through the server override
+# (compose.server.yaml), targeting a 20-core / 96 GB Docker host with
 # memswap_limit equal to the memory limit (zero swap).
 
 name: not-uber-service

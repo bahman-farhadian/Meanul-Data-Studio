@@ -186,7 +186,7 @@ healthchecks and `depends_on: condition: service_healthy`:
    (including per-segment traffic baselines), bulk-loads that week into
    ClickHouse, then — as its final act — sets the `system:bootstrap:done`
    marker key in Redis and exits successfully. During this phase the stack
-   may briefly approach the 20 GB VM ceiling on the laptop profile (see
+   may briefly approach the server memory ceiling (see
    [2.9](#29-resource-allocation)).
 4. The standby app services poll `system:bootstrap:done`; once it appears
    they begin generating live activity, and from this point the whole
@@ -622,8 +622,7 @@ meanul-data-studio/
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
-    ├── compose.laptop.yaml           # resource-limit override (laptop profile)
-    ├── compose.server.yaml           # resource-limit override (server profile)
+    ├── compose.server.yaml           # resource-limit override (20-core / 96 GB server profile)
     ├── .env.example                  # template for the untracked .env (stack-wide settings)
     ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
@@ -686,91 +685,71 @@ tested in isolation before the next depends on it:
 
 ### 2.9 Resource allocation
 
-The stack ships with two resource profiles, applied as docker-compose
-override files on top of the base `docker-compose.yaml`
-(`compose.laptop.yaml` / `compose.server.yaml`), setting explicit
-**memory and CPU limits** per container. Explicit limits are mandatory:
-the JVM-based components (Kafka, Debezium Connect) and ClickHouse will
-otherwise size themselves against all visible host RAM.
+The stack targets a dedicated Docker server with **20 CPU cores, 96 GB
+RAM, and NVMe storage**. The complete topology has many stateful
+containers, JVM services, and OLAP nodes, so the project is documented and
+sized for that server class only.
 
-**How the profiles work:** they are plain Compose override files, not a
-separate mechanism. Passing several `-f` files —
+Resource limits are applied through the server-only Compose override file
+(`compose.server.yaml`) on top of the base `docker-compose.yaml`. Explicit
+limits are mandatory: the JVM-based components (Kafka, Debezium Connect)
+and ClickHouse will otherwise size themselves against all visible host
+RAM.
+
+**How the server profile works:** it is a plain Compose override file, not
+a separate mechanism. Passing several `-f` files —
 
 ```bash
-docker compose -f docker-compose.yaml -f compose.laptop.yaml up -d
+docker compose -f docker-compose.yaml -f compose.server.yaml up -d
 ```
 
 — makes Compose deep-merge them in order, matching services by name. The
-base file defines *what runs* (and stays host-agnostic); the override
-contributes only `cpus`, `mem_limit`, and `memswap_limit` for each
-service, with `memswap_limit` equal to `mem_limit` so no container can
-swap. Switching hosts means switching the second `-f` file — nothing in
-the stack definition changes.
+base file defines *what runs*; the override contributes only `cpus`,
+`mem_limit`, and `memswap_limit` for each service, with `memswap_limit`
+equal to `mem_limit` so no container can swap.
 
 Two assumptions keep the budget realistic: generation pacing is configured
 for **moderate volumes** (this is a simulation, not Uber-scale traffic),
 and Grafana/Superset serve a **single dashboard user**.
 
-Reference hosts:
-
-| Profile | Hardware | CPU | RAM | Storage |
-| --- | --- | --- | --- | --- |
-| Laptop | MacBook Air (Apple M5) | 10 cores (4P + 6E) | 24 GB unified | 1 TB SSD |
-| Server | Dedicated Docker host | 24 vCPU | 128 GB | 1 TB NVMe |
-
-Storage is not a constraint on either host (see the capacity estimates
-below — the stack produces low single-digit GB per day at laptop pacing).
-
-#### Laptop profile (24 GB host, 20 GB Docker VM: ≤18 GB steady, ≤20 GB during bootstrap)
-
-Docker Desktop VM settings for this profile: **8 CPUs, 20 GB memory (the
-VM-level cap), swap = 0** (see the swap note below). The stack is budgeted
-to stay **under 18 GB at steady state**; only the transient `bootstrap`
-phase may approach the 20 GB VM ceiling. macOS keeps the remaining 4 GB
-plus whatever the VM has not faulted in. CPU limits sum to **7.8 of the
-VM's 8 CPUs — no overcommitment**. PostgreSQL nodes get identical limits
-because Patroni elects the leader — any node can be the primary.
+Storage is not expected to be the first constraint: at the default
+moderate pacing, ClickHouse produces low single-digit GB per day and Kafka
+retention is bounded.
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
-| PostgreSQL nodes (Patroni — identical limits, leader elected) | 3 | 0.65 | 1.25 GB | 3.75 GB |
-| HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.05 | 64 MB | 0.13 GB |
-| nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.05 | 128 MB | 0.38 GB |
-| Redis primary / replicas | 1 / 2 | 0.4 / 0.2 | 768 MB / 512 MB | 1.75 GB |
-| Redis Sentinel | 3 | 0.05 | 64 MB | 0.2 GB |
-| Kafka brokers (KRaft) | 3 | 0.4 | 768 MB (512 MB heap) | 2.25 GB |
-| Schema Registry | 1 | 0.1 | 384 MB | 0.38 GB |
-| Debezium Connect | 1 | 0.25 | 1 GB (768 MB heap) | 1 GB |
-| ClickHouse nodes (2x2) | 4 | 0.5 | 1.25 GB | 5 GB |
-| ClickHouse Keeper | 3 | 0.05 | 192 MB | 0.56 GB |
-| Grafana | 1 | 0.1 | 192 MB | 0.19 GB |
-| Superset (single user, single worker, SQLite metadata) | 1 | 0.25 | 896 MB | 0.88 GB |
-| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.1 | 192 MB | 1.15 GB |
-| **Steady-state total** | **34** | **7.8 (of 8, no overcommit)** | | **~17.6 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 1.0 | 2 GB | peak ~19.6 GB |
+| PostgreSQL nodes (Patroni — identical limits, leader elected) | 3 | 1.6 | 7 GB | 21 GB |
+| HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.1 | 128 MB | 0.25 GB |
+| nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.15 | 384 MB | 1.13 GB |
+| Redis primary / replicas | 1 / 2 | 0.6 / 0.4 | 4.5 GB / 3 GB | 10.5 GB |
+| Redis Sentinel | 3 | 0.1 | 192 MB | 0.56 GB |
+| Kafka brokers | 3 | 1.2 | 4.5 GB (3 GB heap) | 13.5 GB |
+| Schema Registry | 1 | 0.2 | 768 MB | 0.75 GB |
+| Debezium Connect | 1 | 0.4 | 1.5 GB | 1.5 GB |
+| ClickHouse nodes (2x2) | 4 | 1.35 | 7.5 GB | 30 GB |
+| ClickHouse Keeper | 3 | 0.1 | 1 GB | 3 GB |
+| Grafana | 1 | 0.2 | 768 MB | 0.75 GB |
+| Superset (single user, single worker, SQLite metadata) | 1 | 0.6 | 3 GB | 3 GB |
+| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.15 | 512 MB | 3 GB |
+| **Steady-state total** | **34** | **~18.75 (of 20, no overcommit)** | | **~88.9 GB** |
+| `bootstrap` (transient, exits after init) | 1 | 1.25 | 6 GB | peak ~94.9 GB |
 
-Steady state (~17.6 GB) stays under the 18 GB line. The transient
-`bootstrap` gets a deliberately generous **2 GB** — `osm2pgrouting` is
-memory-hungry on the NYC extract — taking the peak to ~19.6 GB, just
-inside the 20 GB VM ceiling; its 1.0 CPU also fits because the app
-services are still in standby (near-zero usage) while it runs. Key tuning
-that makes it fit: `KAFKA_HEAP_OPTS` capped per broker, ClickHouse
-`max_server_memory_usage` set below its container limit, PostgreSQL
-`shared_buffers`/`work_mem` sized to its limit, and Superset running in
-single-worker mode with SQLite metadata.
+The steady-state budget leaves roughly **7 GB** for the host OS and
+operational headroom on a 96 GB server. The transient `bootstrap` gets
+**6 GB** because `osm2pgrouting` is memory-hungry on the NYC extract; the
+peak still stays just under the 96 GB host target, and its 1.25 CPU fits
+because the app services are still in standby while it runs.
 
-#### No-swap policy (macOS / Docker Desktop)
+Key tuning that makes the budget fit: `KAFKA_HEAP_OPTS` capped per
+broker, ClickHouse `max_server_memory_usage` set below its container
+limit, PostgreSQL `shared_buffers`/`work_mem` sized to its limit, and
+Superset running in single-worker mode with SQLite metadata.
 
-Docker on macOS runs inside a Linux VM, and swapping happens at two
-levels; both are closed off:
+#### No-swap policy
 
-1. **VM level** — Docker Desktop > Settings > Resources > **Swap = 0**
-   (equivalently `"swapMiB": 0` in Docker Desktop's settings file). The VM
-   then has no swap device at all.
-2. **Container level** — every service in the compose profiles sets
-   `memswap_limit` equal to its memory limit. Under Linux semantics
-   memory+swap = memory, i.e. **zero swap per container**, regardless of
-   VM settings — this also keeps the server profile honest on Linux hosts.
+Every service in `compose.server.yaml` sets `memswap_limit` equal to its
+memory limit. Under Linux semantics memory+swap = memory, i.e. **zero
+swap per container**.
 
 The consequence is deliberate: an undersized container gets **OOM-killed
 and restarted** (visible in `docker ps`/restart counts) instead of
@@ -781,9 +760,8 @@ silently swapping and dragging the whole stack down.
 The limits are hard ceilings, so "does it fit?" is observable rather than
 hoped for:
 
-- **Live usage**: `docker stats` (or the Docker Desktop dashboard) shows
-  per-container memory against its limit; anything pinned at its cap is a
-  candidate for rebalancing.
+- **Live usage**: `docker stats` shows per-container memory against its
+  limit; anything pinned at its cap is a candidate for rebalancing.
 - **OOM signals**: `docker inspect --format '{{.RestartCount}} {{.State.OOMKilled}}'`
   per container — any OOM kill means that component's limit or the pacing
   config must come down.
@@ -794,7 +772,7 @@ hoped for:
   pacing config is the relief valve — volumes are turned down in config,
   never by removing containers.
 
-#### Capacity estimate at laptop pacing
+#### Capacity estimate at default pacing
 
 The bottleneck is **not** Kafka or ClickHouse (at these limits they
 comfortably handle thousands of messages/s and tens of thousands of
@@ -815,36 +793,6 @@ simulated history; ClickHouse table TTLs and Kafka retention keep growth
 bounded regardless. These figures are design estimates to be confirmed by
 the soak test above, and they are an order of magnitude below what the
 infrastructure layers can absorb — headroom, not a cliff.
-
-#### Server profile (24 vCPU / 128 GB / 1 TB NVMe)
-
-On the server the same topology simply gets room to breathe — no component
-count changes, only limits. Memory is committed up to the 120 GB line
-(~118.5 GB, leaving 9+ GB for the host OS), and CPU limits sum to **~23.9
-of 24 vCPU — no overcommitment**:
-
-| Component | Containers | CPU each | Mem each | Mem subtotal |
-| --- | --- | --- | --- | --- |
-| PostgreSQL nodes (Patroni — identical limits, leader elected) | 3 | 2 | 9 GB | 27 GB |
-| HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.1 | 128 MB | 0.25 GB |
-| nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.2 | 512 MB | 1.5 GB |
-| Redis primary / replicas | 1 / 2 | 0.75 / 0.5 | 6 GB / 4 GB | 14 GB |
-| Redis Sentinel | 3 | 0.1 | 256 MB | 0.75 GB |
-| Kafka brokers | 3 | 1.5 | 6 GB (4 GB heap) | 18 GB |
-| Schema Registry | 1 | 0.25 | 1 GB | 1 GB |
-| Debezium Connect | 1 | 0.5 | 2 GB | 2 GB |
-| ClickHouse nodes | 4 | 1.75 | 10 GB | 40 GB |
-| ClickHouse Keeper | 3 | 0.1 | 1.5 GB | 4.5 GB |
-| Grafana | 1 | 0.25 | 1 GB | 1 GB |
-| Superset | 1 | 0.75 | 4 GB | 4 GB |
-| App services | 6 | 0.25 | 768 MB | 4.5 GB |
-| **Total** | **34** | **~23.9 (of 24, no overcommit)** | | **~118.5 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 2 | 8 GB | peak only |
-
-With the server profile the generation pacing config can be turned up
-(higher base rate, more simulated drivers/passengers — roughly 5–10x the
-laptop estimates, with pgRouting still the first bottleneck) without
-touching the topology.
 
 ### 2.10 Showcase
 

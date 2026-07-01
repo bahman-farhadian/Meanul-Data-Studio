@@ -18,11 +18,11 @@ A highly available, sharded ClickHouse cluster utilizing a 3-node ClickHouse Kee
 * **Per Instance:** 256MB RAM / 0.25 CPU
 
 ## Total Minimum Resource Requirements
-To deploy the full cluster within a development environment, the host must provide at least:
+To deploy this cluster as part of the stack, the project targets a
+dedicated Docker server with **20 CPU cores and 96 GB RAM**. The
+ClickHouse-specific minimum is:
 * **CPU:** 9 Cores
 * **RAM:** 17 GB
-
-*(Note: This leaves approximately 7GB of headroom for macOS and Docker Desktop overhead on your 24GB machine.)*
 
 ## Failover Strategy
 The cluster utilizes **Client-Side Failover**. The application must use a connection string containing both HAProxy nodes to ensure high availability:
