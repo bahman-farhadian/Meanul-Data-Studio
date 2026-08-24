@@ -45,7 +45,8 @@ include:
     env_file: k-service-passenger/.env
   - path: l-service-dispatch/docker-compose.yaml
     env_file: l-service-dispatch/.env
-  # - path: m-service-city/docker-compose.yaml
+  - path: m-service-city/docker-compose.yaml
+    env_file: m-service-city/.env
   # - path: n-service-clickhouse-sink/docker-compose.yaml
 
 services:

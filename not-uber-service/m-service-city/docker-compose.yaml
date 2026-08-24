@@ -1,0 +1,79 @@
+# m-service-city — demand scores and traffic factors.
+#
+# It watches the live streams and answers two questions the rest of the stack
+# depends on:
+#
+#   "which zones are busy right now" -> Redis, read by drivers (where to go)
+#                                       and dispatch (what to charge)
+#   "how slow is each road right now" -> PostgreSQL, used by pgRouting, so
+#                                        the best path changes with traffic
+#
+# The first runs every half minute, the second every few minutes: one is a
+# small write to a cache, the other touches every road segment in a zone.
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: m-service-city
+
+services:
+  city-service:
+    build:
+      context: ..
+      dockerfile: m-service-city/Dockerfile
+    image: nus/city-service:0.1.0
+    container_name: city-service
+    restart: unless-stopped
+    cpus: 0.15
+    mem_limit: 768m
+    memswap_limit: 768m
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      redis-1:
+        condition: service_healthy
+      sentinel-1:
+        condition: service_healthy
+      pg-1:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-city-service}
+
+      REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
+      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
+
+      PG_HOST: ${PG_HOST:-lb-a}
+      PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
+      PG_READ_PORT: ${PG_READ_PORT:-5433}
+      PG_DATABASE: ${PG_DATABASE:-postgres}
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
+
+      CITY_MIN_LAT: ${CITY_MIN_LAT:-40.49}
+      CITY_MAX_LAT: ${CITY_MAX_LAT:-40.92}
+      CITY_MIN_LON: ${CITY_MIN_LON:--74.26}
+      CITY_MAX_LON: ${CITY_MAX_LON:--73.70}
+      CITY_GRID_ROWS: ${CITY_GRID_ROWS:-6}
+      CITY_GRID_COLS: ${CITY_GRID_COLS:-6}
+
+      CITY_SCORE_SECONDS: ${CITY_SCORE_SECONDS:-30.0}
+      CITY_TRAFFIC_UPDATE_MINUTES: ${CITY_TRAFFIC_UPDATE_MINUTES:-5.0}
+      # Six hours: the length of one part of the day, so a score cannot
+      # outlive the period it describes.
+      HOTSPOT_TTL_SECONDS: ${HOTSPOT_TTL_SECONDS:-21600}
+      HOTSPOT_SCORE_THRESHOLD: ${HOTSPOT_SCORE_THRESHOLD:-0.6}
+    networks:
+      - backbone
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone
