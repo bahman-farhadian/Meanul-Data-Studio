@@ -35,7 +35,8 @@ include:
     env_file: f-infra-grafana/.env
   - path: g-infra-superset/docker-compose.yaml
     env_file: g-infra-superset/.env
-  # - path: h-bootstrap/docker-compose.yaml
+  - path: h-bootstrap/docker-compose.yaml
+    env_file: h-bootstrap/.env
   # - path: i-service-cache-updater/docker-compose.yaml
   # - path: j-service-driver/docker-compose.yaml
   # - path: k-service-passenger/docker-compose.yaml

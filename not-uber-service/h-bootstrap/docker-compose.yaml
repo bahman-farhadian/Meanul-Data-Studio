@@ -1,0 +1,117 @@
+# h-bootstrap — prepares the stack, once, and exits.
+#
+# This is the last container to start and the only one that is supposed to
+# stop. It applies the database schema, imports the New York street map,
+# creates the drivers, passengers and zones, invents a week of history, loads
+# that week into ClickHouse, and finally sets a marker in Redis.
+#
+# That marker is what releases the six services: while it is missing they
+# wait. So if bootstrap fails halfway, nothing starts generating trips for
+# drivers that do not exist - the stack stays quiet and the logs say why.
+#
+# Every step is safe to run again: existing rows are kept, an imported map is
+# not imported twice, and the warehouse is not loaded twice.
+#
+# Standalone test:
+#   cp .env.example .env    (+ match the passwords to pieces a, b and e)
+#   docker compose up --build
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: h-bootstrap
+
+services:
+  bootstrap:
+    build:
+      # The context is the parent directory, because the image needs the
+      # shared package in z-lib/ as well as this component.
+      context: ..
+      dockerfile: h-bootstrap/Dockerfile
+    image: nus/bootstrap:0.1.0
+    container_name: bootstrap
+    # A one-shot must not come back after it finishes. Anything else would
+    # mean re-running the whole preparation on every container restart.
+    restart: "no"
+    cpus: 1.25
+    mem_limit: 8g
+    memswap_limit: 8g
+    # Nothing may be prepared before the things being prepared are up.
+    depends_on:
+      pg-1:
+        condition: service_healthy
+      redis-1:
+        condition: service_healthy
+      sentinel-1:
+        condition: service_healthy
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      ch-s1r1:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      # PostgreSQL, through the entry tier - never a pg-* container by name.
+      PG_HOST: ${PG_HOST:-lb-a}
+      PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
+      PG_READ_PORT: ${PG_READ_PORT:-5433}
+      PG_DATABASE: ${PG_DATABASE:-postgres}
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
+
+      # Redis, through Sentinel.
+      REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
+      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
+
+      # ClickHouse, through the entry tier.
+      CH_HOST: ${CH_HOST:-lb-a}
+      CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
+      CH_DATABASE: ${CH_DATABASE:-nus}
+      CH_USER: ${CH_USER:-nus}
+      CH_PASSWORD: ${CH_PASSWORD:?must match e-infra-clickhouse/.env}
+
+      # How big the simulated city is.
+      CITY_MIN_LAT: ${CITY_MIN_LAT:-40.49}
+      CITY_MAX_LAT: ${CITY_MAX_LAT:-40.92}
+      CITY_MIN_LON: ${CITY_MIN_LON:--74.26}
+      CITY_MAX_LON: ${CITY_MAX_LON:--73.70}
+      CITY_GRID_ROWS: ${CITY_GRID_ROWS:-6}
+      CITY_GRID_COLS: ${CITY_GRID_COLS:-6}
+
+      # How much to create.
+      SEED_DRIVERS: ${SEED_DRIVERS:-800}
+      SEED_PASSENGERS: ${SEED_PASSENGERS:-5000}
+      HISTORY_DAYS: ${HISTORY_DAYS:-7}
+      HISTORY_TRIPS_PER_DAY: ${HISTORY_TRIPS_PER_DAY:-2000}
+      HISTORY_POSITIONS_PER_TRIP: ${HISTORY_POSITIONS_PER_TRIP:-8}
+
+      # Prices, shared with dispatch-service so both quote the same way.
+      FARE_BASE: ${FARE_BASE:-3.0}
+      FARE_PER_KM: ${FARE_PER_KM:-1.75}
+      FARE_PER_MINUTE: ${FARE_PER_MINUTE:-0.45}
+
+      # The map.
+      OSM_URL: ${OSM_URL:-https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf}
+      OSM_MD5_URL: ${OSM_MD5_URL:-https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf.md5}
+      OSM_DIR: /data/osm
+      SKIP_OSM_IMPORT: ${SKIP_OSM_IMPORT:-false}
+      FORCE_RESEED: ${FORCE_RESEED:-false}
+    volumes:
+      # The downloaded map lives here, so a rebuilt container does not
+      # download half a gigabyte again.
+      - osm-data:/data/osm
+    networks:
+      - backbone
+
+volumes:
+  osm-data:
+    name: nus-osm-data
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

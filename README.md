@@ -632,7 +632,7 @@ meanul-data-studio/
     ├── e-infra-clickhouse/           # 2x2 cluster + Keeper config, table DDL, clickhouse-cluster-design.md
     ├── f-infra-grafana/              # provisioned ClickHouse datasource + live dashboard
     ├── g-infra-superset/             # Superset + ClickHouse driver, init one-shot
-    ├── h-bootstrap/                  # one-shot init service (starts last, then removed)
+    ├── h-bootstrap/                  # one-shot init service (starts last, runs once, exits)
     │   ├── migrations/               # SQL schema migrations
     │   ├── osm/                      # NYC OSM extract download + osm2pgrouting setup
     │   └── seed/                     # initial drivers/passengers/city_zones data
