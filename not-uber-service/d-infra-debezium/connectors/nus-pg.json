@@ -1,0 +1,38 @@
+{
+  "name": "nus-pg",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+
+    "database.hostname": "filled in by register.py",
+    "database.port": "filled in by register.py",
+    "database.dbname": "filled in by register.py",
+    "database.user": "filled in by register.py",
+    "database.password": "filled in by register.py",
+
+    "topic.prefix": "nus",
+    "plugin.name": "pgoutput",
+    "slot.name": "nus_debezium",
+    "publication.name": "nus_pub",
+    "publication.autocreate.mode": "filtered",
+
+    "snapshot.mode": "initial",
+    "table.include.list": "public.drivers,public.passengers,public.trips,public.city_zones",
+    "tombstones.on.delete": "true",
+    "heartbeat.interval.ms": "10000",
+
+    "decimal.handling.mode": "double",
+    "time.precision.mode": "connect",
+
+    "transforms": "route",
+    "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
+    "transforms.route.regex": "nus\\.public\\.(.*)",
+    "transforms.route.replacement": "cdc.$1",
+
+    "topic.creation.enable": "true",
+    "topic.creation.default.replication.factor": "3",
+    "topic.creation.default.partitions": "3",
+    "topic.creation.default.min.insync.replicas": "2",
+    "topic.creation.default.cleanup.policy": "compact"
+  }
+}

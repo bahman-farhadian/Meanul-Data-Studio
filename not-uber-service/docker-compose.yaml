@@ -27,7 +27,8 @@ include:
     env_file: b-infra-redis/.env
   - path: c-infra-kafka/docker-compose.yaml
     env_file: c-infra-kafka/.env
-  # - path: d-infra-debezium/docker-compose.yaml
+  - path: d-infra-debezium/docker-compose.yaml
+    env_file: d-infra-debezium/.env
   # - path: e-infra-clickhouse/docker-compose.yaml
   # - path: f-infra-grafana/docker-compose.yaml
   # - path: g-infra-superset/docker-compose.yaml
