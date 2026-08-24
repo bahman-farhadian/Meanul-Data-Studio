@@ -293,9 +293,31 @@ Until piece l is running, those rows stay at `requested` — nothing is
 matching them yet. That is expected, and it is exactly what dispatch will
 clear.
 
-## 12. Next pieces — l ... n
+## 12. Piece l — l-service-dispatch
 
-Added here as each component lands, in the same shape as pieces a to k:
+```bash
+# the fare settings must match h-bootstrap, so live trips are priced the
+# way the seeded week was
+cp l-service-dispatch/.env.example l-service-dispatch/.env
+
+docker compose up -d --build
+```
+
+With this piece the loop is closed: requests are matched, routed over the
+real street network, priced, and carried through to completion. The rows
+that were stuck at `requested` after piece k start moving.
+
+Verify it: [l-service-dispatch/README.md](l-service-dispatch/README.md)
+(status spread, stored routes and fares, the `trip_lifecycle` stream,
+consumer lag).
+
+**This is the slowest step in the pipeline** — one routing query per trip.
+If anything falls behind under load it will be this, and the fix is fewer
+requests in piece k, not more containers.
+
+## 13. Next pieces — m and n
+
+Added here as each component lands, in the same shape as pieces a to l:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

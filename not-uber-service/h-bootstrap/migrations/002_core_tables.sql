@@ -57,7 +57,11 @@ CREATE TABLE IF NOT EXISTS trips (
     pickup_zone_id       text,
     dropoff_zone_id      text,
     -- The path pgRouting chose, kept so it can be drawn on a map later.
-    route                geometry(LineString, 4326),
+    -- Plain geometry rather than LineString: joining the chosen road
+    -- segments usually gives one continuous line, but where the imported
+    -- map has a gap it gives several pieces, and refusing to store the
+    -- route at all would be the worse answer.
+    route                geometry(Geometry, 4326),
     route_km             double precision,
 
     -- What the route calculation promised, and what really happened.
