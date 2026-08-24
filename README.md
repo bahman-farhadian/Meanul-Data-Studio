@@ -103,7 +103,7 @@ The platform is split into one **one-shot init service** and several
 
 | Service | Type | Responsibility |
 | --- | --- | --- |
-| `bootstrap` | one-shot | Runs DB migrations (plain ordered SQL), downloads the NYC OSM extract (**skipped when already present on its volume**), imports it into PostgreSQL and builds the pgRouting topology, seeds initial reference data (drivers, passengers, city zones), generates **one week of historical mock activity** (trips, locations, per-segment traffic), bulk-loads that week into ClickHouse so dashboards start populated, and finally sets the `system:bootstrap:done` marker in Redis. Exits and is removed when done. |
+| `bootstrap` | one-shot | Runs DB migrations (plain ordered SQL), downloads the NYC OSM extract (**skipped when already present on its volume**), imports it into PostgreSQL and builds the pgRouting topology, seeds initial reference data (drivers, passengers, city zones), generates **one week of historical mock activity** (trips, locations, per-segment traffic), bulk-loads that week into ClickHouse so dashboards start populated, and finally sets the `system:bootstrap:done` marker in Redis. Exits when done and stays as a stopped container, so its log can still be read. |
 | `driver-service` | long-running | Simulates the pool of active drivers (not one container per driver — one service internally manages many simulated drivers). Produces driver status/location activity. |
 | `passenger-service` | long-running | Simulates the pool of riders. Produces trip requests and rider device location streams. |
 | `dispatch-service` | long-running | Matches trip requests from `passenger-service` to available drivers, computes the route via pgRouting, calculates the fare estimate (base + distance + time, surge-adjusted), and assigns the trip. |
@@ -636,12 +636,12 @@ meanul-data-studio/
     │   ├── migrations/               # SQL schema migrations
     │   ├── osm/                      # NYC OSM extract download + osm2pgrouting setup
     │   └── seed/                     # initial drivers/passengers/city_zones data
-    ├── i-service-cache-updater/      # CDC topics -> Redis
-    ├── j-service-driver/
-    ├── k-service-passenger/
-    ├── l-service-dispatch/
-    ├── m-service-city/
-    ├── n-service-clickhouse-sink/
+    ├── i-service-cache-updater/      # cdc.* topics -> Redis, the loop that keeps the cache honest
+    ├── j-service-driver/             # one container, many simulated drivers
+    ├── k-service-passenger/          # riders asking for trips
+    ├── l-service-dispatch/           # matching, pgRouting, surge pricing, trip status
+    ├── m-service-city/               # demand scores per zone, live traffic factors
+    ├── n-service-clickhouse-sink/    # every event into ClickHouse, enriched from Redis
     ├── z-config/                     # stack-level config (sorts last on purpose)
     │   └── haproxy/                  # lb-a / lb-b config
     └── z-lib/                        # shared Python code (sorts last for the same reason)
