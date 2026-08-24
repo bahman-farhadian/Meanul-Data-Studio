@@ -21,7 +21,7 @@ apply to every piece:
   never `up` a component's own compose file when assembling the stack
   (volumes carry fixed `nus-*` names, so the one-shot output is shared
   either way).
-- The stack targets a dedicated Docker server with 20 CPU cores and 96 GB
+- The stack targets a dedicated Docker server with 20 CPU cores and 120 GB
   RAM. Per-container CPU/memory limits and the no-swap policy are declared
   directly in the compose files; see the main README, section 2.9.
 
@@ -69,12 +69,34 @@ keeps `new` so a fresh clone can bootstrap from empty volumes.
 Why this flip matters (split-brain protection when a volume is ever lost):
 [a-infra-postgres/README.md](a-infra-postgres/README.md#etcd-cluster-lifecycle--new-vs-existing).
 
-## 2. Next pieces — b ... n
+## 2. Piece b — b-infra-redis
 
-Added here as each component lands, in the same shape as piece a: copy its
-`.env.example` if it has one, activate its `include:` entry in the root
-[`docker-compose.yaml`](docker-compose.yaml), run its one-shot containers
-(if any) with `docker compose run --rm <name>`,
+```bash
+# settings — EDIT THE PASSWORD
+cp b-infra-redis/.env.example b-infra-redis/.env
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
+```
+
+No one-shots and no post-bootstrap step here: the Sentinel set elects its
+own primary, and each node materialises its live config on first start.
+
+Verify it: [b-infra-redis/README.md](b-infra-redis/README.md) (node roles,
+what Sentinel believes, `ckquorum`, a write/read across the replica).
+
+**Know before you edit:** the committed `redis.conf` / `sentinel.conf` are
+templates copied onto each node's volume on first start — Sentinel owns the
+live files after that. Changing a template or `REDIS_PASSWORD` later has no
+effect until those volumes are dropped
+([why](b-infra-redis/README.md#config-file-lifecycle--the-one-thing-to-know)).
+
+## 3. Next pieces — c ... n
+
+Added here as each component lands, in the same shape as pieces a and b:
+copy its `.env.example` if it has one, activate its `include:` entry in the
+root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
+containers (if any) with `docker compose run --rm <name>`,
 add its resource limits to its compose file, run the root `up` from piece
 a, then its post-bootstrap commands (if any) — verification always per the
 component README.

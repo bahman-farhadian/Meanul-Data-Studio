@@ -626,7 +626,7 @@ meanul-data-studio/
     ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
     │   └── docker-compose.yaml       # component compose (every component dir has one)
-    ├── b-infra-redis/                # Sentinel config
+    ├── b-infra-redis/                # nus-cache: 3 data nodes + 3 Sentinels, config templates
     ├── c-infra-kafka/                # KRaft broker config, topic definitions
     ├── d-infra-debezium/             # Kafka Connect + PostgreSQL CDC connector
     ├── e-infra-clickhouse/           # cluster + Keeper config, table DDL, clickhouse-cluster-design.md
@@ -684,7 +684,7 @@ tested in isolation before the next depends on it:
 
 ### 2.9 Resource allocation
 
-The stack targets a dedicated Docker server with **20 CPU cores, 96 GB
+The stack targets a dedicated Docker server with **20 CPU cores, 120 GB
 RAM, and NVMe storage**. The complete topology has many stateful
 containers, JVM services, and OLAP nodes, so the project is documented and
 sized for that server class only.
@@ -715,27 +715,35 @@ retention is bounded.
 
 | Component | Containers | CPU each | Mem each | Mem subtotal |
 | --- | --- | --- | --- | --- |
-| PostgreSQL nodes (Patroni — identical limits, leader elected) | 3 | 1.6 | 7 GB | 21 GB |
+| PostgreSQL nodes (Patroni — identical limits, leader elected) | 3 | 1.6 | 9 GB | 27 GB |
 | HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.1 | 128 MB | 0.25 GB |
 | nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.15 | 384 MB | 1.13 GB |
-| Redis primary / replicas | 1 / 2 | 0.6 / 0.4 | 4.5 GB / 3 GB | 10.5 GB |
+| Redis nodes (Sentinel — identical limits, primary elected) | 3 | 0.5 | 4 GB | 12 GB |
 | Redis Sentinel | 3 | 0.1 | 192 MB | 0.56 GB |
-| Kafka brokers | 3 | 1.2 | 4.5 GB (3 GB heap) | 13.5 GB |
-| Schema Registry | 1 | 0.2 | 768 MB | 0.75 GB |
-| Debezium Connect | 1 | 0.4 | 1.5 GB | 1.5 GB |
-| ClickHouse nodes (2x2) | 4 | 1.35 | 7.5 GB | 30 GB |
+| Kafka brokers | 3 | 1.2 | 5.5 GB (3.5 GB heap) | 16.5 GB |
+| Schema Registry | 1 | 0.2 | 1 GB | 1 GB |
+| Debezium Connect | 1 | 0.4 | 2 GB | 2 GB |
+| ClickHouse nodes (2x2) | 4 | 1.3 | 8 GB | 32 GB |
 | ClickHouse Keeper | 3 | 0.1 | 1 GB | 3 GB |
-| Grafana | 1 | 0.2 | 768 MB | 0.75 GB |
+| Grafana | 1 | 0.2 | 1 GB | 1 GB |
 | Superset (single user, single worker, SQLite metadata) | 1 | 0.6 | 3 GB | 3 GB |
-| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.15 | 512 MB | 3 GB |
-| **Steady-state total** | **34** | **~18.75 (of 20, no overcommit)** | | **~88.9 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 1.25 | 6 GB | peak ~94.9 GB |
+| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.15 | 768 MB | 4.5 GB |
+| **Steady-state total** | **34** | **~18.65 (of 20, no overcommit)** | | **~104 GB** |
+| `bootstrap` (transient, exits after init) | 1 | 1.25 | 8 GB | peak ~112 GB |
 
-The steady-state budget leaves roughly **7 GB** for the host OS and
-operational headroom on a 96 GB server. The transient `bootstrap` gets
-**6 GB** because `osm2pgrouting` is memory-hungry on the NYC extract; the
-peak still stays just under the 96 GB host target, and its 1.25 CPU fits
-because the app services are still in standby while it runs.
+The steady-state budget leaves roughly **16 GB** for the host OS and
+operational headroom on a 120 GB server. The transient `bootstrap` gets
+**8 GB** because the OSM import is memory-hungry on the NYC extract; even at
+that peak (~112 GB) the host keeps ~8 GB free, and bootstrap's 1.25 CPU fits
+inside the 20-core ceiling (19.9 of 20) because the app services are still in
+standby while it runs.
+
+**CPU, not RAM, is what bounds the topology.** With no overcommit the 20
+cores are the scarce resource: ClickHouse at 2 shards x 2 replicas already
+takes 5.2 of them, so doubling the shard count would blow the CPU budget long
+before the memory one. The headroom on a 120 GB host is therefore spent
+deepening the existing nodes — PostgreSQL 9 GB, Kafka 5.5 GB, ClickHouse
+8 GB — rather than adding more of them.
 
 Key tuning that makes the budget fit: `KAFKA_HEAP_OPTS` capped per
 broker, ClickHouse `max_server_memory_usage` set below its container

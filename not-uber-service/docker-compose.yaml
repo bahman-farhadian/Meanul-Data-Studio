@@ -15,7 +15,7 @@
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
 # Resource limits are declared directly in the component compose files,
-# targeting a 20-core / 96 GB Docker host with memswap_limit equal to the
+# targeting a 20-core / 120 GB Docker host with memswap_limit equal to the
 # memory limit (zero swap).
 
 name: not-uber-service
@@ -23,7 +23,8 @@ name: not-uber-service
 include:
   - path: a-infra-postgres/docker-compose.yaml
     env_file: a-infra-postgres/.env
-  # - path: b-infra-redis/docker-compose.yaml
+  - path: b-infra-redis/docker-compose.yaml
+    env_file: b-infra-redis/.env
   # - path: c-infra-kafka/docker-compose.yaml
   # - path: d-infra-debezium/docker-compose.yaml
   # - path: e-infra-clickhouse/docker-compose.yaml
