@@ -1,0 +1,19 @@
+# Load every dashboard file in /var/lib/grafana/dashboards at start.
+#
+# Dashboards edited in the browser are not saved back to these files. To keep
+# a change, export the dashboard as JSON and commit it here - otherwise the
+# next fresh container will not have it.
+apiVersion: 1
+
+providers:
+  - name: not-uber-service
+    orgId: 1
+    folder: not-uber-service
+    type: file
+    disableDeletion: false
+    # Pick up file changes without a restart.
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

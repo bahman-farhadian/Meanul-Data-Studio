@@ -630,7 +630,7 @@ meanul-data-studio/
     ├── c-infra-kafka/                # KRaft brokers, Schema Registry, topic list, Avro schemas
     ├── d-infra-debezium/             # Kafka Connect + Avro converter, PostgreSQL CDC connector
     ├── e-infra-clickhouse/           # 2x2 cluster + Keeper config, table DDL, clickhouse-cluster-design.md
-    ├── f-infra-grafana/              # provisioned dashboards/datasources
+    ├── f-infra-grafana/              # provisioned ClickHouse datasource + live dashboard
     ├── g-infra-superset/             # provisioned datasets/dashboards
     ├── h-bootstrap/                  # one-shot init service (starts last, then removed)
     │   ├── migrations/               # SQL schema migrations

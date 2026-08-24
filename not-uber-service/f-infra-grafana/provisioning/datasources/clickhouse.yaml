@@ -1,0 +1,32 @@
+# The ClickHouse connection, created automatically at start.
+#
+# Provisioned data sources are read-only in the user interface. That is on
+# purpose: the file in this repository is the truth, so a rebuilt Grafana
+# comes back with exactly the same connection instead of one somebody
+# changed by hand and forgot about.
+#
+# $CH_PASSWORD is read from the container environment when Grafana starts,
+# so the password is never written into this file.
+apiVersion: 1
+
+datasources:
+  - name: ClickHouse
+    uid: nus-clickhouse
+    type: grafana-clickhouse-datasource
+    access: proxy
+    isDefault: true
+    editable: false
+    jsonData:
+      # Through the entry tier, not straight to a node: lb-a spreads queries
+      # over whichever ClickHouse nodes are healthy.
+      host: lb-a
+      port: 9000
+      protocol: native
+      secure: false
+      username: $CH_USER
+      defaultDatabase: nus
+      # Keep a dashboard from holding a connection open forever.
+      dialTimeout: 10
+      queryTimeout: 60
+    secureJsonData:
+      password: $CH_PASSWORD
