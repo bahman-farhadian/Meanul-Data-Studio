@@ -1,0 +1,23 @@
+# Every topic of the stack, in one place. create-topics.sh reads this file.
+#
+# Columns, separated by tabs:
+#   name          the topic name
+#   partitions    how many pieces the topic is split into; more partitions
+#                 means more consumers can read it at the same time
+#   key           what the producer uses as the message key, so that all
+#                 messages about one entity keep their order
+#   purpose       a short note for humans
+#
+# Replication is always 3 (one copy per broker) and is set by the script.
+# The two location topics get 6 partitions because they carry by far the
+# most messages; everything else gets 3, one per broker.
+#
+# The cdc.* topics are NOT listed here: Debezium creates them itself, one
+# per PostgreSQL table (see d-infra-debezium).
+#
+# name	partitions	key	purpose
+driver_location	6	driver_id	where each driver is, every few seconds
+rider_location	6	rider_id	where each rider's phone is during a trip
+trip_requests	3	trip_id	a passenger asks for a ride
+trip_lifecycle	3	trip_id	every status change of a trip, up to the final fare
+city_hotspots	3	zone_id	demand score per city zone, published by city-service

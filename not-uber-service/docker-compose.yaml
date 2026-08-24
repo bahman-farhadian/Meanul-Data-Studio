@@ -25,7 +25,8 @@ include:
     env_file: a-infra-postgres/.env
   - path: b-infra-redis/docker-compose.yaml
     env_file: b-infra-redis/.env
-  # - path: c-infra-kafka/docker-compose.yaml
+  - path: c-infra-kafka/docker-compose.yaml
+    env_file: c-infra-kafka/.env
   # - path: d-infra-debezium/docker-compose.yaml
   # - path: e-infra-clickhouse/docker-compose.yaml
   # - path: f-infra-grafana/docker-compose.yaml

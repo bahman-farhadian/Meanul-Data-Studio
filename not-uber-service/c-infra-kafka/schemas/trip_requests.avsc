@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "TripRequest",
+  "namespace": "nus.events",
+  "doc": "A passenger asks for a ride. This is what dispatch-service listens to. Keyed by trip_id.",
+  "fields": [
+    {"name": "trip_id", "type": "string", "doc": "Id created by passenger-service for this request; it follows the trip to the end."},
+    {"name": "rider_id", "type": "string", "doc": "The passenger asking for the ride."},
+    {"name": "pickup_lat", "type": "double", "doc": "Where the passenger wants to be picked up."},
+    {"name": "pickup_lon", "type": "double"},
+    {"name": "dropoff_lat", "type": "double", "doc": "Where the passenger wants to go."},
+    {"name": "dropoff_lon", "type": "double"},
+    {"name": "pickup_zone_id", "type": "string", "doc": "City zone of the pickup point. Dispatch uses it to look up the surge multiplier."},
+    {"name": "passenger_count", "type": "int", "default": 1, "doc": "How many people will travel."},
+    {"name": "requested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the request was made. Always UTC."}
+  ]
+}

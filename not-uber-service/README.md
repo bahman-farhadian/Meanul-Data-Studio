@@ -91,9 +91,35 @@ live files after that. Changing a template or `REDIS_PASSWORD` later has no
 effect until those volumes are dropped
 ([why](b-infra-redis/README.md#config-file-lifecycle--the-one-thing-to-know)).
 
-## 3. Next pieces — c ... n
+## 3. Piece c — c-infra-kafka
 
-Added here as each component lands, in the same shape as pieces a and b:
+```bash
+# settings (no secrets here; the cluster id is already filled in)
+cp c-infra-kafka/.env.example c-infra-kafka/.env
+
+# one-shot BEFORE the first start: a new Docker volume belongs to root and
+# the broker does not run as root, so hand the volumes over first
+docker compose run --rm kafka-dirs
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
+
+# one-shot AFTER the brokers are healthy: create the topics
+docker compose run --rm kafka-topics-init
+```
+
+Verify it: [c-infra-kafka/README.md](c-infra-kafka/README.md) (broker list,
+controller quorum, `--describe` showing three in-sync replicas per
+partition, and how to read a binary Avro topic as JSON).
+
+**Adding a topic later:** add its line to
+[c-infra-kafka/topics/topics.tsv](c-infra-kafka/topics/topics.tsv) and run
+`docker compose run --rm kafka-topics-init` again. Existing topics are left
+untouched.
+
+## 4. Next pieces — d ... n
+
+Added here as each component lands, in the same shape as pieces a to c:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

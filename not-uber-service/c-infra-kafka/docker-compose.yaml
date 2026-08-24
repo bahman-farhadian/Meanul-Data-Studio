@@ -1,0 +1,206 @@
+# c-infra-kafka — the streaming backbone: three Kafka brokers in KRaft mode
+# (each node is broker AND controller, so there is no ZooKeeper) plus the
+# Schema Registry that holds the Avro schema of every topic.
+#
+# Every event on this cluster is binary Avro. A message carries only the id
+# of its schema; the reader asks the Schema Registry what that id means. That
+# keeps messages small and lets a schema change without breaking old readers.
+#
+# Kafka is NOT behind the lb-a/lb-b HAProxy pair. A Kafka client first asks
+# any broker for the cluster layout and then talks to the right broker for
+# each partition, so a TCP proxy in front would only get in the way.
+#
+# Standalone test:
+#   docker network create nus-backbone     (once, shared by the whole stack)
+#   cp .env.example .env
+#   docker compose run --rm kafka-dirs     (one-shot, prepares the volumes)
+#   docker compose up -d
+#   docker compose run --rm kafka-topics-init
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: c-infra-kafka
+
+x-kafka-broker: &kafka-broker
+  image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
+  restart: unless-stopped
+  cpus: 1.2
+  mem_limit: 5.5g
+  memswap_limit: 5.5g
+  healthcheck:
+    # Asking the broker for its API versions proves it is not merely running
+    # but actually answering on the client port.
+    test:
+      - CMD-SHELL
+      - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1
+    interval: 15s
+    timeout: 10s
+    retries: 5
+    start_period: 45s
+  networks:
+    - backbone
+
+x-kafka-env: &kafka-env
+  TZ: ${TZ:-UTC}
+  # Every broker in one cluster must share this id. It is generated once and
+  # then never changed - see .env.example.
+  CLUSTER_ID: ${KAFKA_CLUSTER_ID:?set it in c-infra-kafka/.env}
+  KAFKA_PROCESS_ROLES: broker,controller
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+  KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_LOG_DIRS: /var/lib/kafka/data
+  # Safety settings for a three-broker cluster: every topic is written to all
+  # three brokers, and a write is only accepted while at least two of them
+  # have it. One broker can die without losing data or blocking writers.
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "3"
+  KAFKA_MIN_INSYNC_REPLICAS: "2"
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+  KAFKA_NUM_PARTITIONS: "3"
+  # Topics are created on purpose by kafka-topics-init, never by accident:
+  # a typo in a topic name should fail loudly, not silently make a new topic.
+  KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+  KAFKA_LOG_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
+  # A consumer group forms immediately instead of waiting for stragglers.
+  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+  # The JVM heap is capped well below the 5.5 GB container limit. Kafka wants
+  # the rest as operating-system page cache, which is what makes reads fast.
+  KAFKA_HEAP_OPTS: -Xmx3500m -Xms3500m
+
+services:
+  # One-shot: give the Kafka data volumes to the user inside the image.
+  #
+  # Docker creates a brand-new named volume owned by root. The Kafka image
+  # runs as a normal user, so without this step the broker cannot write to
+  # its own log directory and exits at once. Run it BEFORE the first `up`.
+  # Check the uid the image really uses with:
+  #   docker run --rm ${KAFKA_IMAGE} id
+  kafka-dirs:
+    image: ${BUSYBOX_IMAGE:-busybox:1.37.0}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    command:
+      - sh
+      - -c
+      - chown -R ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} /data-1 /data-2 /data-3 && echo "kafka data dirs ready"
+    volumes:
+      - kafka-data-1:/data-1
+      - kafka-data-2:/data-2
+      - kafka-data-3:/data-3
+    networks:
+      - backbone
+
+  kafka-1:
+    <<: *kafka-broker
+    container_name: kafka-1
+    hostname: kafka-1
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: "1"
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      # What clients are told to connect to. It must be the name other
+      # containers can resolve on nus-backbone, not localhost.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092
+    volumes:
+      - kafka-data-1:/var/lib/kafka/data
+
+  kafka-2:
+    <<: *kafka-broker
+    container_name: kafka-2
+    hostname: kafka-2
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: "2"
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092
+    volumes:
+      - kafka-data-2:/var/lib/kafka/data
+
+  kafka-3:
+    <<: *kafka-broker
+    container_name: kafka-3
+    hostname: kafka-3
+    environment:
+      <<: *kafka-env
+      KAFKA_NODE_ID: "3"
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092
+    volumes:
+      - kafka-data-3:/var/lib/kafka/data
+
+  # The Schema Registry keeps every topic's Avro schema and hands out the ids
+  # that travel inside each message. It stores them in a Kafka topic, so it
+  # holds no state of its own and can be restarted freely.
+  schema-registry:
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
+    container_name: schema-registry
+    hostname: schema-registry
+    restart: unless-stopped
+    cpus: 0.2
+    mem_limit: 1g
+    memswap_limit: 1g
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092,PLAINTEXT://kafka-3:9092
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "3"
+      # BACKWARD: a new schema must still be readable by consumers written
+      # against the previous one. Adding an optional field is fine; removing
+      # a required field is refused at registration time.
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: backward
+      SCHEMA_REGISTRY_HEAP_OPTS: -Xmx512m -Xms512m
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backbone
+
+  # One-shot: create every topic from topics/topics.tsv. Run it AFTER `up`,
+  # once the brokers are healthy. Re-runs are safe - existing topics are
+  # skipped, so this is also how a newly added topic is rolled out.
+  kafka-topics-init:
+    image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 512m
+    memswap_limit: 512m
+    entrypoint: ["/bin/sh", "/create-topics.sh"]
+    environment:
+      TZ: ${TZ:-UTC}
+      KAFKA_BOOTSTRAP: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
+    volumes:
+      - ./topics/create-topics.sh:/create-topics.sh:ro
+      - ./topics/topics.tsv:/topics.tsv:ro
+    networks:
+      - backbone
+
+volumes:
+  kafka-data-1:
+    name: nus-kafka-data-1
+  kafka-data-2:
+    name: nus-kafka-data-2
+  kafka-data-3:
+    name: nus-kafka-data-3
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

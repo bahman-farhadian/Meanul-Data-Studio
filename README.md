@@ -627,7 +627,7 @@ meanul-data-studio/
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
     │   └── docker-compose.yaml       # component compose (every component dir has one)
     ├── b-infra-redis/                # nus-cache: 3 data nodes + 3 Sentinels, config templates
-    ├── c-infra-kafka/                # KRaft broker config, topic definitions
+    ├── c-infra-kafka/                # KRaft brokers, Schema Registry, topic list, Avro schemas
     ├── d-infra-debezium/             # Kafka Connect + PostgreSQL CDC connector
     ├── e-infra-clickhouse/           # cluster + Keeper config, table DDL, clickhouse-cluster-design.md
     ├── f-infra-grafana/              # provisioned dashboards/datasources
