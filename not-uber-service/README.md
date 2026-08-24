@@ -261,9 +261,27 @@ else being told.
 Verify it: [i-service-cache-updater/README.md](i-service-cache-updater/README.md)
 (consumer lag, and a `psql` update showing up under `redis-cli get`).
 
-## 10. Next pieces — j ... n
+## 10. Piece j — j-service-driver
 
-Added here as each component lands, in the same shape as pieces a to i:
+```bash
+# settings — the passwords must match pieces a and b, and the CITY_* values
+# must match h-bootstrap or the two would draw different cities
+cp j-service-driver/.env.example j-service-driver/.env
+
+docker compose up -d --build
+```
+
+Verify it: [j-service-driver/README.md](j-service-driver/README.md)
+(positions arriving on `driver_location`, the free-driver list in Redis, and
+the status spread in PostgreSQL).
+
+**This is the volume dial of the stack.** `DRIVER_TICK_SECONDS` and
+`DRIVER_ONLINE_SHARE` decide how many messages a second everything
+downstream has to handle. Turn these down first if the stack struggles.
+
+## 11. Next pieces — k ... n
+
+Added here as each component lands, in the same shape as pieces a to j:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,
