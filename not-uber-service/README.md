@@ -279,9 +279,23 @@ the status spread in PostgreSQL).
 `DRIVER_ONLINE_SHARE` decide how many messages a second everything
 downstream has to handle. Turn these down first if the stack struggles.
 
-## 11. Next pieces — k ... n
+## 11. Piece k — k-service-passenger
 
-Added here as each component lands, in the same shape as pieces a to j:
+```bash
+cp k-service-passenger/.env.example k-service-passenger/.env
+docker compose up -d --build
+```
+
+Verify it: [k-service-passenger/README.md](k-service-passenger/README.md)
+(requests on `trip_requests`, rows appearing in `trips`).
+
+Until piece l is running, those rows stay at `requested` — nothing is
+matching them yet. That is expected, and it is exactly what dispatch will
+clear.
+
+## 12. Next pieces — l ... n
+
+Added here as each component lands, in the same shape as pieces a to k:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,
