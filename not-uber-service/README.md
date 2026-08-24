@@ -315,9 +315,25 @@ consumer lag).
 If anything falls behind under load it will be this, and the fix is fewer
 requests in piece k, not more containers.
 
-## 13. Next pieces — m and n
+## 13. Piece m — m-service-city
 
-Added here as each component lands, in the same shape as pieces a to l:
+```bash
+cp m-service-city/.env.example m-service-city/.env
+docker compose up -d --build
+```
+
+This piece closes the feedback loop: it scores demand per zone, drivers
+drift towards the busy ones, dispatch prices trips there higher, and the
+observed speeds change the routing costs so the best path moves with the
+traffic.
+
+Verify it: [m-service-city/README.md](m-service-city/README.md) (hotspot
+keys with a lifetime counting down, the `city_hotspots` stream, and
+`segment_traffic` moving away from the seeded baseline).
+
+## 14. Last piece — n
+
+Added here in the same shape as pieces a to m:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,
