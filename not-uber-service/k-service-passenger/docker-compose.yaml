@@ -1,0 +1,80 @@
+# k-service-passenger — the simulated riders.
+#
+# It creates ride requests at a rate that follows the time of day, and sends
+# a position report for every rider who is currently in a car.
+#
+# A request is written to PostgreSQL and sent to Kafka. The row is the record
+# that the request exists; the message is how dispatch-service hears about
+# it. One is state, the other is news, and the stack needs both.
+#
+# Deliberately not a mirror image of driver-service: a phone in a pocket and
+# a device on a windscreen report at different rates and with different
+# accuracy, so the two streams are produced by two independent services that
+# happen to talk about the same trips.
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: k-service-passenger
+
+services:
+  passenger-service:
+    build:
+      context: ..
+      dockerfile: k-service-passenger/Dockerfile
+    image: nus/passenger-service:0.1.0
+    container_name: passenger-service
+    restart: unless-stopped
+    cpus: 0.15
+    mem_limit: 768m
+    memswap_limit: 768m
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      redis-1:
+        condition: service_healthy
+      sentinel-1:
+        condition: service_healthy
+      pg-1:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-passenger-service}
+
+      REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
+      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
+
+      PG_HOST: ${PG_HOST:-lb-a}
+      PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
+      PG_READ_PORT: ${PG_READ_PORT:-5433}
+      PG_DATABASE: ${PG_DATABASE:-postgres}
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
+
+      CITY_MIN_LAT: ${CITY_MIN_LAT:-40.49}
+      CITY_MAX_LAT: ${CITY_MAX_LAT:-40.92}
+      CITY_MIN_LON: ${CITY_MIN_LON:--74.26}
+      CITY_MAX_LON: ${CITY_MAX_LON:--73.70}
+      CITY_GRID_ROWS: ${CITY_GRID_ROWS:-6}
+      CITY_GRID_COLS: ${CITY_GRID_COLS:-6}
+
+      # How much demand there is. This is the second volume dial of the
+      # stack, after driver-service's tick: every request becomes a routing
+      # calculation in dispatch, which is the most expensive step anywhere.
+      PASSENGER_TICK_SECONDS: ${PASSENGER_TICK_SECONDS:-5.0}
+      TRIP_REQUESTS_PER_MINUTE: ${TRIP_REQUESTS_PER_MINUTE:-40.0}
+      RANDOM_SEED: ${RANDOM_SEED:-20250824}
+    networks:
+      - backbone
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone
