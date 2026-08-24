@@ -33,7 +33,8 @@ include:
     env_file: e-infra-clickhouse/.env
   - path: f-infra-grafana/docker-compose.yaml
     env_file: f-infra-grafana/.env
-  # - path: g-infra-superset/docker-compose.yaml
+  - path: g-infra-superset/docker-compose.yaml
+    env_file: g-infra-superset/.env
   # - path: h-bootstrap/docker-compose.yaml
   # - path: i-service-cache-updater/docker-compose.yaml
   # - path: j-service-driver/docker-compose.yaml
@@ -61,8 +62,7 @@ services:
       - "${LB_A_CH_HTTP_PORT:-8123}:8123"
       - "${LB_A_CH_NATIVE_PORT:-9000}:9000"
       - "${LB_A_GRAFANA_PORT:-3000}:3000"
-      # Uncomment as the corresponding components land:
-      # - "${LB_A_SUPERSET_PORT:-8088}:8088"
+      - "${LB_A_SUPERSET_PORT:-8088}:8088"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s
@@ -91,8 +91,7 @@ services:
       - "${LB_B_CH_HTTP_PORT:-18123}:8123"
       - "${LB_B_CH_NATIVE_PORT:-19000}:9000"
       - "${LB_B_GRAFANA_PORT:-13000}:3000"
-      # Uncomment as the corresponding components land:
-      # - "${LB_B_SUPERSET_PORT:-18088}:8088"
+      - "${LB_B_SUPERSET_PORT:-18088}:8088"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s

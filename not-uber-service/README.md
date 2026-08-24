@@ -189,9 +189,34 @@ services run, panels are empty — empty is fine, an error is not.
 **Changing the plugin version later** also needs the `nus-grafana-data`
 volume removed, or the old plugin keeps winning.
 
-## 7. Next pieces — g ... n
+## 7. Piece g — g-infra-superset
 
-Added here as each component lands, in the same shape as pieces a to f:
+```bash
+# settings — CHANGE EVERY SECRET (the ClickHouse one must match piece e)
+cp g-infra-superset/.env.example g-infra-superset/.env
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
+
+# one-shot AFTER Superset is healthy: its own tables, the admin user, the
+# roles, and the ClickHouse connection
+docker compose run --rm superset-init
+```
+
+`lb-a` now publishes Superset on port 8088, `lb-b` on 18088. This completes
+the infrastructure block — pieces `a` to `g` are the whole foundation, and
+everything from here on produces or consumes data.
+
+Verify it: [g-infra-superset/README.md](g-infra-superset/README.md) (health
+endpoint, the registered connection, and a query in SQL Lab). No rows yet is
+correct; an error is not.
+
+**Re-run `superset-init`** after a Superset version change or a ClickHouse
+password change.
+
+## 8. Next pieces — h ... n
+
+Added here as each component lands, in the same shape as pieces a to g:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,
