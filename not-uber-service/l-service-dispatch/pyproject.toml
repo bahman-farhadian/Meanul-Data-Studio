@@ -1,0 +1,23 @@
+[project]
+name = "dispatch-service"
+version = "0.1.0"
+description = "Matches trips to drivers, routes them and prices them"
+requires-python = ">=3.13"
+
+dependencies = [
+    # Clients, logging and lifecycle helpers shared by every Python
+    # component. See ../z-lib/nus-common.
+    "nus-common",
+]
+
+[tool.uv.sources]
+# A path, not a version: the shared package lives in this repository, and the
+# image keeps the same layout so this resolves in both places.
+nus-common = { path = "../z-lib/nus-common" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["dispatch_service"]

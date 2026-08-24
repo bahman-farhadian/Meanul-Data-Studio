@@ -43,7 +43,8 @@ include:
     env_file: j-service-driver/.env
   - path: k-service-passenger/docker-compose.yaml
     env_file: k-service-passenger/.env
-  # - path: l-service-dispatch/docker-compose.yaml
+  - path: l-service-dispatch/docker-compose.yaml
+    env_file: l-service-dispatch/.env
   # - path: m-service-city/docker-compose.yaml
   # - path: n-service-clickhouse-sink/docker-compose.yaml
 
