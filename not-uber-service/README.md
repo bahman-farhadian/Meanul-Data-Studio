@@ -168,9 +168,30 @@ on one node read back through another).
 [e-infra-clickhouse/ddl/](e-infra-clickhouse/ddl/) and run
 `docker compose run --rm ch-ddl-init` again.
 
-## 6. Next pieces — f ... n
+## 6. Piece f — f-infra-grafana
 
-Added here as each component lands, in the same shape as pieces a to e:
+```bash
+# settings — EDIT THE PASSWORDS (the ClickHouse one must match piece e)
+cp f-infra-grafana/.env.example f-infra-grafana/.env
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
+```
+
+`lb-a` now publishes Grafana on port 3000, `lb-b` on 13000. Open
+<http://localhost:3000> and log in with `GRAFANA_ADMIN_USER` /
+`GRAFANA_ADMIN_PASSWORD`.
+
+Verify it: [f-infra-grafana/README.md](f-infra-grafana/README.md) (health
+endpoint, the provisioned data source, the loaded dashboard). Until the app
+services run, panels are empty — empty is fine, an error is not.
+
+**Changing the plugin version later** also needs the `nus-grafana-data`
+volume removed, or the old plugin keeps winning.
+
+## 7. Next pieces — g ... n
+
+Added here as each component lands, in the same shape as pieces a to f:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

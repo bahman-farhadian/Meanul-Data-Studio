@@ -1,0 +1,133 @@
+{
+  "uid": "nus-live",
+  "title": "not-uber-service - live",
+  "description": "What the platform is doing right now: trips finishing, position events arriving, where demand is, and how often the route prediction was wrong. Every panel reads the Distributed tables, so it sees both shards.",
+  "tags": ["not-uber-service", "live"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Trips completed (last hour)",
+      "description": "Counted from the hourly summary table, which is filled automatically as trip events arrive.",
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(completed_trips) AS trips FROM nus.trip_stats_hourly WHERE hour >= toStartOfHour(now() - INTERVAL 1 HOUR)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Revenue (last hour)",
+      "description": "Final fares of completed trips, surge included.",
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(revenue) AS revenue FROM nus.trip_stats_hourly WHERE hour >= toStartOfHour(now() - INTERVAL 1 HOUR)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Trips slower than predicted (24h)",
+      "description": "How often the real trip took longer than the route calculation promised. A number that climbs means the traffic factors are out of date.",
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 100 * sum(overrun_trips) / greatest(sum(completed_trips), 1) AS pct FROM nus.trip_stats_hourly WHERE hour >= now() - INTERVAL 24 HOUR"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Average surge (last hour)",
+      "description": "Surge added up divided by the number of trips. 1.0 means normal price.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": { "defaults": { "decimals": 2 }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT sum(surge_sum) / greatest(sum(completed_trips), 1) AS avg_surge FROM nus.trip_stats_hourly WHERE hour >= toStartOfHour(now() - INTERVAL 1 HOUR)"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Position events per minute",
+      "description": "Driver and rider position reports arriving in ClickHouse. This is the best single sign that the pipeline is alive end to end.",
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfMinute(event_time) AS time, 'drivers' AS series, count() AS events FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY time ORDER BY time"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfMinute(event_time) AS time, 'riders' AS series, count() AS events FROM nus.rider_positions WHERE $__timeFilter(event_time) GROUP BY time ORDER BY time"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Busiest zones right now",
+      "description": "The newest demand score per zone. This is the same number that sets the surge price for trips starting there.",
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT zone_id, argMax(demand_score, computed_at) AS demand, argMax(open_requests, computed_at) AS waiting_riders, argMax(available_drivers, computed_at) AS free_drivers, argMax(surge_multiplier, computed_at) AS surge FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 1 HOUR GROUP BY zone_id ORDER BY demand DESC LIMIT 10"
+        }
+      ]
+    }
+  ]
+}

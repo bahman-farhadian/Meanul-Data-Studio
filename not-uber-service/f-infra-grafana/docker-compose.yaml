@@ -1,0 +1,74 @@
+# f-infra-grafana — the live view of the platform.
+#
+# Grafana answers "what is happening right now": trips finishing, position
+# events arriving, where demand is. Superset (piece g) is the slower,
+# analytical view. Both read the same ClickHouse cluster.
+#
+# The connection and the dashboards are provisioned from files in this
+# directory, so a rebuilt container comes back exactly the same. Dashboards
+# edited in the browser are NOT written back to those files - export and
+# commit them to keep a change.
+#
+# Standalone test:
+#   docker network create nus-backbone
+#   cp .env.example .env                (+ edit the passwords)
+#   docker compose up -d --build
+#
+# In the full stack this file is include'd by the root docker-compose.yaml
+# and reached through lb-a on port 3000. Full-stack runbook: ../README.md
+
+name: f-infra-grafana
+
+services:
+  grafana:
+    build:
+      context: .
+      args:
+        GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:11.6.0}
+        CLICKHOUSE_PLUGIN_VERSION: ${GRAFANA_CLICKHOUSE_PLUGIN_VERSION:-4.5.1}
+    image: nus/grafana:11.6.0
+    container_name: grafana
+    hostname: grafana
+    restart: unless-stopped
+    cpus: 0.2
+    mem_limit: 1g
+    memswap_limit: 1g
+    environment:
+      TZ: ${TZ:-UTC}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set it in f-infra-grafana/.env}
+      # Nobody signs up for this Grafana; the accounts are the ones set here.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Grafana never reaches the internet in this stack, so switch off the
+      # calls that would otherwise time out on every start.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # Read by the provisioned data source file, so no password is written
+      # into any file in this repository.
+      CH_USER: ${CH_USER:-nus}
+      CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backbone
+
+volumes:
+  # Grafana's own small database: users, stars, and dashboards created in the
+  # browser. The provisioned files above are the source of truth for anything
+  # that must survive a rebuild.
+  grafana-data:
+    name: nus-grafana-data
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone
