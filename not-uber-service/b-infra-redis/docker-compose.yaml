@@ -1,0 +1,190 @@
+# b-infra-redis — nus-cache: a Sentinel-managed Redis primary/replica set
+# (redis-1/2/3 + sentinel-1/2/3). The primary is ELECTED, exactly like the
+# Patroni leader in piece a, so all three data nodes carry identical limits
+# and identical config; redis-1 is only the seed primary of a cold start.
+#
+# Redis is deliberately NOT behind the lb-a/lb-b HAProxy pair: clients
+# discover the current primary by asking Sentinel, and a TCP proxy in the
+# middle would hand them a connection to a node Sentinel has already demoted.
+#
+# Standalone test:
+#   docker network create nus-backbone   (once, shared by the whole stack)
+#   cp .env.example .env                 (edit REDIS_PASSWORD)
+#   docker compose up -d
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: b-infra-redis
+
+x-redis-node: &redis-node
+  image: ${REDIS_IMAGE:-redis:8.2}
+  restart: unless-stopped
+  # The official image drops to this user only through its own entrypoint,
+  # which we replace — so ask for it explicitly. A fresh named volume inherits
+  # /data's redis:redis ownership from the image, so the data dir is writable.
+  user: redis
+  cpus: 0.5
+  mem_limit: 4g
+  memswap_limit: 4g
+  entrypoint: ["/bin/sh", "/entrypoint.sh"]
+  healthcheck:
+    # redis-cli picks the password up from REDISCLI_AUTH; grep makes the exit
+    # status depend on the actual reply rather than on redis-cli's own code.
+    test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 15s
+  networks:
+    - backbone
+
+x-redis-env: &redis-env
+  TZ: ${TZ:-UTC}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in b-infra-redis/.env}
+  REDISCLI_AUTH: ${REDIS_PASSWORD:?set it in b-infra-redis/.env}
+  REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-2560mb}
+
+# Anchored per item: YAML merge keys work on mappings only, so a shared
+# volume LIST cannot be spliced into a service — each mount is its own anchor.
+x-redis-entrypoint: &redis-entrypoint ./redis/entrypoint.sh:/entrypoint.sh:ro
+x-redis-template: &redis-template ./redis/redis.conf:/templates/redis.conf:ro
+
+x-sentinel-node: &sentinel-node
+  image: ${REDIS_IMAGE:-redis:8.2}
+  restart: unless-stopped
+  user: redis
+  cpus: 0.1
+  mem_limit: 192m
+  memswap_limit: 192m
+  entrypoint: ["/bin/sh", "/entrypoint.sh"]
+  depends_on:
+    redis-1:
+      condition: service_healthy
+    redis-2:
+      condition: service_healthy
+    redis-3:
+      condition: service_healthy
+  healthcheck:
+    # No REDISCLI_AUTH here on purpose: Sentinel has no requirepass, and an
+    # unexpected AUTH would be answered with an error instead of PONG.
+    test: ["CMD-SHELL", "redis-cli -p 26379 ping | grep -q PONG"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+  networks:
+    - backbone
+
+x-sentinel-env: &sentinel-env
+  TZ: ${TZ:-UTC}
+  REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+  REDIS_MASTER_HOST: ${REDIS_MASTER_HOST:-redis-1}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in b-infra-redis/.env}
+  SENTINEL_QUORUM: ${SENTINEL_QUORUM:-2}
+  SENTINEL_DOWN_AFTER_MS: ${SENTINEL_DOWN_AFTER_MS:-5000}
+  SENTINEL_FAILOVER_TIMEOUT_MS: ${SENTINEL_FAILOVER_TIMEOUT_MS:-15000}
+
+x-sentinel-entrypoint: &sentinel-entrypoint ./sentinel/entrypoint.sh:/entrypoint.sh:ro
+x-sentinel-template: &sentinel-template ./sentinel/sentinel.conf:/templates/sentinel.conf:ro
+
+services:
+  redis-1:
+    <<: *redis-node
+    container_name: redis-1
+    hostname: redis-1
+    environment:
+      <<: *redis-env
+      REDIS_NODE: redis-1
+    volumes:
+      - *redis-entrypoint
+      - *redis-template
+      - redis-data-1:/data
+
+  # redis-2/3 seed themselves as replicas of redis-1. REDIS_REPLICAOF is read
+  # only when the node has no config yet — after that Sentinel owns the
+  # topology, and a promoted redis-2 stays primary across restarts.
+  redis-2:
+    <<: *redis-node
+    container_name: redis-2
+    hostname: redis-2
+    environment:
+      <<: *redis-env
+      REDIS_NODE: redis-2
+      REDIS_REPLICAOF: ${REDIS_MASTER_HOST:-redis-1} 6379
+    volumes:
+      - *redis-entrypoint
+      - *redis-template
+      - redis-data-2:/data
+
+  redis-3:
+    <<: *redis-node
+    container_name: redis-3
+    hostname: redis-3
+    environment:
+      <<: *redis-env
+      REDIS_NODE: redis-3
+      REDIS_REPLICAOF: ${REDIS_MASTER_HOST:-redis-1} 6379
+    volumes:
+      - *redis-entrypoint
+      - *redis-template
+      - redis-data-3:/data
+
+  sentinel-1:
+    <<: *sentinel-node
+    container_name: sentinel-1
+    hostname: sentinel-1
+    environment:
+      <<: *sentinel-env
+      SENTINEL_NODE: sentinel-1
+    volumes:
+      - *sentinel-entrypoint
+      - *sentinel-template
+      - sentinel-data-1:/data
+
+  sentinel-2:
+    <<: *sentinel-node
+    container_name: sentinel-2
+    hostname: sentinel-2
+    environment:
+      <<: *sentinel-env
+      SENTINEL_NODE: sentinel-2
+    volumes:
+      - *sentinel-entrypoint
+      - *sentinel-template
+      - sentinel-data-2:/data
+
+  sentinel-3:
+    <<: *sentinel-node
+    container_name: sentinel-3
+    hostname: sentinel-3
+    environment:
+      <<: *sentinel-env
+      SENTINEL_NODE: sentinel-3
+    volumes:
+      - *sentinel-entrypoint
+      - *sentinel-template
+      - sentinel-data-3:/data
+
+# Fixed volume names (no project prefix), same reasoning as piece a: the data
+# must be the same whether this file runs standalone or include'd by the root
+# compose. The sentinel volumes are not incidental — they hold each Sentinel's
+# live config, i.e. its memory of the current topology.
+volumes:
+  redis-data-1:
+    name: nus-redis-data-1
+  redis-data-2:
+    name: nus-redis-data-2
+  redis-data-3:
+    name: nus-redis-data-3
+  sentinel-data-1:
+    name: nus-sentinel-data-1
+  sentinel-data-2:
+    name: nus-sentinel-data-2
+  sentinel-data-3:
+    name: nus-sentinel-data-3
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone
