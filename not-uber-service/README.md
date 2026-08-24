@@ -245,9 +245,25 @@ Verify it: [h-bootstrap/README.md](h-bootstrap/README.md) (the marker, the
 row counts, the street graph, and the same week in ClickHouse). Grafana
 should already show a week of trips.
 
-## 9. Next pieces — i ... n
+## 9. Piece i — i-service-cache-updater
 
-Added here as each component lands, in the same shape as pieces a to h:
+```bash
+# settings — the Redis password must match piece b
+cp i-service-cache-updater/.env.example i-service-cache-updater/.env
+
+docker compose up -d --build
+```
+
+This is the first piece that proves a loop rather than a component: change a
+row in PostgreSQL, and it appears in Redis a moment later without anything
+else being told.
+
+Verify it: [i-service-cache-updater/README.md](i-service-cache-updater/README.md)
+(consumer lag, and a `psql` update showing up under `redis-cli get`).
+
+## 10. Next pieces — j ... n
+
+Added here as each component lands, in the same shape as pieces a to i:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

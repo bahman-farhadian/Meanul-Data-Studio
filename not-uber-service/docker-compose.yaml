@@ -37,7 +37,8 @@ include:
     env_file: g-infra-superset/.env
   - path: h-bootstrap/docker-compose.yaml
     env_file: h-bootstrap/.env
-  # - path: i-service-cache-updater/docker-compose.yaml
+  - path: i-service-cache-updater/docker-compose.yaml
+    env_file: i-service-cache-updater/.env
   # - path: j-service-driver/docker-compose.yaml
   # - path: k-service-passenger/docker-compose.yaml
   # - path: l-service-dispatch/docker-compose.yaml
