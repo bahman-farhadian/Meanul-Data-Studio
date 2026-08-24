@@ -1,0 +1,103 @@
+# d-infra-debezium — change data capture from PostgreSQL into Kafka.
+#
+# Debezium reads PostgreSQL's write-ahead log (the WAL, the journal the
+# database writes before it changes anything) and turns every insert, update
+# and delete into a Kafka message on a cdc.<table> topic. Nothing polls the
+# database, and nothing has to be added to the application code.
+#
+# i-service-cache-updater consumes those topics and applies the changes to
+# Redis. That is the loop that keeps the cache honest.
+#
+# ORDER MATTERS: bring this service up here, but register the connector only
+# AFTER h-bootstrap has created the tables. The connector names the tables it
+# follows, so registering it against an empty database would fail.
+#
+# Standalone test:
+#   docker network create nus-backbone
+#   cp .env.example .env                  (+ edit the password)
+#   docker compose up -d --build
+#   docker compose run --rm connector-register   (once the tables exist)
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: d-infra-debezium
+
+services:
+  debezium-connect:
+    build:
+      context: .
+      args:
+        CONNECT_IMAGE: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.1}
+        AVRO_CONVERTER_VERSION: ${AVRO_CONVERTER_VERSION:-8.0.0}
+    image: nus/debezium-connect:3.1
+    container_name: debezium-connect
+    hostname: debezium-connect
+    restart: unless-stopped
+    cpus: 0.4
+    mem_limit: 2g
+    memswap_limit: 2g
+    environment:
+      TZ: ${TZ:-UTC}
+      BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      GROUP_ID: nus-connect
+      # Connect keeps its own state in Kafka: which connectors exist, how far
+      # each one has read, and whether they are running. Three copies each,
+      # so a broker can be lost without losing the read position.
+      CONFIG_STORAGE_TOPIC: connect_configs
+      OFFSET_STORAGE_TOPIC: connect_offsets
+      STATUS_STORAGE_TOPIC: connect_statuses
+      CONFIG_STORAGE_REPLICATION_FACTOR: "3"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "3"
+      STATUS_STORAGE_REPLICATION_FACTOR: "3"
+      # Same encoding as every other topic in the stack: binary Avro, with
+      # the schema kept in the Schema Registry.
+      KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
+      VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    networks:
+      - backbone
+
+  # One-shot: hand the connector definition to Connect.
+  #
+  # It sends a PUT, which creates the connector the first time and updates it
+  # on every later run, so re-running after a config change is the normal way
+  # to apply it. The database password is injected here and never written
+  # into the committed JSON.
+  connector-register:
+    image: ${PYTHON_IMAGE:-python:3.13-slim}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 256m
+    memswap_limit: 256m
+    entrypoint: ["python", "/register.py"]
+    environment:
+      TZ: ${TZ:-UTC}
+      CONNECT_URL: http://debezium-connect:8083
+      CONNECTOR_FILE: /nus-pg.json
+      PG_HOST: ${CDC_PG_HOST:-lb-a}
+      PG_PORT: ${CDC_PG_PORT:-5432}
+      PG_DATABASE: ${CDC_PG_DATABASE:-postgres}
+      PG_USER: ${CDC_PG_USER:-postgres}
+      PG_PASSWORD: ${CDC_PG_PASSWORD:?set it in d-infra-debezium/.env}
+    volumes:
+      - ./connectors/register.py:/register.py:ro
+      - ./connectors/nus-pg.json:/nus-pg.json:ro
+    networks:
+      - backbone
+
+# No volumes: Connect keeps everything it needs in Kafka topics, so the
+# container itself holds nothing worth saving.
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

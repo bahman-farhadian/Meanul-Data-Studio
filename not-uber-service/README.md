@@ -117,9 +117,36 @@ partition, and how to read a binary Avro topic as JSON).
 `docker compose run --rm kafka-topics-init` again. Existing topics are left
 untouched.
 
-## 4. Next pieces — d ... n
+## 4. Piece d — d-infra-debezium
 
-Added here as each component lands, in the same shape as pieces a to c:
+```bash
+# settings — the password must match PG_SUPERUSER_PASSWORD from piece a
+cp d-infra-debezium/.env.example d-infra-debezium/.env
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
+```
+
+**Do not register the connector yet.** It names the tables it follows, so
+those tables must exist first. The registration one-shot belongs to piece h,
+right after `h-bootstrap` has finished:
+
+```bash
+# LATER, after h-bootstrap has created and seeded the tables
+docker compose run --rm connector-register
+```
+
+Verify it: [d-infra-debezium/README.md](d-infra-debezium/README.md)
+(connector status, the `cdc.*` topics, a change travelling from a `psql`
+update to the topic, and the replication-slot health check).
+
+**Watch the replication slot.** While the slot exists, PostgreSQL keeps
+every journal file Debezium has not read. If this component is removed for
+good, drop the slot as well — the teardown section of its README shows how.
+
+## 5. Next pieces — e ... n
+
+Added here as each component lands, in the same shape as pieces a to d:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

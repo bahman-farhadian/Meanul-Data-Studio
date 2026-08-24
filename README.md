@@ -628,7 +628,7 @@ meanul-data-studio/
     │   └── docker-compose.yaml       # component compose (every component dir has one)
     ├── b-infra-redis/                # nus-cache: 3 data nodes + 3 Sentinels, config templates
     ├── c-infra-kafka/                # KRaft brokers, Schema Registry, topic list, Avro schemas
-    ├── d-infra-debezium/             # Kafka Connect + PostgreSQL CDC connector
+    ├── d-infra-debezium/             # Kafka Connect + Avro converter, PostgreSQL CDC connector
     ├── e-infra-clickhouse/           # cluster + Keeper config, table DDL, clickhouse-cluster-design.md
     ├── f-infra-grafana/              # provisioned dashboards/datasources
     ├── g-infra-superset/             # provisioned datasets/dashboards
