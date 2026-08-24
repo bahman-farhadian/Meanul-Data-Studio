@@ -48,8 +48,8 @@ x-pg-node: &pg-node
   image: nus/patroni-postgres:18.4
   restart: unless-stopped
   cpus: 1.6
-  mem_limit: 7g
-  memswap_limit: 7g
+  mem_limit: 9g
+  memswap_limit: 9g
   depends_on:
     etcd-1:
       condition: service_healthy
