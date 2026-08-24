@@ -214,9 +214,40 @@ correct; an error is not.
 **Re-run `superset-init`** after a Superset version change or a ClickHouse
 password change.
 
-## 8. Next pieces — h ... n
+## 8. Piece h — h-bootstrap
 
-Added here as each component lands, in the same shape as pieces a to g:
+```bash
+# settings — the three passwords must match pieces a, b and e
+cp h-bootstrap/.env.example h-bootstrap/.env
+
+# bring everything up. bootstrap starts last, runs once, and exits.
+docker compose up -d --build
+
+# follow it; the map import is the long quiet part
+docker compose logs -f bootstrap
+```
+
+When it exits with code 0 the stack is prepared and the marker
+`system:bootstrap:done` is set in Redis. Until then every service waits on
+purpose.
+
+**Now register the CDC connector** (piece d waited for these tables):
+
+```bash
+docker compose run --rm connector-register
+```
+
+That starts the change stream. Debezium's first pass reads the seeded rows
+out of the database journal, `cache-updater` applies them, and the cache
+fills itself — no preload step anywhere.
+
+Verify it: [h-bootstrap/README.md](h-bootstrap/README.md) (the marker, the
+row counts, the street graph, and the same week in ClickHouse). Grafana
+should already show a week of trips.
+
+## 9. Next pieces — i ... n
+
+Added here as each component lands, in the same shape as pieces a to h:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

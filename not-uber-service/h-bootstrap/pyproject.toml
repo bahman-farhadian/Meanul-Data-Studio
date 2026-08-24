@@ -1,0 +1,28 @@
+[project]
+name = "bootstrap"
+version = "0.1.0"
+description = "One-shot initializer for the not-uber-service stack"
+requires-python = ">=3.13"
+
+dependencies = [
+    # Everything shared with the other Python components: clients, logging,
+    # lifecycle helpers. See ../z-lib/nus-common.
+    "nus-common",
+    # Believable people, vehicles and phone numbers for the seed data.
+    "faker>=30.0",
+    # Downloading the map extract and its checksum.
+    "requests>=2.32",
+]
+
+[tool.uv.sources]
+# A path, not a version: the shared package lives in this repository. The
+# image is built with not-uber-service/ as its context and keeps the same
+# layout, so this relative path works both here and inside the container.
+nus-common = { path = "../z-lib/nus-common" }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["bootstrap"]
