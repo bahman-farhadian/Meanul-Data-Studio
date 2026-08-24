@@ -1,0 +1,30 @@
+[project]
+name = "nus-common"
+version = "0.1.0"
+description = "Shared building blocks for the not-uber-service Python components"
+requires-python = ">=3.13"
+
+# Every client the stack talks to, in one place. A service depends on this
+# package and gets a matching set of drivers, so two services can never end
+# up on different versions of the same client by accident.
+dependencies = [
+    # PostgreSQL. The binary build saves every image from compiling libpq.
+    "psycopg[binary,pool]>=3.2",
+    # Redis, with Sentinel support built in.
+    "redis>=5.2",
+    # Kafka, plus what its Avro support needs.
+    "confluent-kafka>=2.6",
+    "fastavro>=1.9",
+    "requests>=2.32",
+    # ClickHouse.
+    "clickhouse-connect>=0.8",
+    # Reading the pacing and simulation config files.
+    "pyyaml>=6.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nus_common"]

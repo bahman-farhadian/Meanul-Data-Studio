@@ -642,8 +642,10 @@ meanul-data-studio/
     ├── l-service-dispatch/
     ├── m-service-city/
     ├── n-service-clickhouse-sink/
-    └── z-config/                     # stack-level config (sorts last on purpose)
-        └── haproxy/                  # lb-a / lb-b config
+    ├── z-config/                     # stack-level config (sorts last on purpose)
+    │   └── haproxy/                  # lb-a / lb-b config
+    └── z-lib/                        # shared Python code (sorts last for the same reason)
+        └── nus-common/               # clients, logging, lifecycle used by h- and every service
 ```
 
 **Toolchain:** every Python component (`h-bootstrap` and the six
@@ -651,8 +653,12 @@ meanul-data-studio/
 long-support release) with **[uv](https://docs.astral.sh/uv/)** as the
 dependency manager — each component carries its own `pyproject.toml` +
 `uv.lock` and a multi-stage Dockerfile (`uv sync` in the build stage, slim
-runtime stage; no venv ever touches the host). The HAProxy pair is
-stack-wide, so its two services are defined in the root
+runtime stage; no venv ever touches the host). What all seven have in
+common — reading settings, JSON logging, clean shutdown, and the clients for
+PostgreSQL, Redis, Kafka and ClickHouse — lives once in `z-lib/nus-common`
+and is pulled in as a path dependency; their build context is
+`not-uber-service/` so the image holds the same layout as the repository.
+The HAProxy pair is stack-wide, so its two services are defined in the root
 `docker-compose.yaml` with their config under `z-config/haproxy/`
 (`z-config/` sorts last and collects stack-level config files; the
 ClickHouse and UI routes are enabled there as those components land). The
