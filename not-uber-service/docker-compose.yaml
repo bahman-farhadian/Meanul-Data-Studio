@@ -39,7 +39,8 @@ include:
     env_file: h-bootstrap/.env
   - path: i-service-cache-updater/docker-compose.yaml
     env_file: i-service-cache-updater/.env
-  # - path: j-service-driver/docker-compose.yaml
+  - path: j-service-driver/docker-compose.yaml
+    env_file: j-service-driver/.env
   # - path: k-service-passenger/docker-compose.yaml
   # - path: l-service-dispatch/docker-compose.yaml
   # - path: m-service-city/docker-compose.yaml

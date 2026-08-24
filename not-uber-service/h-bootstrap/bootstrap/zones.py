@@ -1,13 +1,12 @@
-"""Dividing the city into zones.
+"""Creating the city zones in the database.
 
-Zones are the unit every demand question is answered in: a hotspot score, a
-surge multiplier, a dashboard row. They are built as a simple grid over the
-city box rather than taken from a real neighbourhood map, for two reasons:
-the grid needs no extra download, and every zone is the same size, which
-makes "this zone is busier than that one" mean what it says.
+The grid arithmetic itself lives in nus_common.citygrid, so that this
+component and the six services all draw exactly the same city. This module
+only writes the result into PostgreSQL.
 """
 
 from nus_common import postgres
+from nus_common.citygrid import CityGrid
 from nus_common.logging import get_logger
 
 from bootstrap.settings import Settings
@@ -15,30 +14,33 @@ from bootstrap.settings import Settings
 log = get_logger(__name__)
 
 
-def zone_id(row: int, col: int) -> str:
-    """The id of one grid cell, for example z-02-05."""
-    return f"z-{row:02d}-{col:02d}"
+def grid_from(settings: Settings) -> CityGrid:
+    """Build the grid from bootstrap's own settings."""
+    return CityGrid(
+        min_lat=settings.min_lat,
+        max_lat=settings.max_lat,
+        min_lon=settings.min_lon,
+        max_lon=settings.max_lon,
+        rows=settings.grid_rows,
+        cols=settings.grid_cols,
+    )
 
 
 def seed(settings: Settings) -> int:
     """Create the zone grid. Existing zones are left alone."""
-    lat_step = (settings.max_lat - settings.min_lat) / settings.grid_rows
-    lon_step = (settings.max_lon - settings.min_lon) / settings.grid_cols
+    grid = grid_from(settings)
 
     rows = []
-    for row in range(settings.grid_rows):
-        for col in range(settings.grid_cols):
-            south = settings.min_lat + row * lat_step
-            north = south + lat_step
-            west = settings.min_lon + col * lon_step
-            east = west + lon_step
-            rows.append(
-                {
-                    "zone_id": zone_id(row, col),
-                    "name": f"Zone {row + 1}-{col + 1}",
-                    "west": west, "south": south, "east": east, "north": north,
-                }
-            )
+    for zone_id in grid.all_zone_ids():
+        south, west, north, east = grid.bounds_of(zone_id)
+        _, row_text, col_text = zone_id.split("-")
+        rows.append(
+            {
+                "zone_id": zone_id,
+                "name": f"Zone {int(row_text) + 1}-{int(col_text) + 1}",
+                "west": west, "south": south, "east": east, "north": north,
+            }
+        )
 
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
@@ -64,22 +66,9 @@ def seed(settings: Settings) -> int:
 
 def all_zone_ids(settings: Settings) -> list[str]:
     """Every zone id, without going back to the database."""
-    return [
-        zone_id(row, col)
-        for row in range(settings.grid_rows)
-        for col in range(settings.grid_cols)
-    ]
+    return grid_from(settings).all_zone_ids()
 
 
-def random_point_in_zone(settings: Settings, zid: str, rng) -> tuple[float, float]:
+def random_point_in_zone(settings: Settings, zone_id: str, rng) -> tuple[float, float]:
     """A random latitude and longitude inside one zone."""
-    _, row_text, col_text = zid.split("-")
-    row, col = int(row_text), int(col_text)
-    lat_step = (settings.max_lat - settings.min_lat) / settings.grid_rows
-    lon_step = (settings.max_lon - settings.min_lon) / settings.grid_cols
-    south = settings.min_lat + row * lat_step
-    west = settings.min_lon + col * lon_step
-    return (
-        rng.uniform(south, south + lat_step),
-        rng.uniform(west, west + lon_step),
-    )
+    return grid_from(settings).random_point_in(zone_id, rng)
