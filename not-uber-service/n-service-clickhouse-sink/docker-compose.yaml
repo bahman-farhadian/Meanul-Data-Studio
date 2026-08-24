@@ -1,0 +1,70 @@
+# n-service-clickhouse-sink — every event into the analytics database.
+#
+# The last step of the pipeline, and the only writer ClickHouse has while the
+# stack runs. It reads every topic, adds the context Kafka does not carry
+# (how busy the pickup zone was, and how far the real duration drifted from
+# the predicted one), and inserts in batches.
+#
+# Built last on purpose: it is the piece that needs data from every other
+# service to be worth running.
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: n-service-clickhouse-sink
+
+services:
+  clickhouse-sink:
+    build:
+      context: ..
+      dockerfile: n-service-clickhouse-sink/Dockerfile
+    image: nus/clickhouse-sink:0.1.0
+    container_name: clickhouse-sink
+    restart: unless-stopped
+    cpus: 0.15
+    mem_limit: 768m
+    memswap_limit: 768m
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+      redis-1:
+        condition: service_healthy
+      sentinel-1:
+        condition: service_healthy
+      ch-s1r1:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-clickhouse-sink}
+
+      REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
+      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
+
+      # ClickHouse through the entry tier, so inserts are spread over
+      # whichever nodes are healthy.
+      CH_HOST: ${CH_HOST:-lb-a}
+      CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
+      CH_DATABASE: ${CH_DATABASE:-nus}
+      CH_USER: ${CH_USER:-nus}
+      CH_PASSWORD: ${CH_PASSWORD:?must match e-infra-clickhouse/.env}
+
+      # How big a batch gets, and how long it may wait. The time limit is
+      # what keeps dashboards close to live when the city is quiet.
+      SINK_BATCH_ROWS: ${SINK_BATCH_ROWS:-5000}
+      SINK_FLUSH_SECONDS: ${SINK_FLUSH_SECONDS:-5.0}
+      SINK_HOTSPOT_REFRESH_SECONDS: ${SINK_HOTSPOT_REFRESH_SECONDS:-30.0}
+      HOTSPOT_SCORE_THRESHOLD: ${HOTSPOT_SCORE_THRESHOLD:-0.6}
+    networks:
+      - backbone
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

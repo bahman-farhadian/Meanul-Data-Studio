@@ -331,9 +331,44 @@ Verify it: [m-service-city/README.md](m-service-city/README.md) (hotspot
 keys with a lifetime counting down, the `city_hotspots` stream, and
 `segment_traffic` moving away from the seeded baseline).
 
-## 14. Last piece — n
+## 14. Piece n — n-service-clickhouse-sink
 
-Added here in the same shape as pieces a to m:
+```bash
+cp n-service-clickhouse-sink/.env.example n-service-clickhouse-sink/.env
+docker compose up -d --build
+```
+
+The last piece. Every event now lands in ClickHouse, enriched with the
+context Kafka does not carry, and the dashboards move from the seeded week
+to live data.
+
+Verify it: [n-service-clickhouse-sink/README.md](n-service-clickhouse-sink/README.md)
+(row counts rising, the enrichment columns filled in, consumer lag flat).
+
+## The stack is complete
+
+Everything from here is operation rather than assembly:
+
+```bash
+# what is running, and what it is using against its limit
+docker compose ps
+docker stats
+
+# nothing should have been killed for using too much memory
+docker inspect --format '{{.Name}} {{.RestartCount}} {{.State.OOMKilled}}' $(docker compose ps -q)
+
+# every consumer group, and whether it is keeping up
+for group in cache-updater dispatch-service city-service clickhouse-sink \
+             driver-service passenger-service; do
+  docker compose exec kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
+    --bootstrap-server kafka-1:9092 --describe --group "$group"
+done
+```
+
+Then run it for a few hours and watch those three stay flat, as described in
+the main README, section 2.9. If anything falls behind, turn the volume down
+in config — `DRIVER_TICK_SECONDS` and `TRIP_REQUESTS_PER_MINUTE` first — and
+never by removing containers.
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,

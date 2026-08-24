@@ -47,7 +47,8 @@ include:
     env_file: l-service-dispatch/.env
   - path: m-service-city/docker-compose.yaml
     env_file: m-service-city/.env
-  # - path: n-service-clickhouse-sink/docker-compose.yaml
+  - path: n-service-clickhouse-sink/docker-compose.yaml
+    env_file: n-service-clickhouse-sink/.env
 
 services:
   lb-a:
