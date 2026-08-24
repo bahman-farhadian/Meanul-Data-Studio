@@ -1,0 +1,76 @@
+<?xml version="1.0"?>
+<!--
+  The shape of the cluster, identical on all four data nodes.
+
+  Two shards means the data is split in two halves; two replicas per shard
+  means each half is stored twice. A query sent to any node is spread across
+  both shards and collected back by that node.
+
+  {shard} and {replica} come from the macros below and are filled in from the
+  environment, so this file needs no per-node copy.
+-->
+<clickhouse>
+    <listen_host>0.0.0.0</listen_host>
+
+    <!-- Which name this node answers to when the others copy data from it. -->
+    <interserver_http_host from_env="CH_HOSTNAME"/>
+
+    <macros>
+        <shard from_env="CH_SHARD"/>
+        <replica from_env="CH_REPLICA"/>
+        <cluster>nus_cluster</cluster>
+    </macros>
+
+    <remote_servers replace="true">
+        <nus_cluster>
+            <!-- Writes wait for the data to be safely stored, not just
+                 accepted. Slower per insert, but an accepted insert is a
+                 kept insert. -->
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>ch-s1r1</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>ch-s1r2</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+            <shard>
+                <internal_replication>true</internal_replication>
+                <replica>
+                    <host>ch-s2r1</host>
+                    <port>9000</port>
+                </replica>
+                <replica>
+                    <host>ch-s2r2</host>
+                    <port>9000</port>
+                </replica>
+            </shard>
+        </nus_cluster>
+    </remote_servers>
+
+    <!-- Where the nodes go to agree with each other. The tag is still called
+         zookeeper for historical reasons; these are Keeper nodes. -->
+    <zookeeper replace="true">
+        <node>
+            <host>ch-keeper-1</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>ch-keeper-2</host>
+            <port>9181</port>
+        </node>
+        <node>
+            <host>ch-keeper-3</host>
+            <port>9181</port>
+        </node>
+    </zookeeper>
+
+    <!-- Statements written with ON CLUSTER travel through this queue, so one
+         CREATE TABLE reaches all four nodes even if one is briefly down. -->
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+</clickhouse>

@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<!--
+  Memory ceiling for the server process.
+
+  ClickHouse sizes itself generously by default. Inside a container with a
+  hard 8 GB limit and no swap, that ends with the container being killed
+  rather than a query being refused. 6.5 GB leaves room for everything the
+  process does outside this budget (caches, page cache use, connections).
+
+  A query that would cross the line fails with a clear "memory limit
+  exceeded" error, which is a fixable problem; an OOM kill is not.
+-->
+<clickhouse>
+    <!-- 6.5 GiB, well under the 8 GB container limit -->
+    <max_server_memory_usage>6979321856</max_server_memory_usage>
+
+    <!-- Caches, sized small on purpose: this cluster answers dashboards, not
+         thousands of users. -->
+    <mark_cache_size>1073741824</mark_cache_size>
+    <uncompressed_cache_size>1073741824</uncompressed_cache_size>
+
+    <logger>
+        <level>information</level>
+        <console>1</console>
+    </logger>
+</clickhouse>

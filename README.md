@@ -629,7 +629,7 @@ meanul-data-studio/
     ├── b-infra-redis/                # nus-cache: 3 data nodes + 3 Sentinels, config templates
     ├── c-infra-kafka/                # KRaft brokers, Schema Registry, topic list, Avro schemas
     ├── d-infra-debezium/             # Kafka Connect + Avro converter, PostgreSQL CDC connector
-    ├── e-infra-clickhouse/           # cluster + Keeper config, table DDL, clickhouse-cluster-design.md
+    ├── e-infra-clickhouse/           # 2x2 cluster + Keeper config, table DDL, clickhouse-cluster-design.md
     ├── f-infra-grafana/              # provisioned dashboards/datasources
     ├── g-infra-superset/             # provisioned datasets/dashboards
     ├── h-bootstrap/                  # one-shot init service (starts last, then removed)

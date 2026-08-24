@@ -144,9 +144,33 @@ update to the topic, and the replication-slot health check).
 every journal file Debezium has not read. If this component is removed for
 good, drop the slot as well — the teardown section of its README shows how.
 
-## 5. Next pieces — e ... n
+## 5. Piece e — e-infra-clickhouse
 
-Added here as each component lands, in the same shape as pieces a to d:
+```bash
+# settings — EDIT THE PASSWORD
+cp e-infra-clickhouse/.env.example e-infra-clickhouse/.env
+
+# bring everything assembled so far up — ALWAYS via the root compose file
+docker compose up -d --build
+
+# one-shot AFTER the four nodes are healthy: create the tables
+docker compose run --rm ch-ddl-init
+```
+
+This piece also opens the ClickHouse routes on the entry tier: `lb-a` now
+publishes 8123 (HTTP) and 9000 (native), `lb-b` publishes 18123 and 19000.
+
+Verify it: [e-infra-clickhouse/README.md](e-infra-clickhouse/README.md)
+(cluster members, Keeper leader, the tables, replication delay, and a write
+on one node read back through another).
+
+**Adding a table later:** add a numbered file to
+[e-infra-clickhouse/ddl/](e-infra-clickhouse/ddl/) and run
+`docker compose run --rm ch-ddl-init` again.
+
+## 6. Next pieces — f ... n
+
+Added here as each component lands, in the same shape as pieces a to e:
 copy its `.env.example` if it has one, activate its `include:` entry in the
 root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
 containers (if any) with `docker compose run --rm <name>`,
