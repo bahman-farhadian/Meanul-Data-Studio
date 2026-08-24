@@ -1,0 +1,20 @@
+{
+  "type": "record",
+  "name": "TripLifecycle",
+  "namespace": "nus.events",
+  "doc": "One status change of one trip. A trip normally walks requested -> matched -> accepted -> en_route_pickup -> in_progress -> completed, and can end early in one of the three cancel states. Keyed by trip_id, so the whole story of a trip stays in order on one partition.",
+  "fields": [
+    {"name": "trip_id", "type": "string"},
+    {"name": "rider_id", "type": "string"},
+    {"name": "driver_id", "type": ["null", "string"], "default": null, "doc": "Empty until a driver has been matched."},
+    {"name": "status", "type": {"type": "enum", "name": "TripStatus", "symbols": ["requested", "matched", "accepted", "en_route_pickup", "in_progress", "completed", "cancelled_by_passenger", "cancelled_by_driver", "no_driver_found"]}, "doc": "The status the trip has just entered."},
+    {"name": "pickup_zone_id", "type": ["null", "string"], "default": null},
+    {"name": "route_km", "type": ["null", "double"], "default": null, "doc": "Length of the route pgRouting computed at assignment time."},
+    {"name": "predicted_duration_s", "type": ["null", "int"], "default": null, "doc": "How long the route was expected to take, given the traffic factors at that moment."},
+    {"name": "actual_duration_s", "type": ["null", "int"], "default": null, "doc": "How long it really took. Only set when the trip ends."},
+    {"name": "surge_multiplier", "type": ["null", "double"], "default": null, "doc": "Price multiplier taken from the pickup zone's demand score at request time."},
+    {"name": "fare_estimate", "type": ["null", "double"], "default": null, "doc": "Price quoted at assignment."},
+    {"name": "fare_final", "type": ["null", "double"], "default": null, "doc": "Price charged at completion, with the time part recomputed from the real duration."},
+    {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the status change happened. Always UTC."}
+  ]
+}

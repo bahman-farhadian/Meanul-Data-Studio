@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "RiderLocation",
+  "namespace": "nus.events",
+  "doc": "One position report from a passenger's phone during a trip. This is a separate stream from driver_location on purpose: a phone in a pocket reports at a different rate and with different accuracy than a driver's mounted device.",
+  "fields": [
+    {"name": "rider_id", "type": "string", "doc": "The passenger this report is about."},
+    {"name": "trip_id", "type": ["null", "string"], "default": null, "doc": "The trip in progress, or null when the passenger is only browsing."},
+    {"name": "lat", "type": "double", "doc": "Latitude in degrees (WGS84)."},
+    {"name": "lon", "type": "double", "doc": "Longitude in degrees (WGS84)."},
+    {"name": "accuracy_m", "type": ["null", "float"], "default": null, "doc": "How far off the position may be, in metres, as reported by the phone."},
+    {"name": "zone_id", "type": ["null", "string"], "default": null, "doc": "City zone the position falls into."},
+    {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the phone produced the report. Always UTC."}
+  ]
+}

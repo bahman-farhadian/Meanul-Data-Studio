@@ -1,0 +1,17 @@
+{
+  "type": "record",
+  "name": "DriverLocation",
+  "namespace": "nus.events",
+  "doc": "One position report from one driver's device. Sent every few seconds while the driver is online. Keyed by driver_id so that all reports about one driver stay in order.",
+  "fields": [
+    {"name": "driver_id", "type": "string", "doc": "The driver this report is about."},
+    {"name": "trip_id", "type": ["null", "string"], "default": null, "doc": "The trip the driver is working on, or null when the driver is free."},
+    {"name": "status", "type": {"type": "enum", "name": "DriverStatus", "symbols": ["offline", "idle", "en_route_pickup", "on_trip"]}, "doc": "What the driver was doing at the moment of the report."},
+    {"name": "lat", "type": "double", "doc": "Latitude in degrees (WGS84)."},
+    {"name": "lon", "type": "double", "doc": "Longitude in degrees (WGS84)."},
+    {"name": "heading_deg", "type": ["null", "float"], "default": null, "doc": "Direction of travel, 0 to 360 degrees, clockwise from north."},
+    {"name": "speed_kmh", "type": ["null", "float"], "default": null, "doc": "Speed at the moment of the report."},
+    {"name": "zone_id", "type": ["null", "string"], "default": null, "doc": "City zone the position falls into, filled in by the sender to save a lookup later."},
+    {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the device produced the report. Always UTC."}
+  ]
+}

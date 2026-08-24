@@ -1,0 +1,15 @@
+{
+  "type": "record",
+  "name": "CityHotspot",
+  "namespace": "nus.events",
+  "doc": "How busy one city zone is in one part of the day, as computed by city-service from the live streams. Drivers are guided towards high scores, and the same score sets the surge price for trips starting in that zone.",
+  "fields": [
+    {"name": "zone_id", "type": "string", "doc": "The city zone this score is about."},
+    {"name": "period", "type": {"type": "enum", "name": "DayPeriod", "symbols": ["night", "morning", "afternoon", "evening"]}, "doc": "Which six-hour part of the day the score belongs to. The day is split into four."},
+    {"name": "demand_score", "type": "double", "doc": "Demand against supply in this zone, normalised to roughly 0..1. Higher means more riders per free driver."},
+    {"name": "open_requests", "type": "int", "doc": "Ride requests in the zone that had no driver yet when the score was computed."},
+    {"name": "available_drivers", "type": "int", "doc": "Free drivers inside the zone at that moment."},
+    {"name": "surge_multiplier", "type": "double", "doc": "Price multiplier derived from demand_score. 1.0 means normal price."},
+    {"name": "computed_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When city-service computed this score. Always UTC."}
+  ]
+}
