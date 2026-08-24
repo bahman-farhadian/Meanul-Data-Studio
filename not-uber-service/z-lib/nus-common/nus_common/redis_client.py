@@ -44,6 +44,21 @@ def trip_active_key(trip_id: str) -> str:
     return f"trip:{trip_id}:active"
 
 
+def trip_key(trip_id: str) -> str:
+    """The stored trip row, as it is in PostgreSQL. Written by cache-updater.
+
+    Not the same thing as trip_active_key: this is the database record, that
+    one is the live state dispatch keeps while the trip is running.
+    """
+    return f"trip:{trip_id}"
+
+
+def zone_key(zone_id: str) -> str:
+    """One city zone. Written by cache-updater, read by anything that needs
+    the name or the middle of a zone without asking PostgreSQL."""
+    return f"zone:{zone_id}"
+
+
 def hotspot_key(zone_id: str, period: str) -> str:
     """Demand score of one zone in one part of the day.
 

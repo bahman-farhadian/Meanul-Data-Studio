@@ -134,10 +134,26 @@ class AvroTopicConsumer:
     so a crash in the middle of handling it would lose it silently.
     """
 
-    def __init__(self, topics: list[str], group_id: str, from_beginning: bool = True) -> None:
+    def __init__(
+        self,
+        topics: list[str],
+        group_id: str,
+        from_beginning: bool = True,
+        avro_keys: bool = False,
+    ) -> None:
+        """`avro_keys` matters for the cdc.* topics.
+
+        The stack's own producers use a plain text key - a driver id, a trip
+        id. Debezium does not: its key is the row's primary key, encoded as
+        Avro like the value. Reading one with the other's decoder fails, so
+        the consumer has to be told which kind it is about to read.
+        """
         self.topics = topics
         self._deserializer = AvroDeserializer(_registry())
-        self._key_deserializer = StringDeserializer("utf_8")
+        self._key_deserializer = (
+            AvroDeserializer(_registry()) if avro_keys else StringDeserializer("utf_8")
+        )
+        self._avro_keys = avro_keys
         self._consumer = Consumer(
             {
                 "bootstrap.servers": _bootstrap(),
@@ -171,7 +187,7 @@ class AvroTopicConsumer:
                 raise KafkaException(message.error())
 
             topic = message.topic()
-            key = self._key_deserializer(message.key()) if message.key() else None
+            key = self._decode_key(topic, message.key())
 
             raw_value = message.value()
             if raw_value is None:
@@ -181,6 +197,41 @@ class AvroTopicConsumer:
                 value = self._deserializer(raw_value, context)
 
             yield topic, key, value
+
+    def _decode_key(self, topic: str, raw_key: bytes | None):
+        """Turn the message key back into something readable."""
+        if raw_key is None:
+            return None
+        if self._avro_keys:
+            # An Avro decoder needs to know which topic and which half of the
+            # message it is reading; a text decoder does not.
+            return self._key_deserializer(
+                raw_key, SerializationContext(topic, MessageField.KEY)
+            )
+        return self._key_deserializer(raw_key)
+
+    def poll_once(self, timeout: float = 0.0) -> tuple | None:
+        """Read at most one message and return at once.
+
+        For services that both produce and consume: they cannot sit in a
+        blocking read, because they also have their own work to do on every
+        tick of their loop.
+        """
+        message = self._consumer.poll(timeout)
+        if message is None:
+            return None
+        if message.error():
+            if message.error().code() == KafkaError._PARTITION_EOF:
+                return None
+            raise KafkaException(message.error())
+
+        topic = message.topic()
+        key = self._decode_key(topic, message.key())
+        raw_value = message.value()
+        if raw_value is None:
+            return topic, key, None
+        context = SerializationContext(topic, MessageField.VALUE)
+        return topic, key, self._deserializer(raw_value, context)
 
     def commit(self) -> None:
         """Record how far this consumer has got.
