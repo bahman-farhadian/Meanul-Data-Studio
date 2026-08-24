@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!--
+  Limits that apply to whoever runs a query. The login itself is created by
+  the image from CLICKHOUSE_USER / CLICKHOUSE_PASSWORD in the environment -
+  no password is written into this repository.
+-->
+<clickhouse>
+    <profiles>
+        <default>
+            <!-- One query may use at most 4 GB. Well below the server
+                 ceiling, so one heavy dashboard query cannot starve the
+                 inserts arriving from clickhouse-sink. -->
+            <max_memory_usage>4294967296</max_memory_usage>
+
+            <!-- A dashboard query that runs longer than a minute is a
+                 mistake, not a result worth waiting for. -->
+            <max_execution_time>60</max_execution_time>
+
+            <!-- Let ClickHouse use several cores per query, but not all of
+                 them; the node also has inserts to accept. -->
+            <max_threads>4</max_threads>
+
+            <!-- Inserts are made safe by waiting for the replicas, matching
+                 internal_replication in the cluster definition. -->
+            <insert_quorum>2</insert_quorum>
+            <insert_quorum_parallel>1</insert_quorum_parallel>
+            <select_sequential_consistency>0</select_sequential_consistency>
+        </default>
+    </profiles>
+</clickhouse>

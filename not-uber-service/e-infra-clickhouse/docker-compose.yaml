@@ -1,0 +1,223 @@
+# e-infra-clickhouse — the analytics database.
+#
+# Four ClickHouse nodes arranged as 2 shards x 2 replicas, plus a group of
+# three ClickHouse Keeper nodes that let them agree with each other.
+#
+#   shard   = one half of the data
+#   replica = a second copy of that half, on another container
+#
+# So the data is split in two and each half is stored twice: any one node can
+# be lost without losing data or stopping queries. Why not more shards: see
+# clickhouse-cluster-design.md - at 20 CPU cores, four data nodes is what
+# fits with room left for everything that produces the data.
+#
+# Clients (clickhouse-sink, Grafana, Superset) come in through the lb-a/lb-b
+# HAProxy pair on 8123 (HTTP) and 9000 (native).
+#
+# Standalone test:
+#   docker network create nus-backbone
+#   cp .env.example .env                 (+ edit the password)
+#   docker compose up -d
+#   docker compose run --rm ch-ddl-init
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: e-infra-clickhouse
+
+x-keeper-node: &keeper-node
+  image: ${CH_KEEPER_IMAGE:-clickhouse/clickhouse-keeper:25.3}
+  restart: unless-stopped
+  cpus: 0.1
+  mem_limit: 1g
+  memswap_limit: 1g
+  healthcheck:
+    # Keeper answers the four-letter word "ruok" with "imok". bash is used on
+    # purpose: /dev/tcp is a bash feature and there is no curl in the image.
+    test:
+      - CMD
+      - bash
+      - -c
+      - exec 3<>/dev/tcp/localhost/9181 && echo ruok >&3 && head -c 4 <&3 | grep -q imok
+    interval: 15s
+    timeout: 5s
+    retries: 5
+    start_period: 20s
+  networks:
+    - backbone
+
+x-ch-node: &ch-node
+  image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:25.3}
+  restart: unless-stopped
+  cpus: 1.3
+  mem_limit: 8g
+  memswap_limit: 8g
+  depends_on:
+    ch-keeper-1:
+      condition: service_healthy
+    ch-keeper-2:
+      condition: service_healthy
+    ch-keeper-3:
+      condition: service_healthy
+  # ClickHouse opens many files at once; the default container limit is far
+  # too low for a merge-heavy table engine.
+  ulimits:
+    nofile:
+      soft: 262144
+      hard: 262144
+  healthcheck:
+    test:
+      - CMD-SHELL
+      - clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1" >/dev/null || exit 1
+    interval: 15s
+    timeout: 10s
+    retries: 5
+    start_period: 40s
+  networks:
+    - backbone
+
+x-ch-env: &ch-env
+  TZ: ${TZ:-UTC}
+  # The image creates this login on first start, so no password is written
+  # into any file in this repository.
+  CLICKHOUSE_USER: ${CH_USER:-nus}
+  CLICKHOUSE_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
+
+x-ch-config: &ch-config ./config/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+x-ch-users: &ch-users ./config/clickhouse/users.d:/etc/clickhouse-server/users.d:ro
+
+services:
+  ch-keeper-1:
+    <<: *keeper-node
+    container_name: ch-keeper-1
+    hostname: ch-keeper-1
+    environment:
+      TZ: ${TZ:-UTC}
+      KEEPER_SERVER_ID: "1"
+    volumes:
+      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper.xml:ro
+      - keeper-data-1:/var/lib/clickhouse-keeper
+
+  ch-keeper-2:
+    <<: *keeper-node
+    container_name: ch-keeper-2
+    hostname: ch-keeper-2
+    environment:
+      TZ: ${TZ:-UTC}
+      KEEPER_SERVER_ID: "2"
+    volumes:
+      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper.xml:ro
+      - keeper-data-2:/var/lib/clickhouse-keeper
+
+  ch-keeper-3:
+    <<: *keeper-node
+    container_name: ch-keeper-3
+    hostname: ch-keeper-3
+    environment:
+      TZ: ${TZ:-UTC}
+      KEEPER_SERVER_ID: "3"
+    volumes:
+      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper.xml:ro
+      - keeper-data-3:/var/lib/clickhouse-keeper
+
+  # Shard 1, both copies. CH_SHARD and CH_REPLICA fill in the {shard} and
+  # {replica} placeholders used by every table definition, which is what
+  # makes one DDL file work on all four nodes.
+  ch-s1r1:
+    <<: *ch-node
+    container_name: ch-s1r1
+    hostname: ch-s1r1
+    environment:
+      <<: *ch-env
+      CH_HOSTNAME: ch-s1r1
+      CH_SHARD: "1"
+      CH_REPLICA: ch-s1r1
+    volumes:
+      - *ch-config
+      - *ch-users
+      - ch-data-s1r1:/var/lib/clickhouse
+
+  ch-s1r2:
+    <<: *ch-node
+    container_name: ch-s1r2
+    hostname: ch-s1r2
+    environment:
+      <<: *ch-env
+      CH_HOSTNAME: ch-s1r2
+      CH_SHARD: "1"
+      CH_REPLICA: ch-s1r2
+    volumes:
+      - *ch-config
+      - *ch-users
+      - ch-data-s1r2:/var/lib/clickhouse
+
+  # Shard 2, both copies.
+  ch-s2r1:
+    <<: *ch-node
+    container_name: ch-s2r1
+    hostname: ch-s2r1
+    environment:
+      <<: *ch-env
+      CH_HOSTNAME: ch-s2r1
+      CH_SHARD: "2"
+      CH_REPLICA: ch-s2r1
+    volumes:
+      - *ch-config
+      - *ch-users
+      - ch-data-s2r1:/var/lib/clickhouse
+
+  ch-s2r2:
+    <<: *ch-node
+    container_name: ch-s2r2
+    hostname: ch-s2r2
+    environment:
+      <<: *ch-env
+      CH_HOSTNAME: ch-s2r2
+      CH_SHARD: "2"
+      CH_REPLICA: ch-s2r2
+    volumes:
+      - *ch-config
+      - *ch-users
+      - ch-data-s2r2:/var/lib/clickhouse
+
+  # One-shot: create the tables. Run it after the nodes are healthy. Every
+  # statement uses IF NOT EXISTS, so re-running is safe and is how a newly
+  # added DDL file is rolled out.
+  ch-ddl-init:
+    image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:25.3}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 512m
+    memswap_limit: 512m
+    entrypoint: ["/bin/sh", "/apply-ddl.sh"]
+    environment:
+      TZ: ${TZ:-UTC}
+      CH_HOST: ch-s1r1
+      CH_USER: ${CH_USER:-nus}
+      CH_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
+    volumes:
+      - ./ddl:/ddl:ro
+      - ./ddl/apply-ddl.sh:/apply-ddl.sh:ro
+    networks:
+      - backbone
+
+volumes:
+  keeper-data-1:
+    name: nus-ch-keeper-1
+  keeper-data-2:
+    name: nus-ch-keeper-2
+  keeper-data-3:
+    name: nus-ch-keeper-3
+  ch-data-s1r1:
+    name: nus-ch-data-s1r1
+  ch-data-s1r2:
+    name: nus-ch-data-s1r2
+  ch-data-s2r1:
+    name: nus-ch-data-s2r1
+  ch-data-s2r2:
+    name: nus-ch-data-s2r2
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone
