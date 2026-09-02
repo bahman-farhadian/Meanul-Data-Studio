@@ -184,18 +184,53 @@ services:
 volumes:
   etcd-certs:
     name: nus-etcd-certs
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-certs
   etcd-data-1:
     name: nus-etcd-data-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-data-1
   etcd-data-2:
     name: nus-etcd-data-2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-data-2
   etcd-data-3:
     name: nus-etcd-data-3
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-data-3
   pgdata-1:
     name: nus-pgdata-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-pgdata-1
   pgdata-2:
     name: nus-pgdata-2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-pgdata-2
   pgdata-3:
     name: nus-pgdata-3
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-pgdata-3
 
 networks:
   backbone:

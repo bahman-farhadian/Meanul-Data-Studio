@@ -173,16 +173,46 @@ services:
 volumes:
   redis-data-1:
     name: nus-redis-data-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-redis-data-1
   redis-data-2:
     name: nus-redis-data-2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-redis-data-2
   redis-data-3:
     name: nus-redis-data-3
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-redis-data-3
   sentinel-data-1:
     name: nus-sentinel-data-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-sentinel-data-1
   sentinel-data-2:
     name: nus-sentinel-data-2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-sentinel-data-2
   sentinel-data-3:
     name: nus-sentinel-data-3
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-sentinel-data-3
 
 networks:
   backbone:

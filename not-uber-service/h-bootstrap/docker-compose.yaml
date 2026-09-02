@@ -113,6 +113,11 @@ services:
 volumes:
   osm-data:
     name: nus-osm-data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-osm-data
 
 networks:
   backbone:

@@ -55,6 +55,31 @@ component consumes, and are what a **standalone** single-component run uses
 (`docker compose up` inside that directory). They take no part in the full
 stack.
 
+## Where the data lives
+
+The 26 named volumes are bind-mounted to a directory tree under
+`NUS_VOLUME_ROOT`, set in `.env`. That puts the databases, the topics, the
+warehouse and the downloaded street map on whichever disk you choose,
+**without touching the Docker daemon's configuration**.
+
+Images are the exception, and there is no way around it: images, container
+writable layers and the build cache all live under the daemon's `data-root`,
+and no compose setting can move them. So the split is deliberate — images
+stay wherever `data-root` points, and the data volumes go on the fast, large
+disk, which is where the growth and the I/O actually are.
+
+`make init` creates the tree; `make preflight` refuses to deploy if the root
+is missing, unwritable, or short of space.
+
+**The one thing to know:** because these are bind mounts, `docker volume rm`
+and `docker compose down -v` remove the volume *entry* and leave every byte
+on disk. `make destroy` and `make clean` therefore delete the tree
+explicitly — and verify it went, rather than assuming. If files remain
+(containers write as their own users, so root may be needed) they say so and
+exit non-zero, because a leftover tree is picked up by the next bring-up as
+if it were a fresh volume, and a half-initialised PostgreSQL or etcd is far
+worse than none.
+
 ## Before the first deployment
 
 `make preflight` runs on its own before every `make up`, and refuses to
@@ -63,10 +88,8 @@ answers "will this host actually take the stack" before any image is pulled:
 
 - Docker is reachable and the compose plugin is v2+ (v1 cannot do `include:`)
 - the host has the cores and memory the budget assumes
-- **there is room on Docker's data-root** — the images come to roughly 15 GB
-  and ClickHouse then grows 1–2 GB a day. A default `/var/lib/docker` on a
-  small root filesystem is the most common way a first deployment dies
-  halfway. Move Docker's data-root to a large disk before starting.
+- **there is room for the images on Docker's data-root** (~15 GB), and room
+  for the data under `NUS_VOLUME_ROOT`, where ClickHouse grows 1–2 GB a day
 - `.env` exists, holds no `change-me` placeholders, defines every required
   setting, and defines none of them twice
 - all fourteen components resolve from it
@@ -218,8 +241,8 @@ and the coreutils any Linux already has. `make preflight` reports on the
 host; it never changes it.
 
 The only things the project puts on the host are Docker's own objects —
-containers, named volumes, images and one network — plus your `.env`. All of
-it is removable with a single command, below.
+containers, images and one network — the data tree under `NUS_VOLUME_ROOT`,
+and your `.env`. All of it is removable with a single command, below.
 
 ## Teardown
 
@@ -234,11 +257,11 @@ make clean         # LEAVE NO TRACE: all of the above, plus the network and .env
 `make destroy` and `make clean` both ask for confirmation.
 
 `make clean` is the one to run when you are finished with the stack: it
-removes every container, every data volume, every image (including the base
-images the custom ones were built from), the `nus-backbone` network, and
-moves your `.env` aside to `.env.removed` so the passwords are not lost by
-surprise. It also puts `ETCD_INITIAL_CLUSTER_STATE` back to `new`, so the
-next `make up` can bootstrap from empty volumes.
+removes every container, the whole data tree under `NUS_VOLUME_ROOT`, every
+image (including the base images the custom ones were built from), the
+`nus-backbone` network, and moves your `.env` aside to `.env.removed` so the
+passwords are not lost by surprise. It also puts `ETCD_INITIAL_CLUSTER_STATE`
+back to `new`, so the next `make up` can bootstrap from empty volumes.
 
 Afterwards the host is as it was, with one exception it will not touch for
 you: Docker's shared build cache, which is not this project's alone. Clear

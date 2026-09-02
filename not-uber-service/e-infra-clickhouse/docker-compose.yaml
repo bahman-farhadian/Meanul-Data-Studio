@@ -215,18 +215,53 @@ services:
 volumes:
   keeper-data-1:
     name: nus-ch-keeper-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-keeper-1
   keeper-data-2:
     name: nus-ch-keeper-2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-keeper-2
   keeper-data-3:
     name: nus-ch-keeper-3
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-keeper-3
   ch-data-s1r1:
     name: nus-ch-data-s1r1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s1r1
   ch-data-s1r2:
     name: nus-ch-data-s1r2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s1r2
   ch-data-s2r1:
     name: nus-ch-data-s2r1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s2r1
   ch-data-s2r2:
     name: nus-ch-data-s2r2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s2r2
 
 networks:
   backbone:

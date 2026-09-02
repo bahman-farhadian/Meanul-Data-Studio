@@ -103,6 +103,11 @@ volumes:
   # Superset's own database plus anything saved in the browser.
   superset-home:
     name: nus-superset-home
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-superset-home
 
 networks:
   backbone:
