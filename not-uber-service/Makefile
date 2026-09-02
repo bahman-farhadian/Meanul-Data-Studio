@@ -108,7 +108,8 @@ init: ## Create .env from the template and the shared nus-backbone network
 		printf "                or point NUS_VOLUME_ROOT at a path you can write\n"; \
 		exit 1; \
 	else \
-		for v in $$($(COMPOSE) config --volumes 2>/dev/null); do mkdir -p "$$root/nus-$$v"; done; \
+		for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2-); do \
+			mkdir -p "$$d"; done; \
 		made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' | wc -l); \
 		free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
 		printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"; \
@@ -178,6 +179,19 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	docker network inspect $(NETWORK) >/dev/null 2>&1 \
 		&& printf "  $(G)ok$(X)      network $(NETWORK) exists\n" \
 		|| { printf "  $(R)FAIL$(X)    network $(NETWORK) is missing — run 'make init'\n"; fail=1; }; \
+	missing=""; n=0; \
+	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2-); do \
+		n=$$((n+1)); [ -d "$$d" ] || missing="$$missing $$(basename "$$d")"; done; \
+	if [ "$$n" -eq 0 ]; then :; \
+	elif [ -z "$$missing" ]; then \
+		printf "  $(G)ok$(X)      all %s volume directories exist\n" "$$n"; \
+	else \
+		printf "  $(R)FAIL$(X)    volume directories the stack mounts do not exist:\n"; \
+		for m in $$missing; do printf "                %s\n" "$$m"; done; \
+		printf "              Run $(C)make init$(X) — it creates exactly the paths the compose\n"; \
+		printf "              model mounts. A container cannot start without its own.\n"; \
+		fail=1; \
+	fi; \
 	probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 	probe=$${probe:-busybox:1.38.0}; \
 	docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
