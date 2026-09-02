@@ -83,8 +83,15 @@ x-ch-env: &ch-env
   CLICKHOUSE_USER: ${CH_USER:-nus}
   CLICKHOUSE_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
 
-x-ch-config: &ch-config ./config/clickhouse/config.d:/etc/clickhouse-server/config.d:ro
-x-ch-users: &ch-users ./config/clickhouse/users.d:/etc/clickhouse-server/users.d:ro
+# Individual files, not the two directories. The image's entrypoint writes
+# its own default-user.xml into users.d to create CLICKHOUSE_USER, and it
+# writes into config.d as well — so mounting either directory read-only
+# stops the node before it starts ("Read-only file system"), and mounting
+# them writable would let a container write into the repository. Mounting
+# the files leaves both directories writable and ours read-only.
+x-ch-config-cluster: &ch-config-cluster ./config/clickhouse/config.d/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
+x-ch-config-memory: &ch-config-memory ./config/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
+x-ch-users: &ch-users ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-server/users.d/profiles.xml:ro
 
 services:
   ch-keeper-1:
@@ -133,7 +140,8 @@ services:
       CH_SHARD: "1"
       CH_REPLICA: ch-s1r1
     volumes:
-      - *ch-config
+      - *ch-config-cluster
+      - *ch-config-memory
       - *ch-users
       - ch-data-s1r1:/var/lib/clickhouse
 
@@ -147,7 +155,8 @@ services:
       CH_SHARD: "1"
       CH_REPLICA: ch-s1r2
     volumes:
-      - *ch-config
+      - *ch-config-cluster
+      - *ch-config-memory
       - *ch-users
       - ch-data-s1r2:/var/lib/clickhouse
 
@@ -162,7 +171,8 @@ services:
       CH_SHARD: "2"
       CH_REPLICA: ch-s2r1
     volumes:
-      - *ch-config
+      - *ch-config-cluster
+      - *ch-config-memory
       - *ch-users
       - ch-data-s2r1:/var/lib/clickhouse
 
@@ -176,7 +186,8 @@ services:
       CH_SHARD: "2"
       CH_REPLICA: ch-s2r2
     volumes:
-      - *ch-config
+      - *ch-config-cluster
+      - *ch-config-memory
       - *ch-users
       - ch-data-s2r2:/var/lib/clickhouse
 
