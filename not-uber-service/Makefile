@@ -178,6 +178,33 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	docker network inspect $(NETWORK) >/dev/null 2>&1 \
 		&& printf "  $(G)ok$(X)      network $(NETWORK) exists\n" \
 		|| { printf "  $(R)FAIL$(X)    network $(NETWORK) is missing — run 'make init'\n"; fail=1; }; \
+	probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	probe=$${probe:-busybox:1.38.0}; \
+	docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
+	if ! docker image inspect "$$probe" >/dev/null 2>&1; then \
+		printf "  $(Y)warn$(X)    could not fetch %s, so container networking was not checked\n" "$$probe"; \
+	elif docker run --rm "$$probe" sh -c 'nslookup deb.debian.org >/dev/null 2>&1' >/dev/null 2>&1; then \
+		if docker run --rm "$$probe" sh -c 'wget -q -T5 -O- http://deb.debian.org/ >/dev/null 2>&1' >/dev/null 2>&1; then \
+			printf "  $(G)ok$(X)      containers can resolve DNS and reach the internet\n"; \
+		else \
+			printf "  $(R)FAIL$(X)    containers resolve DNS but cannot reach the internet.\n"; \
+			printf "              Image pulls still work (the daemon uses the host's stack), but every\n"; \
+			printf "              image built here installs packages, and that runs inside a container.\n"; \
+			printf "              Usual causes: the iptables FORWARD policy drops traffic, or an MTU\n"; \
+			printf "              mismatch. Check:  iptables -S FORWARD | head\n"; \
+			fail=1; \
+		fi; \
+	else \
+		printf "  $(R)FAIL$(X)    containers cannot resolve DNS, so no image can be built.\n"; \
+		printf "              Image pulls still work (the daemon uses the host's stack), so this\n"; \
+		printf "              looks fine until the first build. Usual causes:\n"; \
+		printf "                net.ipv4.ip_forward is 0   -> sysctl -w net.ipv4.ip_forward=1\n"; \
+		printf "                iptables FORWARD drops     -> iptables -S FORWARD | head\n"; \
+		printf "                no resolver in the container -> add \"dns\" to /etc/docker/daemon.json\n"; \
+		printf "              Reproduce it directly:\n"; \
+		printf "                $(C)docker run --rm %s nslookup deb.debian.org$(X)\n" "$$probe"; \
+		fail=1; \
+	fi; \
 	$(COMPOSE) config -q 2>/dev/null \
 		&& printf "  $(G)ok$(X)      all 14 components resolve from $(ENV_FILE)\n" \
 		|| { printf "  $(R)FAIL$(X)    the compose model does not resolve:\n"; $(COMPOSE) config -q 2>&1 | sed 's/^/              /'; fail=1; }; \
