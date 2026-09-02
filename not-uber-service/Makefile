@@ -97,11 +97,21 @@ init: ## Create .env from the template and the shared nus-backbone network
 		printf "  $(G)created$(X) network $(NETWORK)\n"; \
 	fi
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
-	if [ -n "$$root" ]; then \
-		mkdir -p "$$root"; \
-		for v in $$($(COMPOSE) config --volumes 2>/dev/null); do mkdir -p "$$root/nus-$$v" 2>/dev/null || true; done; \
-		made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d | wc -l); \
-		printf "  $(G)ok$(X)      %s data directories under %s\n" "$$made" "$$root"; \
+	if [ -z "$$root" ]; then \
+		printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT is not set in $(ENV_FILE)\n"; exit 1; \
+	elif ! mkdir -p "$$root" 2>/dev/null; then \
+		printf "  $(R)FAIL$(X)    cannot create %s\n" "$$root"; \
+		printf "              This is where all 26 data volumes live, set as NUS_VOLUME_ROOT\n"; \
+		printf "              in $(ENV_FILE). Either the parent directory does not exist, or\n"; \
+		printf "              you do not have permission to write there. Fix one of:\n"; \
+		printf "                $(C)sudo mkdir -p %s && sudo chown $$(id -un) %s$(X)\n" "$$root" "$$root"; \
+		printf "                or point NUS_VOLUME_ROOT at a path you can write\n"; \
+		exit 1; \
+	else \
+		for v in $$($(COMPOSE) config --volumes 2>/dev/null); do mkdir -p "$$root/nus-$$v"; done; \
+		made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' | wc -l); \
+		free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
+		printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"; \
 	fi
 	@printf "\n  Now edit $(B)$(ENV_FILE)$(X) — section 1 holds every password.\n"
 	@printf "  Then: $(C)make preflight$(X), and $(C)make up$(X).\n\n"
