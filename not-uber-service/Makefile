@@ -261,8 +261,8 @@ config: ## Print the fully merged compose model (what Docker actually sees)
 
 .PHONY: up
 up: preflight ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
+	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory certgen
-	@$(MAKE) --no-print-directory kafka-dirs
 	$(call say,Starting the infrastructure — pieces a to g)
 	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA)
 	$(call ok,all infrastructure healthy)
@@ -316,8 +316,13 @@ certgen: ## Generate the etcd TLS material (skips itself once the certs exist)
 	$(call say,etcd TLS certificates)
 	@$(COMPOSE) run --rm etcd-certgen
 
+.PHONY: volume-perms
+volume-perms: ## Hand each data directory to the user that writes to it (BEFORE first start)
+	$(call say,Data directory ownership)
+	@$(COMPOSE) run --rm volume-perms
+
 .PHONY: kafka-dirs
-kafka-dirs: ## Hand the Kafka volumes to the user inside the image (BEFORE first start)
+kafka-dirs: ## Hand the Kafka volumes to the user inside the image (covered by volume-perms)
 	$(call say,Kafka data directory ownership)
 	@$(COMPOSE) run --rm kafka-dirs
 
