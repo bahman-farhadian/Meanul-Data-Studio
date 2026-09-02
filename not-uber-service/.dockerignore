@@ -28,9 +28,6 @@
 **/*.osm
 **/*.osm.pbf
 
-# The superseded first-draft generator, kept only as a reference.
-sketch/
-
 # Version control and editor state.
 .git/
 .gitignore
