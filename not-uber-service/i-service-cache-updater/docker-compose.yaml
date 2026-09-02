@@ -40,7 +40,7 @@ services:
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
-      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-cache-updater}
+      KAFKA_GROUP_ID: ${CACHE_UPDATER_GROUP_ID:-cache-updater}
       # A pattern, so a table added to CDC later needs no change here.
       CDC_TOPIC_PATTERN: ${CDC_TOPIC_PATTERN:-^cdc\..*}
 

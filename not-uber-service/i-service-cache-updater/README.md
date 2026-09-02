@@ -68,7 +68,7 @@ removed.
 | --- | --- | --- |
 | `KAFKA_BOOTSTRAP` | the three brokers | Where Kafka is. |
 | `SCHEMA_REGISTRY_URL` | `http://schema-registry:8081` | Where the message schemas are explained. |
-| `KAFKA_GROUP_ID` | `cache-updater` | The consumer group; changing it re-reads from the start. |
+| `CACHE_UPDATER_GROUP_ID` | `cache-updater` | The consumer group; changing it re-reads from the start. Each service has its own variable so a single master `.env` cannot give two of them the same group. |
 | `CDC_TOPIC_PATTERN` | `^cdc\..*` | Which topics to follow. |
 | `REDIS_*` | Sentinel set, `nus-cache` | Where the cache is; the password must match `b-infra-redis/.env`. |
 | `CACHE_BATCH_SIZE` / `CACHE_FLUSH_SECONDS` | `500` / `2.0` | How much is collected before writing and saving position. |

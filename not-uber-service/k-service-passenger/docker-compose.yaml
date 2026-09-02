@@ -45,7 +45,7 @@ services:
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092,kafka-2:9092,kafka-3:9092}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
-      KAFKA_GROUP_ID: ${KAFKA_GROUP_ID:-passenger-service}
+      KAFKA_GROUP_ID: ${PASSENGER_GROUP_ID:-passenger-service}
 
       REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
       REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
