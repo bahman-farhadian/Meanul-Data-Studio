@@ -16,7 +16,12 @@ FROM ${CONNECT_IMAGE}
 
 ARG CONNECT_IMAGE
 ARG AVRO_CONVERTER_VERSION=8.3.1
-ARG AVRO_CONVERTER_URL=https://packages.confluent.io/api/hub/confluentinc/kafka-connect-avro-converter/versions/${AVRO_CONVERTER_VERSION}/confluentinc-kafka-connect-avro-converter-${AVRO_CONVERTER_VERSION}.zip
+# The download host is hub-downloads.confluent.io. packages.confluent.io
+# serves the Confluent Platform packages and answers 404 for this path,
+# at every version — the archive URL here is the one Confluent Hub's own
+# manifest points at:
+#   api.hub.confluent.io/api/plugins/confluentinc/kafka-connect-avro-converter/versions/<v>
+ARG AVRO_CONVERTER_URL=https://hub-downloads.confluent.io/api/plugins/confluentinc/kafka-connect-avro-converter/versions/${AVRO_CONVERTER_VERSION}/confluentinc-kafka-connect-avro-converter-${AVRO_CONVERTER_VERSION}.zip
 
 LABEL org.opencontainers.image.title="nus/debezium-connect" \
       org.opencontainers.image.description="Debezium Kafka Connect with the Confluent Avro converter, for the not-uber-service CDC path" \
