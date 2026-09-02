@@ -621,8 +621,10 @@ meanul-data-studio/
 ├── .gitignore
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
+    ├── Makefile                      # the runbook, executable: make help / init / preflight / up / verify
     ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
-    ├── .env.example                  # template for the untracked .env (stack-wide settings)
+    ├── .env.example                  # template for the untracked .env — the MASTER settings file
+    │                                 #   for the whole stack (every include resolves from it)
     ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
     │   └── docker-compose.yaml       # component compose (every component dir has one)
@@ -700,16 +702,21 @@ Explicit limits are mandatory: the JVM-based components (Kafka, Debezium
 Connect) and ClickHouse will otherwise size themselves against all visible
 host RAM.
 
-The stack is brought up with the root compose file:
+The stack is brought up through the Makefile in `not-uber-service/`:
 
 ```bash
-docker compose up -d
+make up
 ```
 
-The root file defines stack-level services such as `lb-a`/`lb-b` and
-includes each component compose file as that component lands. Each service
-sets `cpus`, `mem_limit`, and `memswap_limit`, with `memswap_limit` equal
-to `mem_limit` so no container can swap.
+which runs the preflight and then every piece in dependency order, with the
+one-shots at the points where they belong. The root compose file defines the
+stack-level services (`lb-a`/`lb-b`) and includes each component compose
+file. Each service sets `cpus`, `mem_limit`, and `memswap_limit`, with
+`memswap_limit` equal to `mem_limit` so no container can swap.
+
+Whether the budget holds is observable rather than hoped for: `make stats`
+shows live usage against each limit, `make oom` reports anything killed for
+memory or restart-looping, and `make lag` reports consumer lag.
 
 Two assumptions keep the budget realistic: generation pacing is configured
 for **moderate volumes** (this is a simulation, not Uber-scale traffic),
