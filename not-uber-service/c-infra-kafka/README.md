@@ -84,9 +84,9 @@ PostgreSQL table (see [`../d-infra-debezium`](../d-infra-debezium)).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `KAFKA_IMAGE` | `apache/kafka:4.0.0` | Broker image, also used by the one-shots. |
-| `SCHEMA_REGISTRY_IMAGE` | `confluentinc/cp-schema-registry:8.0.0` | Schema Registry image. |
-| `BUSYBOX_IMAGE` | `busybox:1.37.0` | Tiny image used by the `kafka-dirs` one-shot. |
+| `KAFKA_IMAGE` | `apache/kafka:4.3.1` | Broker image, also used by the one-shots. |
+| `SCHEMA_REGISTRY_IMAGE` | `confluentinc/cp-schema-registry:8.3.1` | Schema Registry image. |
+| `BUSYBOX_IMAGE` | `busybox:1.38.0` | Tiny image used by the `kafka-dirs` one-shot. |
 | `KAFKA_CLUSTER_ID` | (in `.env.example`) | Identity of the cluster. Same on all brokers, never changed after the first format. |
 | `KAFKA_UID` / `KAFKA_GID` | `1000` / `1000` | The user inside the Kafka image; `kafka-dirs` hands the volumes to it. |
 | `KAFKA_RETENTION_HOURS` | `48` | How long messages are kept. |
@@ -122,7 +122,7 @@ so confirm them once on the first deployment:
 
 ```bash
 # which user the broker runs as - feed the result back into KAFKA_UID/GID
-docker run --rm apache/kafka:4.0.0 id
+docker run --rm apache/kafka:4.3.1 id
 
 # the brokers should log that they formatted storage with the cluster id
 # from .env, and then elect a controller

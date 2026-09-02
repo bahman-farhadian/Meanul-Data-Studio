@@ -28,9 +28,9 @@ services:
     build:
       context: .
       args:
-        CONNECT_IMAGE: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.1}
-        AVRO_CONVERTER_VERSION: ${AVRO_CONVERTER_VERSION:-8.0.0}
-    image: nus/debezium-connect:3.1
+        CONNECT_IMAGE: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.6.2.Final}
+        AVRO_CONVERTER_VERSION: ${AVRO_CONVERTER_VERSION:-8.3.1}
+    image: nus/debezium-connect:${NUS_VERSION:-0.1.0}
     container_name: debezium-connect
     hostname: debezium-connect
     restart: unless-stopped
@@ -73,7 +73,7 @@ services:
   # to apply it. The database password is injected here and never written
   # into the committed JSON.
   connector-register:
-    image: ${PYTHON_IMAGE:-python:3.13-slim}
+    image: ${PYTHON_IMAGE:-python:3.13.15-slim}
     profiles: ["init"]
     cpus: 0.25
     mem_limit: 256m

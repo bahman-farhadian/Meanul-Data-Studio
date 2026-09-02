@@ -24,9 +24,9 @@ services:
     build:
       context: .
       args:
-        GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:11.6.0}
-        CLICKHOUSE_PLUGIN_VERSION: ${GRAFANA_CLICKHOUSE_PLUGIN_VERSION:-4.5.1}
-    image: nus/grafana:11.6.0
+        GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:12.4.10}
+        CLICKHOUSE_PLUGIN_VERSION: ${GRAFANA_CLICKHOUSE_PLUGIN_VERSION:-4.21.2}
+    image: nus/grafana:${NUS_VERSION:-0.1.0}
     container_name: grafana
     hostname: grafana
     restart: unless-stopped

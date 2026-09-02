@@ -93,7 +93,7 @@ reason.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `REDIS_IMAGE` | `redis:8.2` | Pinned image; serves both roles (`redis-sentinel` ships in it). |
+| `REDIS_IMAGE` | `redis:8.10.1` | Pinned image; serves both roles (`redis-sentinel` ships in it). |
 | `REDIS_MASTER_NAME` | `nus-cache` | The name clients ask Sentinel about. |
 | `REDIS_MASTER_HOST` | `redis-1` | Seed primary, cold start only — ignored once the cluster has state. |
 | `REDIS_PASSWORD` | — (required) | `requirepass` + `masterauth` + `sentinel auth-pass`. |

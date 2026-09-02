@@ -67,8 +67,8 @@ aggregate with `sum()` because the hourly summary is filled per node — see
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `GRAFANA_IMAGE` | `grafana/grafana:11.6.0` | Base image. |
-| `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` | `4.5.1` | Plugin version baked into the image. |
+| `GRAFANA_IMAGE` | `grafana/grafana:12.4.10` | Base image. |
+| `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` | `4.21.2` | Plugin version baked into the image. |
 | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | `admin` / — (required) | The Grafana login. |
 | `CH_USER` / `CH_PASSWORD` | `nus` / — (required) | How Grafana logs in to ClickHouse; must match `e-infra-clickhouse/.env`. |
 

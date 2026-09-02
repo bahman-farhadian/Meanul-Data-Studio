@@ -18,7 +18,10 @@ services:
     build:
       context: ..
       dockerfile: n-service-clickhouse-sink/Dockerfile
-    image: nus/clickhouse-sink:0.1.0
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
+    image: nus/clickhouse-sink:${NUS_VERSION:-0.1.0}
     container_name: clickhouse-sink
     restart: unless-stopped
     cpus: 0.15
