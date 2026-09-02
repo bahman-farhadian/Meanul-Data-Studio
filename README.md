@@ -635,9 +635,8 @@ meanul-data-studio/
     ├── f-infra-grafana/              # provisioned ClickHouse datasource + live dashboard
     ├── g-infra-superset/             # Superset + ClickHouse driver, init one-shot
     ├── h-bootstrap/                  # one-shot init service (starts last, runs once, exits)
-    │   ├── migrations/               # SQL schema migrations
-    │   ├── osm/                      # NYC OSM extract download + osm2pgrouting setup
-    │   └── seed/                     # initial drivers/passengers/city_zones data
+    │   ├── bootstrap/                # the stages: migrate, osm, zones, people, history, warehouse
+    │   └── migrations/               # SQL schema migrations, applied once in name order
     ├── i-service-cache-updater/      # cdc.* topics -> Redis, the loop that keeps the cache honest
     ├── j-service-driver/             # one container, many simulated drivers
     ├── k-service-passenger/          # riders asking for trips
