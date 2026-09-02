@@ -20,6 +20,10 @@ name: k-service-passenger
 services:
   passenger-service:
     build:
+      # Builds install packages, which needs egress from the build container.
+      # Set BUILD_NETWORK=host where only the host has a route out (a tunnel
+      # that captures host traffic but not forwarded container traffic).
+      network: ${BUILD_NETWORK:-default}
       context: ..
       dockerfile: k-service-passenger/Dockerfile
       args:

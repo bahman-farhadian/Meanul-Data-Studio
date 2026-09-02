@@ -22,6 +22,10 @@ name: g-infra-superset
 
 x-superset-build: &superset-build
   context: .
+  # Builds install packages, which needs egress from the build container.
+  # Set BUILD_NETWORK=host where only the host has a route out (a tunnel
+  # that captures host traffic but not forwarded container traffic).
+  network: ${BUILD_NETWORK:-default}
   args:
     SUPERSET_IMAGE: ${SUPERSET_IMAGE:-apache/superset:6.1.0}
     CLICKHOUSE_CONNECT_VERSION: ${CLICKHOUSE_CONNECT_VERSION:-1.7.2}

@@ -47,6 +47,55 @@ include:
   - path: n-service-clickhouse-sink/docker-compose.yaml
 
 services:
+  # One-shot: give each data directory to the user that will write to it.
+  #
+  # The volumes are bind mounts under NUS_VOLUME_ROOT, so they take the HOST
+  # directory's ownership — unlike a named volume, which Docker seeds from the
+  # image. `make init` creates the tree as whoever runs it (root, normally),
+  # and a container running as an unprivileged user then cannot write to its
+  # own data directory.
+  #
+  # This runs as root inside the container and hands each directory over. The
+  # uids are the ones the images actually run as; check any of them with:
+  #   docker run --rm --entrypoint sh <image> -c 'id'
+  #
+  # Run it BEFORE the first start, and again after adding a volume. Re-running
+  # is harmless.
+  volume-perms:
+    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    user: "0:0"
+    environment:
+      TZ: ${TZ:-UTC}
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        own() { u="$$1"; shift; for d in "$$@"; do [ -d "/vol/$$d" ] || continue; chown -R "$$u" "/vol/$$d"; done; echo "  $$u  $$*"; }
+        echo "handing the data directories to the users that write to them:"
+        # PostgreSQL, Redis and Sentinel all run as uid 999 in their images.
+        own 999:999 nus-pgdata-1 nus-pgdata-2 nus-pgdata-3 \
+                    nus-redis-data-1 nus-redis-data-2 nus-redis-data-3 \
+                    nus-sentinel-data-1 nus-sentinel-data-2 nus-sentinel-data-3
+        # Kafka's uid is configurable because the image has changed it before.
+        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1 nus-kafka-data-2 nus-kafka-data-3
+        # Grafana runs as 472 with group 0; Superset as 1000.
+        own 472:0 nus-grafana-data
+        own 1000:1000 nus-superset-home
+        # h-bootstrap and the six services all run as the 'nus' user, 10001.
+        own 10001:10001 nus-osm-data
+        # ClickHouse, Keeper and etcd start as root and drop privileges
+        # themselves, so their directories stay root-owned.
+        echo "done"
+    volumes:
+      - ${NUS_VOLUME_ROOT:?set it in .env}:/vol
+    networks:
+      - backbone
+
   lb-a:
     image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
     container_name: lb-a
