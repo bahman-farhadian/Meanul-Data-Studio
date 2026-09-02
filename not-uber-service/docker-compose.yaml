@@ -3,15 +3,25 @@
 # Root compose file. Defines the stack-wide pieces (the lb-a/lb-b HAProxy
 # entry tier) and stitches the components together via `include:` — every
 # component directory ships its own docker-compose.yaml and is testable in
-# isolation. Include entries are uncommented as each component lands.
+# isolation.
 #
-# One-time setup (the shared network all components join):
-#   docker network create nus-backbone
-# Then:
-#   cp .env.example .env                          (root, lb settings)
-#   cp a-infra-postgres/.env.example a-infra-postgres/.env   (+ edit passwords)
-#   docker compose run --rm etcd-certgen          (one-shot, removes itself)
-#   docker compose up -d
+# ONE ENV FILE FOR THE WHOLE STACK. The include entries below deliberately
+# carry no `env_file:`, which makes every component resolve its ${...} from
+# this directory's .env — the master file. So there is exactly one file to
+# edit and one place a value can come from, instead of fifteen that have to
+# be kept in step by hand. Copy .env.example to .env and edit it.
+#
+# The per-component .env.example files remain the reference for what each
+# component consumes, and are what a STANDALONE single-component run uses
+# (`docker compose up` inside that directory). They take no part in the
+# full-stack path.
+#
+# Bring the stack up with the Makefile, which runs the one-shots at the
+# points in the sequence where they belong:
+#   make help          what everything does
+#   make init          .env + the shared nus-backbone network
+#   make preflight     check the host and the settings before touching Docker
+#   make up            the whole ordered first deployment
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
 # Resource limits are declared directly in the component compose files,
@@ -22,33 +32,19 @@ name: not-uber-service
 
 include:
   - path: a-infra-postgres/docker-compose.yaml
-    env_file: a-infra-postgres/.env
   - path: b-infra-redis/docker-compose.yaml
-    env_file: b-infra-redis/.env
   - path: c-infra-kafka/docker-compose.yaml
-    env_file: c-infra-kafka/.env
   - path: d-infra-debezium/docker-compose.yaml
-    env_file: d-infra-debezium/.env
   - path: e-infra-clickhouse/docker-compose.yaml
-    env_file: e-infra-clickhouse/.env
   - path: f-infra-grafana/docker-compose.yaml
-    env_file: f-infra-grafana/.env
   - path: g-infra-superset/docker-compose.yaml
-    env_file: g-infra-superset/.env
   - path: h-bootstrap/docker-compose.yaml
-    env_file: h-bootstrap/.env
   - path: i-service-cache-updater/docker-compose.yaml
-    env_file: i-service-cache-updater/.env
   - path: j-service-driver/docker-compose.yaml
-    env_file: j-service-driver/.env
   - path: k-service-passenger/docker-compose.yaml
-    env_file: k-service-passenger/.env
   - path: l-service-dispatch/docker-compose.yaml
-    env_file: l-service-dispatch/.env
   - path: m-service-city/docker-compose.yaml
-    env_file: m-service-city/.env
   - path: n-service-clickhouse-sink/docker-compose.yaml
-    env_file: n-service-clickhouse-sink/.env
 
 services:
   lb-a:
