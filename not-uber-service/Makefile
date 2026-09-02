@@ -188,10 +188,19 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			printf "  $(G)ok$(X)      containers can resolve DNS and reach the internet\n"; \
 		else \
 			printf "  $(R)FAIL$(X)    containers resolve DNS but cannot reach the internet.\n"; \
-			printf "              Image pulls still work (the daemon uses the host's stack), but every\n"; \
-			printf "              image built here installs packages, and that runs inside a container.\n"; \
-			printf "              Usual causes: the iptables FORWARD policy drops traffic, or an MTU\n"; \
-			printf "              mismatch. Check:  iptables -S FORWARD | head\n"; \
+			printf "              Image pulls still work (the daemon fetches those over the host's\n"; \
+			printf "              own stack), but every image built here installs packages, and that\n"; \
+			printf "              runs inside a container.\n"; \
+			printf "              FIRST, check the host. If it cannot reach them either, this is not\n"; \
+			printf "              a Docker problem at all:\n"; \
+			printf "                $(C)curl -sS -m10 -I http://deb.debian.org/ | head -1$(X)\n"; \
+			printf "              Then read the symptom, which names the fault:\n"; \
+			printf "                'Connection refused'     something is actively rejecting it —\n"; \
+			printf "                                         upstream filtering or a transparent proxy\n"; \
+			printf "                hangs, then times out    MTU mismatch, or a firewall DROP\n"; \
+			printf "                'Network is unreachable' routing, or net.ipv4.ip_forward is 0\n"; \
+			printf "              Reproduce it directly:\n"; \
+			printf "                $(C)docker run --rm %s wget -O- -T8 http://deb.debian.org/$(X)\n" "$$probe"; \
 			fail=1; \
 		fi; \
 	else \
