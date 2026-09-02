@@ -13,7 +13,7 @@ leader is elected — there is no fixed "primary" container), coordinated by
 
 Two clusters live in this component:
 
-- **nus-pg** — Patroni/PostgreSQL, built on the pinned `postgres:18.4`
+- **nus-pg** — Patroni/PostgreSQL, built on the pinned `postgres:18.6`
   image with **PostGIS** and **pgRouting** baked in (the extensions are
   created later by `h-bootstrap`'s migrations) and `wal_level = logical`
   preset for Debezium CDC (`d-infra-debezium`). All timestamps run in
@@ -24,7 +24,7 @@ Two clusters live in this component:
   this cluster — never deploy a second one.
 
 > **Base image note:** `select version();` reports
-> `PostgreSQL 18.4 (Debian 18.4-1.pgdg13+1) ... compiled by gcc (Debian 14.2.0-19)`.
+> `PostgreSQL 18.6 (Debian 18.6-1.pgdg13+1) ... compiled by gcc (Debian 14.2.0-19)`.
 > The `pgdg13` means the package targets **Debian 13 "trixie" — the
 > current stable release**; the `14.2.0` is the **GCC compiler version**,
 > not a Debian release. The image is production-grade.
@@ -116,7 +116,7 @@ Each node exposes Patroni's REST API on port 8008:
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | `etcd-1/2/3` + `pg-1/2/3`, plus `etcd-certgen` behind the `init` profile (run with `docker compose run --rm`); included by the root compose. |
-| `Dockerfile` | `postgres:18.4` + PostGIS + pgRouting + Patroni (own venv). |
+| `Dockerfile` | `postgres:18.6` + PostGIS + pgRouting + Patroni (own venv). |
 | `patroni.yml` | Shared Patroni config (etcd3 TLS endpoints, REST API, DCS settings, initdb, pg_hba, UTC timezone). Per-node values/secrets injected as `PATRONI_*` env vars. |
 | `etcd.env` | Shared etcd cluster settings incl. TLS paths and `ETCD_INITIAL_CLUSTER_STATE` (committed — no secrets). |
 | `certs/gen-certs.sh` | Idempotent 10-year CA/server/client cert generation with SANs. |
@@ -127,9 +127,9 @@ Each node exposes Patroni's REST API on port 8008:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `PG_IMAGE` | `postgres:18.4` | Pinned base image for the node build. |
-| `ETCD_IMAGE` | `quay.io/coreos/etcd:v3.6.12` | etcd image. |
-| `OPENSSL_IMAGE` | `alpine/openssl:3.5.6` | Image used by the cert one-shot. |
+| `PG_IMAGE` | `postgres:18.6` | Pinned base image for the node build. |
+| `ETCD_IMAGE` | `quay.io/coreos/etcd:v3.6.14` | etcd image. |
+| `OPENSSL_IMAGE` | `alpine/openssl:3.5.8` | Image used by the cert one-shot. |
 | `PATRONI_SCOPE` | `nus-pg` | Patroni cluster name. |
 | `PATRONI_REST_USER` / `PATRONI_REST_PASSWORD` | `patroni` / — (required) | REST API credentials for unsafe endpoints. |
 | `PG_SUPERUSER_PASSWORD` | — (required) | `postgres` superuser password. |

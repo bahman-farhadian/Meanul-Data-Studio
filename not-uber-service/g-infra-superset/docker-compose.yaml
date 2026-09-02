@@ -23,8 +23,8 @@ name: g-infra-superset
 x-superset-build: &superset-build
   context: .
   args:
-    SUPERSET_IMAGE: ${SUPERSET_IMAGE:-apache/superset:4.1.1}
-    CLICKHOUSE_CONNECT_VERSION: ${CLICKHOUSE_CONNECT_VERSION:-0.8.15}
+    SUPERSET_IMAGE: ${SUPERSET_IMAGE:-apache/superset:6.1.0}
+    CLICKHOUSE_CONNECT_VERSION: ${CLICKHOUSE_CONNECT_VERSION:-1.7.2}
 
 x-superset-env: &superset-env
   TZ: ${TZ:-UTC}
@@ -44,7 +44,7 @@ x-superset-env: &superset-env
 services:
   superset:
     build: *superset-build
-    image: nus/superset:4.1.1
+    image: nus/superset:${NUS_VERSION:-0.1.0}
     container_name: superset
     hostname: superset
     restart: unless-stopped
@@ -85,7 +85,7 @@ services:
   # first `up`, and again whenever the ClickHouse password changes.
   superset-init:
     build: *superset-build
-    image: nus/superset:4.1.1
+    image: nus/superset:${NUS_VERSION:-0.1.0}
     profiles: ["init"]
     cpus: 0.5
     mem_limit: 2g

@@ -61,8 +61,8 @@ alone.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `SUPERSET_IMAGE` | `apache/superset:4.1.1` | Base image. |
-| `CLICKHOUSE_CONNECT_VERSION` | `0.8.15` | ClickHouse driver installed into the image. |
+| `SUPERSET_IMAGE` | `apache/superset:6.1.0` | Base image. |
+| `CLICKHOUSE_CONNECT_VERSION` | `1.7.2` | ClickHouse driver installed into the image. |
 | `SUPERSET_SECRET_KEY` | — (required) | Signs cookies, encrypts stored passwords. Set once. |
 | `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` / `SUPERSET_ADMIN_EMAIL` | `admin` / — (required) / placeholder | The Superset login. |
 | `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `lb-a` / `8123` / `nus` | Where ClickHouse is, through the entry tier. |
