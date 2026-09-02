@@ -1,394 +1,248 @@
 # not-uber-service — stack runbook
 
-How to bring the full stack up with the root
-[`docker-compose.yaml`](docker-compose.yaml), piece by piece, in the
-alphabetic build order (`a-` ... `n-`). **This file covers assembly order
+How to bring the full stack up on a fresh host. **This file covers assembly
 only** — what each component is and how to verify it lives in that
 component's own README. Architecture: the repository's main
 [README](../README.md).
 
-All commands run from this directory (`not-uber-service/`). These rules
-apply to every piece:
-
-- **One-shot containers** (cert generation and the like) run via
-  `docker compose run --rm <name>` from this directory, against the root
-  compose file — they do their job and remove themselves. Running them
-  against a component's own compose file works too, but the volumes they
-  create get labelled with that component's project name, and every later
-  root `up` warns `volume ... was created for project "a-infra-postgres"`
-  (harmless, but noisy — keep one project scope and it never appears).
-- **Everything else comes up through the root compose file only** —
-  never `up` a component's own compose file when assembling the stack
-  (volumes carry fixed `nus-*` names, so the one-shot output is shared
-  either way).
-- The stack targets a dedicated Docker server with 20 CPU cores and 120 GB
-  RAM. Per-container CPU/memory limits and the no-swap policy are declared
-  directly in the compose files; see the main README, section 2.9.
-
-## 0. One-time groundwork
+Everything runs from this directory, through the [Makefile](Makefile):
 
 ```bash
-# shared network ("nus" = not-uber-service)
-docker network create nus-backbone
-
-# stack-wide settings (lb-a/lb-b entry tier)
-cp .env.example .env
+make            # the help, which is the short version of this file
 ```
 
-## 1. Piece a — a-infra-postgres (+ lb-a/lb-b entry tier)
+## The short version
 
 ```bash
-# settings — EDIT THE PASSWORDS
-cp a-infra-postgres/.env.example a-infra-postgres/.env
-
-# one-shot: generate the nus-etcd TLS certificates (removes itself on exit)
-docker compose run --rm etcd-certgen
-
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
+make init          # create .env and the shared nus-backbone network
+$EDITOR .env       # change every password in section 1
+make pull          # fetch every pinned image (tags do move)
+make up            # preflight, then the whole ordered bring-up
+make etcd-existing # the one post-bootstrap step (local state — never commit)
+make verify        # prove each layer is actually working
 ```
 
-Verify it: [a-infra-postgres/README.md](a-infra-postgres/README.md)
-(etcd health, `patronictl list`, connecting as a DBA, reading the HAProxy
-stats page at <http://localhost:8404/stats>).
+`make up` takes a while, and most of it is one step: `h-bootstrap` downloads
+the New York street map and builds the routing graph out of it. Everything
+else is minutes.
 
-**Post-bootstrap (once, after the first successful start):** flip the etcd
-cluster state from `new` to `existing`:
+## One settings file
+
+Copy `.env.example` to `.env` and edit that one file. The root compose file
+includes all fourteen components **without** an `env_file:`, so every one of
+them resolves its `${...}` from this directory's `.env`. There is one place a
+value can come from, and no set of files to keep in step by hand.
+
+Only **section 1 must be edited** — the passwords. Everything below it works
+as shipped.
+
+Two consequences worth knowing:
+
+- PostgreSQL's password reaches its three consumers under three different
+  names (`PG_SUPERUSER_PASSWORD` creates the account, `PG_PASSWORD` is how
+  the services log in, `CDC_PG_PASSWORD` is how Debezium does). In `.env`
+  the last two are written as `${PG_SUPERUSER_PASSWORD}`, so setting the
+  password once sets all three. This used to be three files that had to
+  agree.
+- The six services' Kafka consumer groups are six separate settings
+  (`DRIVER_GROUP_ID`, `SINK_GROUP_ID`, …) and must stay distinct. Two
+  services sharing a group do not each get a copy of the stream — Kafka
+  splits the partitions between them, so each silently receives a fraction
+  of what it expects.
+
+The per-component `.env.example` files are still the reference for what each
+component consumes, and are what a **standalone** single-component run uses
+(`docker compose up` inside that directory). They take no part in the full
+stack.
+
+## Before the first deployment
+
+`make preflight` runs on its own before every `make up`, and refuses to
+continue if anything below is wrong. Run it early — it costs nothing and it
+answers "will this host actually take the stack" before any image is pulled:
+
+- Docker is reachable and the compose plugin is v2+ (v1 cannot do `include:`)
+- the host has the cores and memory the budget assumes
+- **there is room on Docker's data-root** — the images come to roughly 15 GB
+  and ClickHouse then grows 1–2 GB a day. A default `/var/lib/docker` on a
+  small root filesystem is the most common way a first deployment dies
+  halfway. Move Docker's data-root to a large disk before starting.
+- `.env` exists, holds no `change-me` placeholders, defines every required
+  setting, and defines none of them twice
+- all fourteen components resolve from it
+- every host port the entry tier publishes is free
+- the etcd cluster state matches whether the data volumes already exist
+
+## What `make up` does, in order
+
+The order is not cosmetic. Several steps only work once something else has
+happened, which is the whole reason this is a Makefile and not one
+`docker compose up`:
+
+| Step | Command | Why here |
+| --- | --- | --- |
+| 1 | `make certgen` | etcd needs its TLS material before it starts. |
+| 2 | `make kafka-dirs` | A new volume belongs to root and the broker is not root, so the volumes are handed over **before** the first start. |
+| 3 | `up` pieces a–g | Infrastructure, waited on until every healthcheck passes. |
+| 4 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
+| 5 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
+| 6 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
+| 7 | `make bootstrap` | Migrations, the street map, the people, a week of history, then the `system:bootstrap:done` marker. |
+| 8 | `make cdc-register` | The connector names the tables it follows, so they must exist first. |
+| 9 | `up` pieces i–n | The six services, which were waiting on the marker. |
+
+Each of those is also a target of its own, so a failed run is resumed by
+fixing the cause and running the step again — every one of them is
+idempotent. `make bootstrap` in particular can be re-run as often as needed:
+existing rows are kept, an imported map is not imported twice, and the
+warehouse is not loaded twice.
+
+If `bootstrap` fails, the six services stay in standby **on purpose** rather
+than generating trips for drivers that do not exist. That is the design, not
+a hang.
+
+## The one post-bootstrap step
 
 ```bash
-# set ETCD_INITIAL_CLUSTER_STATE=existing
-vim a-infra-postgres/etcd.env
-
-# re-apply: recreates only the etcd containers; data persists
-docker compose up -d
+make etcd-existing
 ```
 
-This flip is **local operational state — never commit it**; the repository
-keeps `new` so a fresh clone can bootstrap from empty volumes.
+This flips `ETCD_INITIAL_CLUSTER_STATE` from `new` to `existing` in
+[a-infra-postgres/etcd.env](a-infra-postgres/etcd.env) and recreates the
+three etcd containers; the data volumes persist.
 
-Why this flip matters (split-brain protection when a volume is ever lost):
+**Never commit that flip.** A fresh clone has to bootstrap from empty
+volumes, so the repository keeps `new`. On a running cluster, `new` would let
+a member that lost its volume bootstrap its own one-node cluster — split
+brain. Reasoning:
 [a-infra-postgres/README.md](a-infra-postgres/README.md#etcd-cluster-lifecycle--new-vs-existing).
 
-## 2. Piece b — b-infra-redis
+## Verifying it
 
 ```bash
-# settings — EDIT THE PASSWORD
-cp b-infra-redis/.env.example b-infra-redis/.env
-
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
+make verify        # every layer, in order
 ```
 
-No one-shots and no post-bootstrap step here: the Sentinel set elects its
-own primary, and each node materialises its live config on first start.
+or one layer at a time — `verify-pg`, `verify-redis`, `verify-kafka`,
+`verify-cdc`, `verify-ch`, `verify-dash`, `verify-data`. Each prints what a
+healthy answer looks like underneath the output, and each component's own
+README explains the checks in full.
 
-Verify it: [b-infra-redis/README.md](b-infra-redis/README.md) (node roles,
-what Sentinel believes, `ckquorum`, a write/read across the replica).
+Two results that look wrong and are not:
 
-**Know before you edit:** the committed `redis.conf` / `sentinel.conf` are
-templates copied onto each node's volume on first start — Sentinel owns the
-live files after that. Changing a template or `REDIS_PASSWORD` later has no
-effect until those volumes are dropped
-([why](b-infra-redis/README.md#config-file-lifecycle--the-one-thing-to-know)).
+- **Red rows on the HAProxy stats page are expected.** The checks ask Patroni
+  which *role* a node holds, so `pg_write` shows 1 UP (the leader) and
+  `pg_read` shows 2 UP (the replicas). A node down in **both** backends is
+  the only real failure signal.
+- **Empty dashboard panels before bootstrap finishes are fine.** An error is
+  not.
 
-## 3. Piece c — c-infra-kafka
+## Running it
 
 ```bash
-# settings (no secrets here; the cluster id is already filled in)
-cp c-infra-kafka/.env.example c-infra-kafka/.env
-
-# one-shot BEFORE the first start: a new Docker volume belongs to root and
-# the broker does not run as root, so hand the volumes over first
-docker compose run --rm kafka-dirs
-
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
-
-# one-shot AFTER the brokers are healthy: create the topics
-docker compose run --rm kafka-topics-init
+make urls          # where to point a browser or a client
+make ps            # what is running
+make health        # health, restart counts, OOM kills, one line each
+make stats         # live memory and CPU against each container's limit
+make oom           # anything killed for memory, or restart-looping
+make lag           # consumer lag per group — the pipeline's health signal
+make logs SVC=dispatch-service
 ```
 
-Verify it: [c-infra-kafka/README.md](c-infra-kafka/README.md) (broker list,
-controller quorum, `--describe` showing three in-sync replicas per
-partition, and how to read a binary Avro topic as JSON).
+Then let it run for a few hours and watch those stay flat, as described in
+the main README, section 2.9. The three numbers that matter are consumer lag,
+OOM kills, and memory against the limits.
 
-**Adding a topic later:** add its line to
-[c-infra-kafka/topics/topics.tsv](c-infra-kafka/topics/topics.tsv) and run
-`docker compose run --rm kafka-topics-init` again. Existing topics are left
-untouched.
+**If anything falls behind, turn the volume down in `.env` — never by
+removing containers.** `DRIVER_TICK_SECONDS` and `TRIP_REQUESTS_PER_MINUTE`
+are the two dials that matter; dispatch is the slowest step in the pipeline
+because it runs one pgRouting query per trip, so fewer requests is the fix.
 
-## 4. Piece d — d-infra-debezium
+A shell into any of the data stores, through the proxy where there is one:
 
 ```bash
-# settings — the password must match PG_SUPERUSER_PASSWORD from piece a
-cp d-infra-debezium/.env.example d-infra-debezium/.env
-
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
+make psql          # the current leader          make redis-cli
+make psql-read     # the replica pool            make ch-client
+make patronictl ARGS=list
 ```
 
-**Do not register the connector yet.** It names the tables it follows, so
-those tables must exist first. The registration one-shot belongs to piece h,
-right after `h-bootstrap` has finished:
+Failover demos:
 
 ```bash
-# LATER, after h-bootstrap has created and seeded the tables
-docker compose run --rm connector-register
+make failover-pg      # hand the PostgreSQL leadership to another node
+make failover-redis   # ask Sentinel to promote a replica
 ```
 
-Verify it: [d-infra-debezium/README.md](d-infra-debezium/README.md)
-(connector status, the `cdc.*` topics, a change travelling from a `psql`
-update to the topic, and the replication-slot health check).
+## Bringing one piece up at a time
 
-**Watch the replication slot.** While the slot exists, PostgreSQL keeps
-every journal file Debezium has not read. If this component is removed for
-good, drop the slot as well — the teardown section of its README shows how.
-
-## 5. Piece e — e-infra-clickhouse
+The pieces can still be brought up individually, in the alphabetic build
+order, which is how each was written and tested:
 
 ```bash
-# settings — EDIT THE PASSWORD
-cp e-infra-clickhouse/.env.example e-infra-clickhouse/.env
-
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
-
-# one-shot AFTER the four nodes are healthy: create the tables
-docker compose run --rm ch-ddl-init
+make up-a   # PostgreSQL (Patroni) + etcd, behind the entry tier
+make up-b   # Redis + Sentinel
+make up-c   # Kafka + Schema Registry        (then: make topics)
+make up-d   # Debezium Connect               (register the connector after piece h)
+make up-e   # ClickHouse + Keeper            (then: make ch-ddl)
+make up-f   # Grafana
+make up-g   # Superset                       (then: make superset-init)
+make bootstrap
+make cdc-register
+make up-services
 ```
 
-This piece also opens the ClickHouse routes on the entry tier: `lb-a` now
-publishes 8123 (HTTP) and 9000 (native), `lb-b` publishes 18123 and 19000.
+Each waits for its healthchecks before returning, so a piece that does not
+come up stops the sequence where the problem is.
 
-Verify it: [e-infra-clickhouse/README.md](e-infra-clickhouse/README.md)
-(cluster members, Keeper leader, the tables, replication delay, and a write
-on one node read back through another).
+## Adding a component later
 
-**Adding a table later:** add a numbered file to
-[e-infra-clickhouse/ddl/](e-infra-clickhouse/ddl/) and run
-`docker compose run --rm ch-ddl-init` again.
+Write `<letter>-<kind>-<name>/docker-compose.yaml` and its README, add the
+`include:` entry to the root [`docker-compose.yaml`](docker-compose.yaml),
+add its settings to [`.env.example`](.env.example) in a section of their own,
+add its `listen` block to
+[z-config/haproxy/haproxy.cfg](z-config/haproxy/haproxy.cfg) plus the
+`LB_A_*`/`LB_B_*` port lines if it is proxied, add it to the right group
+variable in the [Makefile](Makefile), and update the tables in the main
+[README](../README.md).
 
-## 6. Piece f — f-infra-grafana
+## Nothing runs on the host
 
-```bash
-# settings — EDIT THE PASSWORDS (the ClickHouse one must match piece e)
-cp f-infra-grafana/.env.example f-infra-grafana/.env
+Every part of this project runs in a container. There is no virtualenv, no
+`pip install`, no Python, no Node and no database client to install on the
+host — a Python component's dependencies are installed from its `uv.lock`
+inside its own image, and the shells in `make psql` / `make redis-cli` /
+`make ch-client` are the clients already inside the containers.
 
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
-```
+What the host actually needs is Docker with the compose plugin, GNU make,
+and the coreutils any Linux already has. `make preflight` reports on the
+host; it never changes it.
 
-`lb-a` now publishes Grafana on port 3000, `lb-b` on 13000. Open
-<http://localhost:3000> and log in with `GRAFANA_ADMIN_USER` /
-`GRAFANA_ADMIN_PASSWORD`.
-
-Verify it: [f-infra-grafana/README.md](f-infra-grafana/README.md) (health
-endpoint, the provisioned data source, the loaded dashboard). Until the app
-services run, panels are empty — empty is fine, an error is not.
-
-**Changing the plugin version later** also needs the `nus-grafana-data`
-volume removed, or the old plugin keeps winning.
-
-## 7. Piece g — g-infra-superset
-
-```bash
-# settings — CHANGE EVERY SECRET (the ClickHouse one must match piece e)
-cp g-infra-superset/.env.example g-infra-superset/.env
-
-# bring everything assembled so far up — ALWAYS via the root compose file
-docker compose up -d --build
-
-# one-shot AFTER Superset is healthy: its own tables, the admin user, the
-# roles, and the ClickHouse connection
-docker compose run --rm superset-init
-```
-
-`lb-a` now publishes Superset on port 8088, `lb-b` on 18088. This completes
-the infrastructure block — pieces `a` to `g` are the whole foundation, and
-everything from here on produces or consumes data.
-
-Verify it: [g-infra-superset/README.md](g-infra-superset/README.md) (health
-endpoint, the registered connection, and a query in SQL Lab). No rows yet is
-correct; an error is not.
-
-**Re-run `superset-init`** after a Superset version change or a ClickHouse
-password change.
-
-## 8. Piece h — h-bootstrap
-
-```bash
-# settings — the three passwords must match pieces a, b and e
-cp h-bootstrap/.env.example h-bootstrap/.env
-
-# bring everything up. bootstrap starts last, runs once, and exits.
-docker compose up -d --build
-
-# follow it; the map import is the long quiet part
-docker compose logs -f bootstrap
-```
-
-When it exits with code 0 the stack is prepared and the marker
-`system:bootstrap:done` is set in Redis. Until then every service waits on
-purpose.
-
-**Now register the CDC connector** (piece d waited for these tables):
-
-```bash
-docker compose run --rm connector-register
-```
-
-That starts the change stream. Debezium's first pass reads the seeded rows
-out of the database journal, `cache-updater` applies them, and the cache
-fills itself — no preload step anywhere.
-
-Verify it: [h-bootstrap/README.md](h-bootstrap/README.md) (the marker, the
-row counts, the street graph, and the same week in ClickHouse). Grafana
-should already show a week of trips.
-
-## 9. Piece i — i-service-cache-updater
-
-```bash
-# settings — the Redis password must match piece b
-cp i-service-cache-updater/.env.example i-service-cache-updater/.env
-
-docker compose up -d --build
-```
-
-This is the first piece that proves a loop rather than a component: change a
-row in PostgreSQL, and it appears in Redis a moment later without anything
-else being told.
-
-Verify it: [i-service-cache-updater/README.md](i-service-cache-updater/README.md)
-(consumer lag, and a `psql` update showing up under `redis-cli get`).
-
-## 10. Piece j — j-service-driver
-
-```bash
-# settings — the passwords must match pieces a and b, and the CITY_* values
-# must match h-bootstrap or the two would draw different cities
-cp j-service-driver/.env.example j-service-driver/.env
-
-docker compose up -d --build
-```
-
-Verify it: [j-service-driver/README.md](j-service-driver/README.md)
-(positions arriving on `driver_location`, the free-driver list in Redis, and
-the status spread in PostgreSQL).
-
-**This is the volume dial of the stack.** `DRIVER_TICK_SECONDS` and
-`DRIVER_ONLINE_SHARE` decide how many messages a second everything
-downstream has to handle. Turn these down first if the stack struggles.
-
-## 11. Piece k — k-service-passenger
-
-```bash
-cp k-service-passenger/.env.example k-service-passenger/.env
-docker compose up -d --build
-```
-
-Verify it: [k-service-passenger/README.md](k-service-passenger/README.md)
-(requests on `trip_requests`, rows appearing in `trips`).
-
-Until piece l is running, those rows stay at `requested` — nothing is
-matching them yet. That is expected, and it is exactly what dispatch will
-clear.
-
-## 12. Piece l — l-service-dispatch
-
-```bash
-# the fare settings must match h-bootstrap, so live trips are priced the
-# way the seeded week was
-cp l-service-dispatch/.env.example l-service-dispatch/.env
-
-docker compose up -d --build
-```
-
-With this piece the loop is closed: requests are matched, routed over the
-real street network, priced, and carried through to completion. The rows
-that were stuck at `requested` after piece k start moving.
-
-Verify it: [l-service-dispatch/README.md](l-service-dispatch/README.md)
-(status spread, stored routes and fares, the `trip_lifecycle` stream,
-consumer lag).
-
-**This is the slowest step in the pipeline** — one routing query per trip.
-If anything falls behind under load it will be this, and the fix is fewer
-requests in piece k, not more containers.
-
-## 13. Piece m — m-service-city
-
-```bash
-cp m-service-city/.env.example m-service-city/.env
-docker compose up -d --build
-```
-
-This piece closes the feedback loop: it scores demand per zone, drivers
-drift towards the busy ones, dispatch prices trips there higher, and the
-observed speeds change the routing costs so the best path moves with the
-traffic.
-
-Verify it: [m-service-city/README.md](m-service-city/README.md) (hotspot
-keys with a lifetime counting down, the `city_hotspots` stream, and
-`segment_traffic` moving away from the seeded baseline).
-
-## 14. Piece n — n-service-clickhouse-sink
-
-```bash
-cp n-service-clickhouse-sink/.env.example n-service-clickhouse-sink/.env
-docker compose up -d --build
-```
-
-The last piece. Every event now lands in ClickHouse, enriched with the
-context Kafka does not carry, and the dashboards move from the seeded week
-to live data.
-
-Verify it: [n-service-clickhouse-sink/README.md](n-service-clickhouse-sink/README.md)
-(row counts rising, the enrichment columns filled in, consumer lag flat).
-
-## The stack is complete
-
-Everything from here is operation rather than assembly:
-
-```bash
-# what is running, and what it is using against its limit
-docker compose ps
-docker stats
-
-# nothing should have been killed for using too much memory
-docker inspect --format '{{.Name}} {{.RestartCount}} {{.State.OOMKilled}}' $(docker compose ps -q)
-
-# every consumer group, and whether it is keeping up
-for group in cache-updater dispatch-service city-service clickhouse-sink \
-             driver-service passenger-service; do
-  docker compose exec kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-    --bootstrap-server kafka-1:9092 --describe --group "$group"
-done
-```
-
-Then run it for a few hours and watch those three stay flat, as described in
-the main README, section 2.9. If anything falls behind, turn the volume down
-in config — `DRIVER_TICK_SECONDS` and `TRIP_REQUESTS_PER_MINUTE` first — and
-never by removing containers.
-copy its `.env.example` if it has one, activate its `include:` entry in the
-root [`docker-compose.yaml`](docker-compose.yaml), run its one-shot
-containers (if any) with `docker compose run --rm <name>`,
-add its resource limits to its compose file, run the root `up` from piece
-a, then its post-bootstrap commands (if any) — verification always per the
-component README.
+The only things the project puts on the host are Docker's own objects —
+containers, named volumes, images and one network — plus your `.env`. All of
+it is removable with a single command, below.
 
 ## Teardown
 
 ```bash
-# whole stack, keep data volumes
-docker compose down
-
-# whole stack, destroy data volumes
-docker compose down -v
-
-# only if removing the stack for good
-docker network rm nus-backbone
+make stop          # stop the containers, keep everything
+make down          # remove the containers, KEEP the data volumes
+make destroy       # remove the containers and DESTROY every data volume
+make clean-images  # remove every image it built, pulled, or built FROM
+make clean         # LEAVE NO TRACE: all of the above, plus the network and .env
 ```
 
-After a `-v` teardown, repeat each piece's one-shot and post-bootstrap
-steps on the next bring-up (for piece a: regenerate certs, set
-`ETCD_INITIAL_CLUSTER_STATE` back to `new` first, flip again after).
+`make destroy` and `make clean` both ask for confirmation.
+
+`make clean` is the one to run when you are finished with the stack: it
+removes every container, every data volume, every image (including the base
+images the custom ones were built from), the `nus-backbone` network, and
+moves your `.env` aside to `.env.removed` so the passwords are not lost by
+surprise. It also puts `ETCD_INITIAL_CLUSTER_STATE` back to `new`, so the
+next `make up` can bootstrap from empty volumes.
+
+Afterwards the host is as it was, with one exception it will not touch for
+you: Docker's shared build cache, which is not this project's alone. Clear
+that yourself with `docker builder prune` if you want the disk back.
+
+Both destroy the downloaded street map, so the next bootstrap downloads it
+again.
