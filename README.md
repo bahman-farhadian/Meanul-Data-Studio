@@ -625,7 +625,6 @@ meanul-data-studio/
     ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
     ├── .env.example                  # template for the untracked .env — the MASTER settings file
     │                                 #   for the whole stack (every include resolves from it)
-    ├── sketch/                       # superseded first-draft generator (reference only)
     ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
     │   └── docker-compose.yaml       # component compose (every component dir has one)
     ├── b-infra-redis/                # nus-cache: 3 data nodes + 3 Sentinels, config templates
