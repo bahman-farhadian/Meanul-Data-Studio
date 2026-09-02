@@ -195,10 +195,25 @@ services:
 volumes:
   kafka-data-1:
     name: nus-kafka-data-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-1
   kafka-data-2:
     name: nus-kafka-data-2
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-2
   kafka-data-3:
     name: nus-kafka-data-3
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-3
 
 networks:
   backbone:

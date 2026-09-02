@@ -37,7 +37,7 @@ PIECE_G  := superset
 SERVICES := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink
 INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F) $(PIECE_G)
 
-# Consumer groups, for the lag report. Must match section 15 of .env.example.
+# Consumer groups, for the lag report. Must match the consumer-group section of .env.example.
 GROUPS := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink
 
 # --- output -------------------------------------------------------------------
@@ -96,6 +96,13 @@ init: ## Create .env from the template and the shared nus-backbone network
 		docker network create $(NETWORK) >/dev/null; \
 		printf "  $(G)created$(X) network $(NETWORK)\n"; \
 	fi
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	if [ -n "$$root" ]; then \
+		mkdir -p "$$root"; \
+		for v in $$($(COMPOSE) config --volumes 2>/dev/null); do mkdir -p "$$root/nus-$$v" 2>/dev/null || true; done; \
+		made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d | wc -l); \
+		printf "  $(G)ok$(X)      %s data directories under %s\n" "$$made" "$$root"; \
+	fi
 	@printf "\n  Now edit $(B)$(ENV_FILE)$(X) — section 1 holds every password.\n"
 	@printf "  Then: $(C)make preflight$(X), and $(C)make up$(X).\n\n"
 
@@ -144,6 +151,19 @@ preflight: ## Check the host, Docker and the settings before anything is started
 		dupes=$$(grep -oE '^[A-Z_][A-Z0-9_]*=' $(ENV_FILE) | sort | uniq -d | tr -d '=' | tr '\n' ' '); \
 		[ -z "$$dupes" ] && printf "  $(G)ok$(X)      no setting is defined twice\n" \
 			|| printf "  $(Y)warn$(X)    defined more than once (the last wins): %s\n" "$$dupes"; \
+	fi; \
+	root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	if [ -z "$$root" ]; then printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT is not set in $(ENV_FILE)\n"; fail=1; \
+	elif [ ! -d "$$root" ]; then printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT %s does not exist — run 'make init'\n" "$$root"; fail=1; \
+	elif [ ! -w "$$root" ]; then printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT %s is not writable\n" "$$root"; fail=1; \
+	else \
+		vfree=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
+		vdev=$$(df --output=source "$$root" 2>/dev/null | tail -1); \
+		if [ -n "$$vfree" ] && [ "$$vfree" -ge 200 ]; then \
+			printf "  $(G)ok$(X)      data volumes -> %s (%s GB free on %s)\n" "$$root" "$$vfree" "$$vdev"; \
+		else \
+			printf "  $(Y)warn$(X)    data volumes -> %s, only %s GB free — ClickHouse grows 1-2 GB/day\n" "$$root" "$$vfree"; \
+		fi; \
 	fi; \
 	docker network inspect $(NETWORK) >/dev/null 2>&1 \
 		&& printf "  $(G)ok$(X)      network $(NETWORK) exists\n" \
@@ -495,6 +515,7 @@ destroy: ## Remove the containers AND DESTROY every data volume
 	@printf "and the downloaded street map.$(X)\n"
 	@read -r -p "Type 'destroy' to confirm: " a; [ "$$a" = destroy ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) down -v
+	@$(MAKE) --no-print-directory _rm-data-tree
 	@$(MAKE) --no-print-directory etcd-new
 	@printf "\n  Volumes gone and etcd put back to 'new'. The next 'make up' starts fresh.\n"
 
@@ -502,6 +523,35 @@ destroy: ## Remove the containers AND DESTROY every data volume
 nuke: destroy ## destroy, and remove the shared network too
 	@docker network rm $(NETWORK) 2>/dev/null || true
 	@printf "  Network $(NETWORK) removed.\n"
+
+# The volumes are bind mounts, so `docker compose down -v` removes the volume
+# entries and leaves every byte on disk. Nothing else deletes them, and a
+# leftover tree is picked up by the next bring-up as if it were a fresh
+# volume — a half-initialised PostgreSQL or etcd is far worse than none.
+.PHONY: _rm-data-tree
+_rm-data-tree:
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	if [ -z "$$root" ] || [ ! -d "$$root" ]; then \
+		printf "  $(Y)skipped$(X) no data tree to remove\n"; \
+	else \
+		case "$$root" in /|/root|/home|/usr|/etc|/var|/boot|/data-root) \
+			printf "  $(R)REFUSED$(X) NUS_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
+		before=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
+		find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' -exec rm -rf {} + 2>/dev/null || true; \
+		after=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
+		rmdir "$$root" 2>/dev/null || true; \
+		if [ "$$after" -eq 0 ]; then \
+			printf "  $(G)removed$(X) %s data directories under %s\n" "$$before" "$$root"; \
+		else \
+			printf "  $(R)FAIL$(X)    %s of %s data directories could NOT be removed under %s\n" "$$after" "$$before" "$$root"; \
+			printf "              The containers write as their own users, so these files are\n"; \
+			printf "              not yours to delete. Re-run as root:\n"; \
+			printf "                $(C)sudo make $(MAKECMDGOALS)$(X)\n"; \
+			printf "              $(Y)Until they are gone the next 'make up' will find them and treat\n"; \
+			printf "              them as a fresh volume — a half-initialised cluster.$(X)\n"; \
+			exit 1; \
+		fi; \
+	fi
 
 .PHONY: clean-images
 clean-images: ## Remove every image this stack builds, pulls, or builds FROM
@@ -521,15 +571,16 @@ clean-images: ## Remove every image this stack builds, pulls, or builds FROM
 .PHONY: clean
 clean: ## LEAVE NO TRACE: containers, volumes, images, network and local .env
 	@printf "$(R)$(B)This removes everything this project put on the host:$(X)\n"
-	@printf "  - every container and data volume (databases, cache, topics, warehouse,\n"
-	@printf "    and the downloaded street map)\n"
+	@printf "  - every container, and the whole data tree under NUS_VOLUME_ROOT\n"
+	@printf "    (databases, cache, topics, warehouse, and the downloaded street map)\n"
 	@printf "  - every image it built and pulled\n"
 	@printf "  - the $(NETWORK) network\n"
 	@printf "  - your local .env, and the etcd state goes back to 'new'\n"
 	@printf "\n  The repository itself is untouched, and nothing outside Docker is.\n\n"
 	@read -r -p "Type 'clean' to confirm: " a; [ "$$a" = clean ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) --profile init down -v --remove-orphans 2>/dev/null || true
-	$(call ok,containers and volumes removed)
+	$(call ok,containers and volume entries removed)
+	@$(MAKE) --no-print-directory _rm-data-tree
 	@$(MAKE) --no-print-directory clean-images
 	@docker network rm $(NETWORK) >/dev/null 2>&1 && printf "  $(G)removed$(X) network $(NETWORK)\n" \
 		|| printf "  $(Y)skipped$(X) network $(NETWORK) (already gone, or still in use)\n"
