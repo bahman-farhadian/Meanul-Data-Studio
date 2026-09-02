@@ -1,0 +1,39 @@
+# Build context for h-bootstrap and the six services. Their context is this
+# whole directory, because each image needs the shared package in
+# z-lib/nus-common and the Avro schemas in c-infra-kafka/schemas as well as
+# its own code.
+#
+# The reason this file exists is secrets. Without it every .env in this tree
+# is handed to the Docker daemon on each build, and a build context is not a
+# private thing — it is uploaded whole, and anything in it can end up in an
+# image by a careless COPY. Only the .example templates ever belong here.
+.env
+.env.*
+!.env.example
+*/.env
+*/.env.*
+!*/.env.example
+
+# Host-side Python artefacts. Nothing in an image may come from these: the
+# dependencies are installed in the build stage from uv.lock, and a stray
+# __pycache__ built by another interpreter would be silently shadowing it.
+**/__pycache__/
+**/*.py[cod]
+**/*.egg-info/
+**/.venv/
+**/venv/
+
+# The OSM extract is downloaded onto a volume at run time and is hundreds of
+# megabytes. It must never reach a build context.
+**/*.osm
+**/*.osm.pbf
+
+# The superseded first-draft generator, kept only as a reference.
+sketch/
+
+# Version control and editor state.
+.git/
+.gitignore
+.DS_Store
+.idea/
+.vscode/
