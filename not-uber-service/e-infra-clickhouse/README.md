@@ -107,8 +107,8 @@ being killed instead of a query being refused. A refused query says
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `CH_SERVER_IMAGE` | `clickhouse/clickhouse-server:26.3.28.5` | Data node image, also used by the DDL one-shot. |
-| `CH_KEEPER_IMAGE` | `clickhouse/clickhouse-keeper:26.3.28.5` | Keeper image. |
+| `CH_SERVER_IMAGE` | `clickhouse/clickhouse-server:26.8.2.7` | Data node image, also used by the DDL one-shot. |
+| `CH_KEEPER_IMAGE` | `clickhouse/clickhouse-keeper:26.8.2.7` | Keeper image. |
 | `CH_USER` | `nus` | The login every client uses. |
 | `CH_PASSWORD` | — (required) | Its password. Created by the image on first start. |
 
