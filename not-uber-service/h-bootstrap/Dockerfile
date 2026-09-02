@@ -2,7 +2,7 @@
 #
 # Built in two stages. The first installs the Python dependencies; the second
 # is the image that actually runs, and carries only what is needed at run
-# time. That keeps uv and the build tools out of the final image.
+# time. That keeps uv and the build tooling out of the final image.
 #
 # IMPORTANT: the build context is not-uber-service/, not this directory,
 # because the image needs the shared package in z-lib/ as well. The layout
@@ -11,11 +11,11 @@
 #
 #   docker build -f h-bootstrap/Dockerfile .        <- from not-uber-service/
 
-ARG PYTHON_IMAGE=python:3.13-slim
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.17
+ARG PYTHON_IMAGE=python:3.13.15-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
 
 # uv is copied out of its own published image rather than installed with pip:
-# one binary, one pinned version, no dependency resolution to do first.
+# one binary, one pinned version, and no dependency resolution to do first.
 FROM ${UV_IMAGE} AS uv
 
 # --------------------------------------------------------------------------
@@ -27,7 +27,7 @@ COPY --from=uv /uv /usr/local/bin/uv
 WORKDIR /app/h-bootstrap
 
 # The shared package first: it changes less often than the component, so
-# Docker can reuse this layer on most rebuilds.
+# Docker reuses this layer on most rebuilds.
 COPY z-lib/nus-common /app/z-lib/nus-common
 COPY h-bootstrap/pyproject.toml h-bootstrap/uv.lock /app/h-bootstrap/
 COPY h-bootstrap/bootstrap /app/h-bootstrap/bootstrap
@@ -42,24 +42,46 @@ RUN uv sync --frozen --no-dev
 # --------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE}
 
+ARG PYTHON_IMAGE
+LABEL org.opencontainers.image.title="nus/bootstrap" \
+      org.opencontainers.image.description="One-shot initialiser: migrations, NYC street map, seed data and a week of history" \
+      org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="${PYTHON_IMAGE}"
+
 # The map tools:
 #   osmium-tool     cuts the extract down to the city and converts it
 #   osm2pgrouting   turns the map into the routable graph pgRouting uses
 #   ca-certificates lets the download verify the site it is talking to
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
+ && apt-get install -y --no-install-recommends \
         osmium-tool \
         osm2pgrouting \
         ca-certificates \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/*
 
-# Same paths as the build stage: the virtual environment records where it
+# Same paths as the build stage: a virtual environment records where it
 # lives, so moving it would break it.
 COPY --from=build /app /app
+
+# Run as a normal user, like the six services do. Nothing here needs root.
+#
+# /data/osm is created HERE, owned by that user, because it is a mount point
+# for a named volume: Docker seeds an empty named volume from the image's
+# directory at that path, ownership included. Without this the volume would
+# be created root-owned and the very first thing bootstrap does — write the
+# downloaded map — would fail with a permission error.
+RUN useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
+ && mkdir -p /data/osm \
+ && chown -R nus:nus /app /data
+
 WORKDIR /app/h-bootstrap
 ENV PATH="/app/h-bootstrap/.venv/bin:${PATH}" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+USER nus
 
 # Runs once and exits. A non-zero exit means the stack is not prepared, and
 # the services keep waiting rather than working with half-made data.

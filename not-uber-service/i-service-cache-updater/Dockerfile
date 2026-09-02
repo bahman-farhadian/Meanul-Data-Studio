@@ -1,4 +1,4 @@
-# i-service-cache-updater — Applies PostgreSQL changes to Redis
+# i-service-cache-updater — Applies PostgreSQL CDC changes to Redis, keeping the cache in step with the source of truth
 #
 # Two stages. The first installs the dependencies; the second is what runs,
 # and carries neither uv nor a compiler.
@@ -10,9 +10,11 @@
 #
 #   docker build -f i-service-cache-updater/Dockerfile .     <- from not-uber-service/
 
-ARG PYTHON_IMAGE=python:3.13-slim
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.11.17
+ARG PYTHON_IMAGE=python:3.13.15-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
 
+# uv is copied out of its own published image rather than installed with pip:
+# one binary, one pinned version, and no dependency resolution to do first.
 FROM ${UV_IMAGE} AS uv
 
 # --------------------------------------------------------------------------
@@ -39,6 +41,13 @@ RUN uv sync --frozen --no-dev
 # --------------------------------------------------------------------------
 FROM ${PYTHON_IMAGE}
 
+ARG PYTHON_IMAGE
+LABEL org.opencontainers.image.title="nus/cache-updater" \
+      org.opencontainers.image.description="Applies PostgreSQL CDC changes to Redis, keeping the cache in step with the source of truth" \
+      org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="${PYTHON_IMAGE}"
+
 # Same paths as the build stage: a virtual environment records where it
 # lives, so moving it would break it.
 COPY --from=build /app /app
@@ -50,11 +59,18 @@ COPY c-infra-kafka/schemas /app/schemas
 WORKDIR /app/i-service-cache-updater
 ENV PATH="/app/i-service-cache-updater/.venv/bin:${PATH}" \
     SCHEMA_DIR=/app/schemas \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
 
 # Run as a normal user. Nothing here needs root, and a container that cannot
 # become root is one less thing to worry about.
-RUN useradd --system --uid 10001 --create-home nus && chown -R nus:nus /app
+RUN useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
+ && chown -R nus:nus /app
 USER nus
+
+# Fail the build rather than ship an image whose entrypoint cannot import
+# itself — a broken path or a missed COPY would otherwise only show up as a
+# crash loop after deployment.
+RUN python -c "import cache_updater, nus_common; print('nus/cache-updater imports cleanly')"
 
 CMD ["python", "-m", "cache_updater"]
