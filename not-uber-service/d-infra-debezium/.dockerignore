@@ -1,0 +1,10 @@
+# This component builds with its own directory as the build context. The
+# context is uploaded whole to the Docker daemon, so keep secrets out of it —
+# only the .example template belongs here.
+.env
+.env.*
+!.env.example
+
+**/__pycache__/
+**/*.py[cod]
+.DS_Store
