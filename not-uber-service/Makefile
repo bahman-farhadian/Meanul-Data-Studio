@@ -186,6 +186,13 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	elif docker run --rm "$$probe" sh -c 'nslookup deb.debian.org >/dev/null 2>&1' >/dev/null 2>&1; then \
 		if docker run --rm "$$probe" sh -c 'wget -q -T5 -O- http://deb.debian.org/ >/dev/null 2>&1' >/dev/null 2>&1; then \
 			printf "  $(G)ok$(X)      containers can resolve DNS and reach the internet\n"; \
+		elif [ "$$(grep -E '^BUILD_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)" = host ]; then \
+			printf "  $(Y)warn$(X)    containers cannot reach the internet, but BUILD_NETWORK=host is set,\n"; \
+			printf "              so the image builds will use the host's network and succeed.\n"; \
+			printf "              $(Y)One runtime fetch is still not covered:$(X) h-bootstrap downloads the\n"; \
+			printf "              street map from download.geofabrik.de, in a container. Fetch it on\n"; \
+			printf "              the host first and bootstrap will skip the download:\n"; \
+			printf "                $(C)make osm-fetch$(X)\n"; \
 		else \
 			printf "  $(R)FAIL$(X)    containers resolve DNS but cannot reach the internet.\n"; \
 			printf "              Image pulls still work (the daemon fetches those over the host's\n"; \
@@ -201,6 +208,9 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			printf "                'Network is unreachable' routing, or net.ipv4.ip_forward is 0\n"; \
 			printf "              Reproduce it directly:\n"; \
 			printf "                $(C)docker run --rm %s wget -O- -T8 http://deb.debian.org/$(X)\n" "$$probe"; \
+			printf "              If the host CAN reach them and only containers cannot, its route out\n"; \
+			printf "              captures host traffic but not forwarded traffic (sshuttle and similar).\n"; \
+			printf "              Then set $(C)BUILD_NETWORK=host$(X) in $(ENV_FILE) and re-run.\n"; \
 			fail=1; \
 		fi; \
 	else \
@@ -352,6 +362,26 @@ bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet pa
 	if [ "$$code" = 0 ]; then printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
 	else printf "\n  $(R)FAIL$(X)    bootstrap exited $$code — the services stay in standby on purpose.\n"; \
 	     printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; fi
+
+.PHONY: osm-fetch
+osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
+	$(call say,Fetching the street map on the host)
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	url=$$(grep -E '^OSM_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dest="$$root/nus-osm-data"; file="$$dest/region-latest.osm.pbf"; \
+	mkdir -p "$$dest"; \
+	if [ -s "$$file" ]; then \
+		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
+	else \
+		printf "  from    %s\n  to      %s\n" "$$url" "$$file"; \
+		curl -fL --progress-bar -o "$$file.part" "$$url" || { rm -f "$$file.part"; \
+			printf "  $(R)FAIL$(X)    download failed. This runs on the HOST, so if it cannot reach\n"; \
+			printf "              Geofabrik either, neither will bootstrap.\n"; exit 1; }; \
+		mv "$$file.part" "$$file"; \
+		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
+	fi; \
+	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true; \
+	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip the download\n"
 
 .PHONY: cdc-register
 cdc-register: ## Register the Debezium connector (only AFTER bootstrap made the tables)
