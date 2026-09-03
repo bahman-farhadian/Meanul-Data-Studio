@@ -1,12 +1,12 @@
 {
   "uid": "nus-live",
   "title": "not-uber-service - live",
-  "description": "What the platform is doing right now: trips finishing, position events arriving, where demand is, and how often the route prediction was wrong. Every panel reads the Distributed tables, so it sees both shards.",
+  "description": "What the platform is doing right now: trips finishing, position events arriving, where demand is, and how often the route prediction was wrong. Every panel reads the Distributed tables, so it sees both shards. The hourly summary is filled per node, so every query against it sums first and divides afterwards.",
   "tags": ["not-uber-service", "live"],
   "timezone": "utc",
   "editable": true,
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "refresh": "30s",
   "time": { "from": "now-6h", "to": "now" },
   "panels": [
@@ -15,8 +15,9 @@
       "type": "stat",
       "title": "Trips completed (last hour)",
       "description": "Counted from the hourly summary table, which is filled automatically as trip events arrive.",
-      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 0 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": { "defaults": { "noValue": "0" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
@@ -33,9 +34,9 @@
       "type": "stat",
       "title": "Revenue (last hour)",
       "description": "Final fares of completed trips, surge included.",
-      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 0 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
-      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0 }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "currencyUSD", "decimals": 0, "noValue": "0" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
@@ -48,13 +49,48 @@
       ]
     },
     {
+      "id": 7,
+      "type": "stat",
+      "title": "Nobody available (last hour)",
+      "description": "Share of trips that found no driver at all. This is the number that says the fleet is too small for the hour - the fix is more drivers or fewer requests, not more containers.",
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 1,
+          "noValue": "0",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 10 },
+              { "color": "#d03b3b", "value": 25 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT 100 * countIf(status = 'no_driver_found') / greatest(uniqExact(trip_id), 1) AS pct FROM nus.trip_events WHERE event_time >= now() - INTERVAL 1 HOUR"
+        }
+      ]
+    },
+    {
       "id": 3,
       "type": "stat",
       "title": "Trips slower than predicted (24h)",
       "description": "How often the real trip took longer than the route calculation promised. A number that climbs means the traffic factors are out of date.",
-      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 0 },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 0 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
-      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1 }, "overrides": [] },
+      "fieldConfig": { "defaults": { "unit": "percent", "decimals": 1, "noValue": "0" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
@@ -70,10 +106,10 @@
       "id": 4,
       "type": "stat",
       "title": "Average surge (last hour)",
-      "description": "Surge added up divided by the number of trips. 1.0 means normal price.",
-      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 0 },
+      "description": "Surge added up divided by the number of trips - never an average of averages, because the summary table holds one row per node.",
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 0 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
-      "fieldConfig": { "defaults": { "decimals": 2 }, "overrides": [] },
+      "fieldConfig": { "defaults": { "decimals": 2, "noValue": "1.00" }, "overrides": [] },
       "targets": [
         {
           "refId": "A",
@@ -86,12 +122,64 @@
       ]
     },
     {
+      "id": 8,
+      "type": "stat",
+      "title": "Warehouse is behind by",
+      "description": "How old the newest trip event in ClickHouse is. Green means the pipeline is keeping up. If this climbs without stopping, something between Kafka and the sink has stalled - check 'make lag' before anything else.",
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 300 },
+              { "color": "#d03b3b", "value": 1800 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none", "textMode": "auto" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT dateDiff('second', max(event_time), now()) AS seconds_behind FROM nus.trip_events"
+        }
+      ]
+    },
+    {
       "id": 5,
       "type": "timeseries",
       "title": "Position events per minute",
-      "description": "Driver and rider position reports arriving in ClickHouse. This is the best single sign that the pipeline is alive end to end.",
+      "description": "Driver and rider position reports arriving in ClickHouse. This is the best single sign that the pipeline is alive end to end. The two streams are deliberately separate: a windscreen mount and a phone in a pocket report at different rates.",
       "gridPos": { "h": 9, "w": 12, "x": 0, "y": 5 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 8, "showPoints": "never" },
+          "noValue": "no position events in this range"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "drivers" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "riders" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } }]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
       "targets": [
         {
           "refId": "A",
@@ -114,10 +202,41 @@
     {
       "id": 6,
       "type": "table",
-      "title": "Busiest zones right now",
-      "description": "The newest demand score per zone. This is the same number that sets the surge price for trips starting there.",
+      "title": "Busiest zones",
+      "description": "The newest demand score per zone within the dashboard's time range. This is the same number that sets the surge price for trips starting there. Empty means city-service has published no scores in the range - it is the only writer of these rows.",
       "gridPos": { "h": 9, "w": 12, "x": 12, "y": 5 },
       "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": { "noValue": "no demand scores in this range - is city-service running?" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "demand" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "decimals", "value": 3 },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "#cde2fb", "value": null },
+                    { "color": "#5598e7", "value": 0.3 },
+                    { "color": "#256abf", "value": 0.6 },
+                    { "color": "#0d366b", "value": 0.85 }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "surge" },
+            "properties": [{ "id": "decimals", "value": 2 }]
+          }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "demand", "desc": true }] },
       "targets": [
         {
           "refId": "A",
@@ -125,7 +244,80 @@
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
-          "rawSql": "SELECT zone_id, argMax(demand_score, computed_at) AS demand, argMax(open_requests, computed_at) AS waiting_riders, argMax(available_drivers, computed_at) AS free_drivers, argMax(surge_multiplier, computed_at) AS surge FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 1 HOUR GROUP BY zone_id ORDER BY demand DESC LIMIT 10"
+          "rawSql": "SELECT zone_id, argMax(demand_score, computed_at) AS demand, argMax(open_requests, computed_at) AS waiting_riders, argMax(available_drivers, computed_at) AS free_drivers, argMax(surge_multiplier, computed_at) AS surge FROM nus.hotspot_history WHERE $__timeFilter(computed_at) GROUP BY zone_id ORDER BY demand DESC LIMIT 12"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "How trips ended",
+      "description": "Every trip reaches one of four endings. Completed is the one that earns money; the other three are the ways demand goes unserved. Watch the proportions rather than the heights - a rising red band means requests are arriving that the fleet cannot reach.",
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 14 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 90,
+            "lineWidth": 0,
+            "stacking": { "mode": "normal", "group": "A" },
+            "showPoints": "never"
+          },
+          "noValue": "no trip events in this range"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "completed" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#0ca30c" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "cancelled by passenger" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#fab219" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "cancelled by driver" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#ec835a" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "no driver found" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d03b3b" } }]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS time, 'completed' AS series, count() AS trips FROM nus.trip_events WHERE $__timeFilter(event_time) AND status = 'completed' GROUP BY time ORDER BY time"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS time, 'cancelled by passenger' AS series, count() AS trips FROM nus.trip_events WHERE $__timeFilter(event_time) AND status = 'cancelled_by_passenger' GROUP BY time ORDER BY time"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS time, 'cancelled by driver' AS series, count() AS trips FROM nus.trip_events WHERE $__timeFilter(event_time) AND status = 'cancelled_by_driver' GROUP BY time ORDER BY time"
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "timeseries",
+          "format": 0,
+          "rawSql": "SELECT toStartOfInterval(event_time, INTERVAL 5 MINUTE) AS time, 'no driver found' AS series, count() AS trips FROM nus.trip_events WHERE $__timeFilter(event_time) AND status = 'no_driver_found' GROUP BY time ORDER BY time"
         }
       ]
     }

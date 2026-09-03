@@ -1,0 +1,228 @@
+{
+  "uid": "nus-fleet",
+  "title": "not-uber-service - fleet",
+  "description": "Where the fleet is. Every point is one driver at their last reported position, coloured by what they are doing. driver_positions carries latitude and longitude directly, so this is the raw telemetry with no modelling in between - which makes it the most direct proof that the whole pipeline works end to end.",
+  "tags": ["not-uber-service", "fleet", "live"],
+  "timezone": "utc",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-15m", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Drivers reporting",
+      "description": "Distinct drivers that sent a position in the selected range. Only online drivers report, so this is the size of the working fleet.",
+      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": { "defaults": { "noValue": "0" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT uniqExact(driver_id) AS drivers FROM nus.driver_positions WHERE $__timeFilter(event_time)"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "bargauge",
+      "title": "What the fleet is doing",
+      "description": "The same three states the map is coloured by, as numbers. Colour alone never carries identity here - the state is written out beside every bar.",
+      "gridPos": { "h": 4, "w": 9, "x": 5, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": { "noValue": "no positions in this range" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "waiting for a trip" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "heading to a pickup" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "carrying a rider" },
+            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#199e70" } }]
+          }
+        ]
+      },
+      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT uniqExactIf(driver_id, last_status = 'idle') AS `waiting for a trip`, uniqExactIf(driver_id, last_status = 'en_route_pickup') AS `heading to a pickup`, uniqExactIf(driver_id, last_status = 'on_trip') AS `carrying a rider` FROM (SELECT driver_id, argMax(status, event_time) AS last_status FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY driver_id)"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Median speed",
+      "description": "Across drivers currently carrying a rider. Free-flow in this city is about 26 km/h, so a number well below that is congestion the routing costs should already be reflecting.",
+      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": { "defaults": { "unit": "velocitykmh", "decimals": 1, "noValue": "no trips in progress" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT median(speed_kmh) AS kmh FROM nus.driver_positions WHERE $__timeFilter(event_time) AND status = 'on_trip' AND speed_kmh > 1"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Positions behind by",
+      "description": "Age of the newest driver position. If this climbs, the fleet on the map is stale and nothing below it can be trusted.",
+      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 0 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 0,
+          "noValue": "no data",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "#0ca30c", "value": null },
+              { "color": "#fab219", "value": 120 },
+              { "color": "#d03b3b", "value": 900 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "colorMode": "value", "graphMode": "none" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT dateDiff('second', max(event_time), now()) AS seconds_behind FROM nus.driver_positions"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "geomap",
+      "title": "Where the drivers are",
+      "description": "One point per driver, at their last known position in the selected range. Blue is waiting for a trip, orange is heading to a pickup, green is carrying a rider - the three states validated as distinguishable together for colour-vision deficiency.",
+      "gridPos": { "h": 15, "w": 16, "x": 0, "y": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "no driver positions in this range - is driver-service running?",
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "idle": { "text": "waiting for a trip", "color": "#3987e5", "index": 0 },
+                "en_route_pickup": { "text": "heading to a pickup", "color": "#d95926", "index": 1 },
+                "on_trip": { "text": "carrying a rider", "color": "#199e70", "index": 2 }
+              }
+            }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "view": { "id": "coords", "lat": 40.705, "lon": -73.98, "zoom": 10 },
+        "controls": { "showZoom": true, "showAttribution": true, "showScale": false },
+        "basemap": { "type": "default", "name": "Basemap" },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "drivers",
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "config": {
+              "style": {
+                "size": { "fixed": 4 },
+                "opacity": 0.75,
+                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/circle.svg" },
+                "color": { "field": "state" }
+              },
+              "showLegend": true
+            },
+            "tooltip": true
+          }
+        ]
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT driver_id, argMax(lat, event_time) AS latitude, argMax(lon, event_time) AS longitude, argMax(status, event_time) AS state, argMax(zone_id, event_time) AS zone FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY driver_id"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "table",
+      "title": "Supply and demand by zone",
+      "description": "Free drivers against riders still waiting, per zone, newest score first. A zone with waiting riders and no free drivers is where the next no_driver_found will come from.",
+      "gridPos": { "h": 15, "w": 8, "x": 16, "y": 4 },
+      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "fieldConfig": {
+        "defaults": { "noValue": "no demand scores in this range - is city-service running?" },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "demand" },
+            "properties": [
+              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
+              { "id": "min", "value": 0 },
+              { "id": "max", "value": 1 },
+              { "id": "decimals", "value": 3 },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    { "color": "#cde2fb", "value": null },
+                    { "color": "#5598e7", "value": 0.3 },
+                    { "color": "#256abf", "value": 0.6 },
+                    { "color": "#0d366b", "value": 0.85 }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": { "sortBy": [{ "displayName": "demand", "desc": true }] },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT zone_id, argMax(demand_score, computed_at) AS demand, argMax(open_requests, computed_at) AS waiting, argMax(available_drivers, computed_at) AS free FROM nus.hotspot_history WHERE $__timeFilter(computed_at) GROUP BY zone_id ORDER BY demand DESC LIMIT 20"
+        }
+      ]
+    }
+  ]
+}

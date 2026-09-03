@@ -51,6 +51,30 @@ All panels read the **Distributed** tables (`nus.trip_stats_hourly`,
 aggregate with `sum()` because the hourly summary is filled per node — see
 [`../e-infra-clickhouse/README.md`](../e-infra-clickhouse/README.md#reading-the-hourly-summary-correctly).
 
+## The two dashboards
+
+| Dashboard | Answers |
+| --- | --- |
+| **not-uber-service - live** | Is the platform working right now? Six headline figures, position events arriving, the busiest zones, and how every trip in the window ended. |
+| **not-uber-service - fleet** | Where are the drivers? A map of every driver at their last known position, coloured by what they are doing, beside supply and demand per zone. |
+
+Two panels are worth knowing about because they are diagnostics rather than
+business figures:
+
+- **Warehouse is behind by** — the age of the newest trip event. If it climbs
+  and does not come back, something between Kafka and the sink has stalled.
+  Check `make lag` before anything else.
+- **Nobody available** — the share of trips that found no driver. This is the
+  number that says the fleet is too small for the hour; the fix is fewer
+  requests or more drivers, never more containers.
+
+Colours are assigned by the job they do, not by taste. The four trip endings
+take the reserved status colours, so completed is always the same green and
+"nobody available" always the same red. The three driver states on the map are
+the maximum that stay distinguishable for colour-vision deficiency when every
+pair can appear side by side, which happens to be exactly how many states an
+online driver has.
+
 ## Files
 
 | File | Purpose |
