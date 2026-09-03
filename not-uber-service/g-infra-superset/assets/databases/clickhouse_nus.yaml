@@ -1,8 +1,12 @@
-# The warehouse connection. init/register_database.py creates it with the real
-# password from the environment; this file exists only so the datasets below
-# have a uuid to point at. The uri here is a placeholder - importing does not
-# overwrite the password of an existing connection, and the uuid is what ties
-# the two together.
+# The warehouse connection. This file exists only so the datasets have a uuid
+# to attach to; the uri below carries no password, because a password does not
+# belong in a committed file.
+#
+# It does overwrite. An earlier version of this comment claimed importing left
+# an existing connection's password alone -- it does not, and every chart on
+# the dashboard failed with ClickHouse code 516 as a result. init-superset.sh
+# therefore runs register_database.py AFTER the import, so the real credential
+# from the environment is the last thing written. Do not reorder those two.
 database_name: ClickHouse (nus)
 sqlalchemy_uri: clickhousedb://nus@lb-a:8123/nus
 uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
