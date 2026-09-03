@@ -654,6 +654,31 @@ lag: ## Consumer lag per group — the health signal for the whole pipeline
 	@printf "\n  Lag that stays small, or returns to small after a burst, is healthy.\n"
 	@printf "  Lag that only grows is not — turn the pacing down in $(ENV_FILE).\n"
 
+.PHONY: profile
+profile: ## Profile the generated data — every dimension, range and null rate
+	$(call say,What the warehouse actually holds)
+	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--output-format PrettyCompactMonoBlock < z-config/profile.sql
+	$(call say,Kafka — topics and where each consumer group stands)
+	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
+		--bootstrap-server kafka-1:9092 --describe 2>/dev/null \
+		| awk '/^Topic:/{printf "  %-28s partitions=%s\n", $$2, $$4}' || true
+	@printf "\n"
+	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
+		--bootstrap-server kafka-1:9092 --list 2>/dev/null | sed 's/^/  group: /' || true
+	@for g in $(GROUPS); do \
+		$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
+			--bootstrap-server kafka-1:9092 --describe --group "$$g" 2>/dev/null \
+			| awk -v g="$$g" 'NR>1 && $$6 != "-" {lag+=$$6; n++} END{if(n) printf "  %-24s partitions=%d total_lag=%d\n", g, n, lag}' || true; \
+	done
+	$(call say,Redis — what the services put in the cache)
+	@$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
+		--scan --count 1000 2>/dev/null \
+		| sed -E 's/[0-9a-f-]{8,}.*//; s/[0-9]+$$//' | sort | uniq -c | sort -rn | head -20 \
+		| awk '{printf "  %8s  %s*\n", $$1, $$2}' || true
+	@printf "  bootstrap flag: %s\n" "$$($(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning get system:bootstrap:done 2>/dev/null | tr -d '\r')"
+
 .PHONY: logs
 logs: ## Follow logs:  make logs  |  make logs SVC=dispatch-service
 	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs -f --tail=200 $(SVC); else $(COMPOSE) logs -f --tail=50; fi

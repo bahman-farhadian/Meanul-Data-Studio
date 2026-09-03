@@ -30,6 +30,7 @@ moves. Everything else in this component uses the stable command line.
 
 import os
 import uuid
+from urllib.parse import quote
 
 from superset.app import create_app
 
@@ -46,13 +47,20 @@ POSTGRES_UUID = uuid.uuid5(NAMESPACE, "database/postgres")
 
 
 def clickhouse_uri() -> str:
-    """The warehouse, through the entry tier rather than one node."""
+    """The warehouse, through the entry tier rather than one node.
+
+    The credentials are percent-encoded. A URI is parsed by delimiter, so a
+    password holding @ : / # ? or % is split at the wrong character and the
+    server is handed a truncated one — which it reports as a wrong password,
+    not as a malformed URI. Grafana never hits this because it takes the
+    password as its own field instead of inside a URI.
+    """
     user = os.environ.get("CH_USER", "nus")
     password = os.environ["CH_PASSWORD"]
     host = os.environ.get("CH_HOST", "lb-a")
     port = os.environ.get("CH_HTTP_PORT", "8123")
     database = os.environ.get("CH_DATABASE", "nus")
-    return f"clickhousedb://{user}:{password}@{host}:{port}/{database}"
+    return f"clickhousedb://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{database}"
 
 
 def postgres_uri() -> str:
@@ -67,7 +75,7 @@ def postgres_uri() -> str:
     host = os.environ.get("PG_HOST", "lb-a")
     port = os.environ.get("PG_READ_PORT", "5433")
     database = os.environ.get("PG_DATABASE", "postgres")
-    return f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{database}"
+    return f"postgresql+psycopg2://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{database}"
 
 
 def upsert(db, Database, name: str, identifier: uuid.UUID, uri: str) -> None:
