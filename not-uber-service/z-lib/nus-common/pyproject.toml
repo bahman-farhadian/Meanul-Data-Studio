@@ -12,8 +12,14 @@ dependencies = [
     "psycopg[binary,pool]>=3.2",
     # Redis, with Sentinel support built in.
     "redis>=5.2",
-    # Kafka, plus what its Avro support needs.
-    "confluent-kafka>=2.6",
+    # Kafka. The schema-registry extra is not optional for us: from 2.6 the
+    # registry client moved off requests onto httpx, and confluent-kafka
+    # declares httpx, attrs, cachetools and authlib only under that extra.
+    # Without it `import confluent_kafka.schema_registry` raises
+    # ModuleNotFoundError at startup, which is a crash loop, not a warning.
+    # Naming the extra lets the package state its own needs instead of us
+    # maintaining a hand-copied list that goes stale on the next release.
+    "confluent-kafka[schema-registry]>=2.6",
     "fastavro>=1.9",
     "requests>=2.32",
     # ClickHouse.
