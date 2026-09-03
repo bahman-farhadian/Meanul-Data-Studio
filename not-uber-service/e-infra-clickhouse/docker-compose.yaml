@@ -38,7 +38,10 @@ x-keeper-node: &keeper-node
       - CMD
       - bash
       - -c
-      - exec 3<>/dev/tcp/localhost/9181 && echo ruok >&3 && head -c 4 <&3 | grep -q imok
+      # $$(hostname), not localhost: a Keeper listening only on the loopback
+      # answers a localhost probe perfectly well while every other container
+      # is refused, which is exactly how a misconfigured ensemble hides.
+      - exec 3<>/dev/tcp/$$(hostname)/9181 && echo ruok >&3 && head -c 4 <&3 | grep -q imok
     interval: 15s
     timeout: 5s
     retries: 5
@@ -102,7 +105,7 @@ services:
       TZ: ${TZ:-UTC}
       KEEPER_SERVER_ID: "1"
     volumes:
-      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper.xml:ro
+      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
       - keeper-data-1:/var/lib/clickhouse-keeper
 
   ch-keeper-2:
@@ -113,7 +116,7 @@ services:
       TZ: ${TZ:-UTC}
       KEEPER_SERVER_ID: "2"
     volumes:
-      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper.xml:ro
+      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
       - keeper-data-2:/var/lib/clickhouse-keeper
 
   ch-keeper-3:
@@ -124,7 +127,7 @@ services:
       TZ: ${TZ:-UTC}
       KEEPER_SERVER_ID: "3"
     volumes:
-      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper.xml:ro
+      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
       - keeper-data-3:/var/lib/clickhouse-keeper
 
   # Shard 1, both copies. CH_SHARD and CH_REPLICA fill in the {shard} and
