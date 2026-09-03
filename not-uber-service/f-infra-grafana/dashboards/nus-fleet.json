@@ -2,26 +2,49 @@
   "uid": "nus-fleet",
   "title": "not-uber-service - fleet",
   "description": "Where the fleet is. Every point is one driver at their last reported position, coloured by what they are doing. driver_positions carries latitude and longitude directly, so this is the raw telemetry with no modelling in between - which makes it the most direct proof that the whole pipeline works end to end.",
-  "tags": ["not-uber-service", "fleet", "live"],
+  "tags": [
+    "not-uber-service",
+    "fleet",
+    "live"
+  ],
   "timezone": "utc",
   "editable": true,
   "schemaVersion": 39,
   "version": 1,
   "refresh": "30s",
-  "time": { "from": "now-15m", "to": "now" },
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
   "panels": [
     {
       "id": 1,
       "type": "stat",
       "title": "Drivers reporting",
       "description": "Distinct drivers that sent a position in the selected range. Only online drivers report, so this is the size of the working fleet.",
-      "gridPos": { "h": 4, "w": 5, "x": 0, "y": 0 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
-      "fieldConfig": { "defaults": { "noValue": "0" }, "overrides": [] },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 0,
+        "y": 0
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "0"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
@@ -34,30 +57,80 @@
       "type": "bargauge",
       "title": "What the fleet is doing",
       "description": "The same three states the map is coloured by, as numbers. Colour alone never carries identity here - the state is written out beside every bar.",
-      "gridPos": { "h": 4, "w": 9, "x": 5, "y": 0 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "gridPos": {
+        "h": 4,
+        "w": 9,
+        "x": 5,
+        "y": 0
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
       "fieldConfig": {
-        "defaults": { "noValue": "no positions in this range" },
+        "defaults": {
+          "noValue": "no positions in this range"
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "waiting for a trip" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#3987e5" } }]
+            "matcher": {
+              "id": "byName",
+              "options": "waiting for a trip"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#3987e5"
+                }
+              }
+            ]
           },
           {
-            "matcher": { "id": "byName", "options": "heading to a pickup" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#d95926" } }]
+            "matcher": {
+              "id": "byName",
+              "options": "heading to a pickup"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#d95926"
+                }
+              }
+            ]
           },
           {
-            "matcher": { "id": "byName", "options": "carrying a rider" },
-            "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "#199e70" } }]
+            "matcher": {
+              "id": "byName",
+              "options": "carrying a rider"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#199e70"
+                }
+              }
+            ]
           }
         ]
       },
-      "options": { "orientation": "horizontal", "displayMode": "gradient", "showUnfilled": true },
+      "options": {
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
@@ -70,13 +143,31 @@
       "type": "stat",
       "title": "Median speed",
       "description": "Across drivers currently carrying a rider. Free-flow in this city is about 26 km/h, so a number well below that is congestion the routing costs should already be reflecting.",
-      "gridPos": { "h": 4, "w": 5, "x": 14, "y": 0 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
-      "fieldConfig": { "defaults": { "unit": "velocitykmh", "decimals": 1, "noValue": "no trips in progress" }, "overrides": [] },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 14,
+        "y": 0
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocitykmh",
+          "decimals": 1,
+          "noValue": "no trips in progress"
+        },
+        "overrides": []
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
@@ -89,8 +180,16 @@
       "type": "stat",
       "title": "Positions behind by",
       "description": "Age of the newest driver position. If this climbs, the fleet on the map is stale and nothing below it can be trusted.",
-      "gridPos": { "h": 4, "w": 5, "x": 19, "y": 0 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "gridPos": {
+        "h": 4,
+        "w": 5,
+        "x": 19,
+        "y": 0
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
       "fieldConfig": {
         "defaults": {
           "unit": "s",
@@ -99,19 +198,34 @@
           "thresholds": {
             "mode": "absolute",
             "steps": [
-              { "color": "#0ca30c", "value": null },
-              { "color": "#fab219", "value": 120 },
-              { "color": "#d03b3b", "value": 900 }
+              {
+                "color": "#0ca30c",
+                "value": null
+              },
+              {
+                "color": "#fab219",
+                "value": 120
+              },
+              {
+                "color": "#d03b3b",
+                "value": 900
+              }
             ]
           }
         },
         "overrides": []
       },
-      "options": { "colorMode": "value", "graphMode": "none" },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none"
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
@@ -124,43 +238,125 @@
       "type": "geomap",
       "title": "Where the drivers are",
       "description": "One point per driver, at their last known position in the selected range. Blue is waiting for a trip, orange is heading to a pickup, green is carrying a rider - the three states validated as distinguishable together for colour-vision deficiency.",
-      "gridPos": { "h": 15, "w": 16, "x": 0, "y": 4 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "gridPos": {
+        "h": 15,
+        "w": 16,
+        "x": 0,
+        "y": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
       "fieldConfig": {
         "defaults": {
-          "noValue": "no driver positions in this range - is driver-service running?",
-          "mappings": [
-            {
-              "type": "value",
-              "options": {
-                "idle": { "text": "waiting for a trip", "color": "#3987e5", "index": 0 },
-                "en_route_pickup": { "text": "heading to a pickup", "color": "#d95926", "index": 1 },
-                "on_trip": { "text": "carrying a rider", "color": "#199e70", "index": 2 }
-              }
-            }
-          ]
+          "noValue": "no driver positions in this range \u2014 is driver-service producing?"
         },
         "overrides": []
       },
       "options": {
-        "view": { "id": "coords", "lat": 40.705, "lon": -73.98, "zoom": 10 },
-        "controls": { "showZoom": true, "showAttribution": true, "showScale": false },
-        "basemap": { "type": "default", "name": "Basemap" },
+        "view": {
+          "id": "coords",
+          "lat": 40.705,
+          "lon": -73.98,
+          "zoom": 10
+        },
+        "controls": {
+          "showZoom": true,
+          "showAttribution": true,
+          "showScale": false
+        },
+        "basemap": {
+          "type": "osm-standard",
+          "name": "OpenStreetMap",
+          "config": {}
+        },
         "layers": [
           {
             "type": "markers",
-            "name": "drivers",
+            "name": "waiting for a trip",
             "location": {
               "mode": "coords",
               "latitude": "latitude",
               "longitude": "longitude"
             },
+            "filterData": {
+              "id": "byRefId",
+              "options": "A"
+            },
             "config": {
               "style": {
-                "size": { "fixed": 4 },
-                "opacity": 0.75,
-                "symbol": { "mode": "fixed", "fixed": "img/icons/marker/circle.svg" },
-                "color": { "field": "state" }
+                "size": {
+                  "fixed": 5
+                },
+                "opacity": 0.8,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                },
+                "color": {
+                  "fixed": "#3987e5"
+                }
+              },
+              "showLegend": true
+            },
+            "tooltip": true
+          },
+          {
+            "type": "markers",
+            "name": "heading to a pickup",
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "B"
+            },
+            "config": {
+              "style": {
+                "size": {
+                  "fixed": 5
+                },
+                "opacity": 0.8,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                },
+                "color": {
+                  "fixed": "#d95926"
+                }
+              },
+              "showLegend": true
+            },
+            "tooltip": true
+          },
+          {
+            "type": "markers",
+            "name": "carrying a rider",
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "filterData": {
+              "id": "byRefId",
+              "options": "C"
+            },
+            "config": {
+              "style": {
+                "size": {
+                  "fixed": 5
+                },
+                "opacity": 0.8,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                },
+                "color": {
+                  "fixed": "#199e70"
+                }
               },
               "showLegend": true
             },
@@ -171,11 +367,36 @@
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
-          "rawSql": "SELECT driver_id, argMax(lat, event_time) AS latitude, argMax(lon, event_time) AS longitude, argMax(status, event_time) AS state, argMax(zone_id, event_time) AS zone FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY driver_id"
+          "rawSql": "SELECT driver_id, argMax(lat, event_time) AS latitude, argMax(lon, event_time) AS longitude, argMax(zone_id, event_time) AS zone, argMax(speed_kmh, event_time) AS speed_kmh FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY driver_id HAVING argMax(status, event_time) = 'idle'"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT driver_id, argMax(lat, event_time) AS latitude, argMax(lon, event_time) AS longitude, argMax(zone_id, event_time) AS zone, argMax(speed_kmh, event_time) AS speed_kmh FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY driver_id HAVING argMax(status, event_time) = 'en_route_pickup'"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "queryType": "table",
+          "format": 1,
+          "rawSql": "SELECT driver_id, argMax(lat, event_time) AS latitude, argMax(lon, event_time) AS longitude, argMax(zone_id, event_time) AS zone, argMax(speed_kmh, event_time) AS speed_kmh FROM nus.driver_positions WHERE $__timeFilter(event_time) GROUP BY driver_id HAVING argMax(status, event_time) = 'on_trip'"
         }
       ]
     },
@@ -184,27 +405,67 @@
       "type": "table",
       "title": "Supply and demand by zone",
       "description": "Free drivers against riders still waiting, per zone, newest score first. A zone with waiting riders and no free drivers is where the next no_driver_found will come from.",
-      "gridPos": { "h": 15, "w": 8, "x": 16, "y": 4 },
-      "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+      "gridPos": {
+        "h": 15,
+        "w": 8,
+        "x": 16,
+        "y": 4
+      },
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
       "fieldConfig": {
-        "defaults": { "noValue": "no demand scores in this range - is city-service running?" },
+        "defaults": {
+          "noValue": "no zone scores in the last 6 hours \u2014 is city-service producing?"
+        },
         "overrides": [
           {
-            "matcher": { "id": "byName", "options": "demand" },
+            "matcher": {
+              "id": "byName",
+              "options": "demand"
+            },
             "properties": [
-              { "id": "custom.cellOptions", "value": { "type": "gauge", "mode": "gradient" } },
-              { "id": "min", "value": 0 },
-              { "id": "max", "value": 1 },
-              { "id": "decimals", "value": 3 },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "min",
+                "value": 0
+              },
+              {
+                "id": "max",
+                "value": 1
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              },
               {
                 "id": "thresholds",
                 "value": {
                   "mode": "absolute",
                   "steps": [
-                    { "color": "#cde2fb", "value": null },
-                    { "color": "#5598e7", "value": 0.3 },
-                    { "color": "#256abf", "value": 0.6 },
-                    { "color": "#0d366b", "value": 0.85 }
+                    {
+                      "color": "#cde2fb",
+                      "value": null
+                    },
+                    {
+                      "color": "#5598e7",
+                      "value": 0.3
+                    },
+                    {
+                      "color": "#256abf",
+                      "value": 0.6
+                    },
+                    {
+                      "color": "#0d366b",
+                      "value": 0.85
+                    }
                   ]
                 }
               }
@@ -212,15 +473,25 @@
           }
         ]
       },
-      "options": { "sortBy": [{ "displayName": "demand", "desc": true }] },
+      "options": {
+        "sortBy": [
+          {
+            "displayName": "demand",
+            "desc": true
+          }
+        ]
+      },
       "targets": [
         {
           "refId": "A",
-          "datasource": { "type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse" },
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
           "editorType": "sql",
           "queryType": "table",
           "format": 1,
-          "rawSql": "SELECT zone_id, argMax(demand_score, computed_at) AS demand, argMax(open_requests, computed_at) AS waiting, argMax(available_drivers, computed_at) AS free FROM nus.hotspot_history WHERE $__timeFilter(computed_at) GROUP BY zone_id ORDER BY demand DESC LIMIT 20"
+          "rawSql": "SELECT zone_id, argMax(demand_score, computed_at) AS demand, argMax(open_requests, computed_at) AS waiting, argMax(available_drivers, computed_at) AS free FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 6 HOUR GROUP BY zone_id ORDER BY demand DESC LIMIT 20"
         }
       ]
     }
