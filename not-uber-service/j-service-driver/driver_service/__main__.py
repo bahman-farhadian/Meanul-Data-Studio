@@ -23,7 +23,7 @@ from nus_common import config, postgres, redis_client
 from nus_common.citygrid import CityGrid
 from nus_common.geo import day_period, to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
-from nus_common.lifecycle import Shutdown, wait_for_bootstrap
+from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
 
 from driver_service.fleet import (
@@ -207,9 +207,21 @@ def main() -> int:
     # Nothing to simulate until the drivers exist.
     wait_for_bootstrap(redis, shutdown)
 
+    # The cache is filled by cache-updater from Debezium's first pass over the
+    # seeded rows, which starts only once the CDC connector is registered — so
+    # for the first minute or so after a fresh bootstrap there are no drivers
+    # to load yet. Wait for them rather than exiting: this is a normal state
+    # of a stack that has just come up, not a failure.
+    wait_for(
+        lambda: bool(next(redis.scan_iter(match="driver:*", count=1), None)),
+        description="cache-updater to fill the driver profiles (Redis driver:*)",
+        attempts=120,
+        delay_seconds=5.0,
+        shutdown=shutdown,
+    )
     drivers = load_roster(redis, grid, rng)
     if not drivers:
-        log.error("no drivers in the cache - is cache-updater running?")
+        log.error("driver keys appeared but none could be read")
         return 1
     log.info("fleet loaded", extra={"drivers": len(drivers)})
 

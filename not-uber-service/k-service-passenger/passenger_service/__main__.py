@@ -22,7 +22,7 @@ from nus_common import config, postgres, redis_client
 from nus_common.citygrid import CityGrid
 from nus_common.geo import to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
-from nus_common.lifecycle import Shutdown, wait_for_bootstrap
+from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
 
 from passenger_service.demand import requests_this_tick, zone_popularity
@@ -84,9 +84,19 @@ def main() -> int:
     redis = redis_client.primary()
     wait_for_bootstrap(redis, shutdown)
 
+    # Same as driver-service: the profiles reach Redis through cache-updater
+    # once Debezium has replayed the seeded rows, so an empty cache right
+    # after a bootstrap means "not yet", not "broken".
+    wait_for(
+        lambda: bool(next(redis.scan_iter(match="passenger:*", count=1), None)),
+        description="cache-updater to fill the passenger profiles (Redis passenger:*)",
+        attempts=120,
+        delay_seconds=5.0,
+        shutdown=shutdown,
+    )
     rider_ids = load_rider_ids(redis)
     if not rider_ids:
-        log.error("no passengers in the cache - is cache-updater running?")
+        log.error("passenger keys appeared but none could be read")
         return 1
     log.info("riders loaded", extra={"riders": len(rider_ids)})
 

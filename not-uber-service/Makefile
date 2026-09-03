@@ -659,15 +659,30 @@ logs: ## Follow logs:  make logs  |  make logs SVC=dispatch-service
 	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs -f --tail=200 $(SVC); else $(COMPOSE) logs -f --tail=50; fi
 
 .PHONY: urls
-urls: ## Where to point a browser or a client
-	@printf "\n  $(B)Through lb-a$(X) (canonical)          $(B)lb-b$(X) (failover twin)\n"
-	@printf "  PostgreSQL writes  localhost:%-8s  localhost:%s\n" "$(call getenv,LB_A_PG_WRITE_PORT)" "$(call getenv,LB_B_PG_WRITE_PORT)"
-	@printf "  PostgreSQL reads   localhost:%-8s  localhost:%s\n" "$(call getenv,LB_A_PG_READ_PORT)"  "$(call getenv,LB_B_PG_READ_PORT)"
-	@printf "  ClickHouse HTTP    localhost:%-8s  localhost:%s\n" "$(call getenv,LB_A_CH_HTTP_PORT)"  "$(call getenv,LB_B_CH_HTTP_PORT)"
-	@printf "  ClickHouse native  localhost:%-8s  localhost:%s\n" "$(call getenv,LB_A_CH_NATIVE_PORT)" "$(call getenv,LB_B_CH_NATIVE_PORT)"
-	@printf "  Grafana            http://localhost:%-3s   http://localhost:%s\n" "$(call getenv,LB_A_GRAFANA_PORT)" "$(call getenv,LB_B_GRAFANA_PORT)"
-	@printf "  Superset           http://localhost:%-3s   http://localhost:%s\n" "$(call getenv,LB_A_SUPERSET_PORT)" "$(call getenv,LB_B_SUPERSET_PORT)"
-	@printf "  HAProxy stats      http://localhost:%-3s   http://localhost:%s\n\n" "$(call getenv,LB_A_STATS_PORT)" "$(call getenv,LB_B_STATS_PORT)"
+urls: ## Where to point a browser or a client, from here and from the network
+	@iface=$$(ip route get 1.1.1.1 2>/dev/null | grep -oE 'dev [a-z0-9-]+' | awk '{print $$2}' || true); \
+	case "$$iface" in docker*|br-*|veth*|"") iface="";; esac; \
+	if [ -n "$$iface" ]; then \
+		host=$$(ip -4 -o addr show "$$iface" 2>/dev/null | grep -oE 'inet [0-9.]+' | awk '{print $$2}' | head -1 || true); \
+	else \
+		host=$$(ip -4 -o addr show scope global 2>/dev/null | grep -vE ' (docker|br-|veth)' \
+			| grep -oE 'inet [0-9.]+' | awk '{print $$2}' | head -1 || true); \
+	fi; \
+	host=$${host:-localhost}; \
+	printf "\n  The entry tier binds $(B)0.0.0.0$(X), so every address below works from\n"; \
+	printf "  this host and from anywhere that can reach it on the network.\n\n"; \
+	printf "  %-18s %-24s %s\n" "" "via lb-a (canonical)" "via lb-b (failover twin)"; \
+	printf "  %-18s %-24s %s\n" "PostgreSQL writes" "$$host:$(call getenv,LB_A_PG_WRITE_PORT)" "$$host:$(call getenv,LB_B_PG_WRITE_PORT)"; \
+	printf "  %-18s %-24s %s\n" "PostgreSQL reads"  "$$host:$(call getenv,LB_A_PG_READ_PORT)"  "$$host:$(call getenv,LB_B_PG_READ_PORT)"; \
+	printf "  %-18s %-24s %s\n" "ClickHouse HTTP"   "$$host:$(call getenv,LB_A_CH_HTTP_PORT)"  "$$host:$(call getenv,LB_B_CH_HTTP_PORT)"; \
+	printf "  %-18s %-24s %s\n" "ClickHouse native" "$$host:$(call getenv,LB_A_CH_NATIVE_PORT)" "$$host:$(call getenv,LB_B_CH_NATIVE_PORT)"; \
+	printf "  %-18s %-24s %s\n" "Grafana"           "http://$$host:$(call getenv,LB_A_GRAFANA_PORT)"  "http://$$host:$(call getenv,LB_B_GRAFANA_PORT)"; \
+	printf "  %-18s %-24s %s\n" "Superset"          "http://$$host:$(call getenv,LB_A_SUPERSET_PORT)" "http://$$host:$(call getenv,LB_B_SUPERSET_PORT)"; \
+	printf "  %-18s %-24s %s\n" "HAProxy stats"     "http://$$host:$(call getenv,LB_A_STATS_PORT)"    "http://$$host:$(call getenv,LB_B_STATS_PORT)"; \
+	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
+	printf "  ClickHouse addresses above — no extra proxy is needed.\n"; \
+	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \
+	printf "  to a bound form such as $(C)192.168.8.3:5432$(X).\n\n"
 
 .PHONY: psql psql-read redis-cli ch-client patronictl
 psql: ## A psql shell on the current leader, through the proxy
