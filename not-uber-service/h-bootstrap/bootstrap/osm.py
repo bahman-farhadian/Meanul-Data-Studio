@@ -16,6 +16,7 @@ download the map again.
 """
 
 import hashlib
+import signal
 import subprocess
 from pathlib import Path
 
@@ -30,15 +31,40 @@ log = get_logger(__name__)
 
 
 def _run(command: list[str]) -> None:
-    """Run a command, showing its output, and stop the whole run if it fails."""
+    """Run a command, showing its output, and stop the whole run if it fails.
+
+    A negative return code means the process was killed by a signal rather
+    than exiting on its own. That distinction matters here: the map import is
+    the memory peak of the whole stack, and when the container's limit is too
+    low the kernel kills it outright. Reporting only "failed with code -9"
+    sends the reader looking for a bug in a tool that was working fine.
+    """
     log.info("running", extra={"command": " ".join(command[:3]) + " ..."})
     result = subprocess.run(command, capture_output=True, text=True)
-    if result.returncode != 0:
-        log.error(
-            "command failed",
-            extra={"command": command[0], "stderr": result.stderr[-2000:]},
-        )
-        raise RuntimeError(f"{command[0]} failed with code {result.returncode}")
+    if result.returncode == 0:
+        return
+
+    if result.returncode < 0:
+        signal_number = -result.returncode
+        name = signal.Signals(signal_number).name if signal_number in {s.value for s in signal.Signals} else "unknown"
+        detail = f"killed by {name} (signal {signal_number})"
+        if signal_number == signal.SIGKILL:
+            detail += (
+                "; on this step that is almost always the container's memory "
+                "limit. Raise BOOTSTRAP_MEM in .env and run 'make bootstrap' again"
+            )
+    else:
+        detail = f"exited with code {result.returncode}"
+
+    log.error(
+        "command failed",
+        extra={
+            "command": command[0],
+            "detail": detail,
+            "stderr": result.stderr[-2000:],
+        },
+    )
+    raise RuntimeError(f"{command[0]} {detail}")
 
 
 def _md5(path: Path) -> str:

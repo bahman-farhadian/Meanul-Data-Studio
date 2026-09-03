@@ -40,9 +40,12 @@ services:
     # A one-shot must not come back after it finishes. Anything else would
     # mean re-running the whole preparation on every container restart.
     restart: "no"
-    cpus: 1.25
-    mem_limit: 8g
-    memswap_limit: 8g
+    cpus: ${BOOTSTRAP_CPUS:-1.25}
+    # osm2pgrouting holds the whole street graph in memory while it builds the
+    # topology, and it is the peak of the entire stack. Too small a limit does
+    # not slow it down — the kernel kills it, and the run dies with signal 9.
+    mem_limit: ${BOOTSTRAP_MEM:-24g}
+    memswap_limit: ${BOOTSTRAP_MEM:-24g}
     # Nothing may be prepared before the things being prepared are up.
     depends_on:
       pg-1:

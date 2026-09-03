@@ -740,14 +740,16 @@ retention is bounded.
 | Superset (single user, single worker, SQLite metadata) | 1 | 0.6 | 3 GB | 3 GB |
 | App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.15 | 768 MB | 4.5 GB |
 | **Steady-state total** | **34** | **~18.65 (of 20, no overcommit)** | | **~104 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 1.25 | 8 GB | peak ~112 GB |
+| `bootstrap` (transient, exits after init) | 1 | 1.25 | 24 GB | peak ~128 GB |
 
 The steady-state budget leaves roughly **16 GB** for the host OS and
 operational headroom on a 120 GB server. The transient `bootstrap` gets
-**8 GB** because the OSM import is memory-hungry on the NYC extract; even at
-that peak (~112 GB) the host keeps ~8 GB free, and bootstrap's 1.25 CPU fits
-inside the 20-core ceiling (19.9 of 20) because the app services are still in
-standby while it runs.
+**24 GB** (`BOOTSTRAP_MEM`): `osm2pgrouting` holds the street graph in memory
+while it builds the routing topology, and 8 GB was not enough for the NYC
+extract — the kernel killed it. That figure is affordable because it is
+transient and because the six app services have not started yet; bootstrap's
+1.25 CPU fits inside the 20-core ceiling for the same reason. Lower it if
+your extract is smaller, raise it if the import is killed again.
 
 **CPU, not RAM, is what bounds the topology.** With no overcommit the 20
 cores are the scarce resource: ClickHouse at 2 shards x 2 replicas already
