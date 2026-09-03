@@ -614,8 +614,8 @@ errors: ## Collect what actually went wrong: exit codes, healthcheck output, err
 		[ "$$hs" = unhealthy ] && bad="$$bad unhealthy"; \
 		[ "$$state" = restarting ] && bad="$$bad restarting"; \
 		logs=$$(docker logs --tail 400 "$$c" 2>&1 \
-			| grep -iE 'error|fatal|exception|traceback|refused|denied|no such file|cannot|failed' \
-			| grep -viE 'errorCode=0|error_count=0|0 errors' | tail -6 || true); \
+			| grep -E '"level": ?"(ERROR|CRITICAL)"|level=error|<Error>|ERROR:|FATAL:|\[error\]|Traceback \(most recent|^[A-Za-z_.]*(Error|Exception):' \
+			| tail -6 || true); \
 		[ -z "$$bad" ] && [ -z "$$logs" ] && continue; \
 		found=1; \
 		printf "\n  $(B)%s$(X)  $(R)%s$(X)\n" "$$name" "$${bad:-log errors only}"; \
