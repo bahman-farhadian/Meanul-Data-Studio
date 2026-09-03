@@ -112,15 +112,24 @@ init: ## Create .env from the template and the shared nus-backbone network
 		printf "                $(C)sudo mkdir -p %s && sudo chown $$(id -un) %s$(X)\n" "$$root" "$$root"; \
 		printf "                or point NUS_VOLUME_ROOT at a path you can write\n"; \
 		exit 1; \
-	else \
-		for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
-			mkdir -p "$$d"; done; \
-		made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' | wc -l); \
-		free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
-		printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"; \
 	fi
+	@$(MAKE) --no-print-directory _mk-data-tree
 	@printf "\n  Now edit $(B)$(ENV_FILE)$(X) — section 1 holds every password.\n"
 	@printf "  Then: $(C)make preflight$(X), and $(C)make up$(X).\n\n"
+
+# Create exactly the directories the compose model mounts. Both `init` and
+# `up` call it: after `make destroy` the tree is gone, and requiring a manual
+# `make init` in between would be a trap — the error would arrive from
+# preflight, several steps away from the cause.
+.PHONY: _mk-data-tree
+_mk-data-tree:
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	[ -n "$$root" ] || exit 0; \
+	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
+		mkdir -p "$$d"; done; \
+	made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
+	free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
+	printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"
 
 .PHONY: preflight
 preflight: ## Check the host, Docker and the settings before anything is started
@@ -297,7 +306,9 @@ config: ## Print the fully merged compose model (what Docker actually sees)
 # =============================================================================
 
 .PHONY: up
-up: preflight ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
+up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
+	@$(MAKE) --no-print-directory _mk-data-tree
+	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory certgen
 	$(call say,Starting the infrastructure — pieces a to g)
