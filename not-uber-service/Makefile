@@ -660,13 +660,16 @@ profile: ## Profile the generated data — every dimension, range and null rate
 	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/profile.sql
-	$(call say,Kafka — topics and where each consumer group stands)
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server kafka-1:9092 --describe 2>/dev/null \
-		| awk '/^Topic:/{printf "  %-28s partitions=%s\n", $$2, $$4}' || true
-	@printf "\n"
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-		--bootstrap-server kafka-1:9092 --list 2>/dev/null | sed 's/^/  group: /' || true
+	$(call say,Kafka — how many messages each topic actually holds)
+	@printf "  %-28s %10s %10s\n" TOPIC PARTITIONS MESSAGES
+	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-get-offsets.sh \
+		--bootstrap-server kafka-1:9092 2>/dev/null \
+		| awk -F: '$$1 !~ /^(__|_schemas|connect_)/ {parts[$$1]++; total[$$1]+=$$3} \
+		           END{for (t in total) printf "  %-28s %10d %10d\n", t, parts[t], total[t]}' \
+		| sort || true
+	@printf "\n  A topic at 0 messages has never been written to. That is where a stalled\n"
+	@printf "  pipeline shows itself — every consumer downstream of it will read 0 lag\n"
+	@printf "  while doing nothing at all.\n\n"
 	@for g in $(GROUPS); do \
 		$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
 			--bootstrap-server kafka-1:9092 --describe --group "$$g" 2>/dev/null \
