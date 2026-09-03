@@ -10,6 +10,13 @@
   environment, so this file needs no per-node copy.
 -->
 <clickhouse>
+    <!-- The cluster login lives outside this file, in a file written at start
+         from CH_USER / CH_PASSWORD, so no password is committed. `incl`
+         is ClickHouse's own mechanism for this; `from_env` is NOT substituted
+         inside remote_servers, which is worth knowing because it fails
+         silently — the element resolves to empty and every distributed query
+         then authenticates as "default". -->
+    <include_from>/secrets/cluster-credentials.xml</include_from>
     <listen_host>0.0.0.0</listen_host>
 
     <!-- Which name this node answers to when the others copy data from it. -->
@@ -25,16 +32,31 @@
         <nus_cluster>
             <!-- Writes wait for the data to be safely stored, not just
                  accepted. Slower per insert, but an accepted insert is a
-                 kept insert. -->
+                 kept insert.
+
+                 Every replica carries the login as well as the address. A
+                 Distributed query does not forward the client's credentials
+                 to the other shards — it authenticates with what is written
+                 here, and with nothing written it uses "default" and no
+                 password. That account does not exist on these nodes, so
+                 every distributed read failed with
+
+                   Code: 516 ... default: Authentication failed
+
+                 while a query against a local table worked perfectly. -->
             <shard>
                 <internal_replication>true</internal_replication>
                 <replica>
                     <host>ch-s1r1</host>
                     <port>9000</port>
+                    <user incl="cluster_user"/>
+                    <password incl="cluster_password"/>
                 </replica>
                 <replica>
                     <host>ch-s1r2</host>
                     <port>9000</port>
+                    <user incl="cluster_user"/>
+                    <password incl="cluster_password"/>
                 </replica>
             </shard>
             <shard>
@@ -42,10 +64,14 @@
                 <replica>
                     <host>ch-s2r1</host>
                     <port>9000</port>
+                    <user incl="cluster_user"/>
+                    <password incl="cluster_password"/>
                 </replica>
                 <replica>
                     <host>ch-s2r2</host>
                     <port>9000</port>
+                    <user incl="cluster_user"/>
+                    <password incl="cluster_password"/>
                 </replica>
             </shard>
         </nus_cluster>

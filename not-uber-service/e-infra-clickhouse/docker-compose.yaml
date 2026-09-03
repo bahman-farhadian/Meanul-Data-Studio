@@ -95,6 +95,7 @@ x-ch-env: &ch-env
 x-ch-config-cluster: &ch-config-cluster ./config/clickhouse/config.d/cluster.xml:/etc/clickhouse-server/config.d/cluster.xml:ro
 x-ch-config-memory: &ch-config-memory ./config/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
 x-ch-users: &ch-users ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-server/users.d/profiles.xml:ro
+x-ch-secrets: &ch-secrets ch-secrets:/secrets:ro
 
 services:
   ch-keeper-1:
@@ -146,6 +147,7 @@ services:
       - *ch-config-cluster
       - *ch-config-memory
       - *ch-users
+      - *ch-secrets
       - ch-data-s1r1:/var/lib/clickhouse
 
   ch-s1r2:
@@ -161,6 +163,7 @@ services:
       - *ch-config-cluster
       - *ch-config-memory
       - *ch-users
+      - *ch-secrets
       - ch-data-s1r2:/var/lib/clickhouse
 
   # Shard 2, both copies.
@@ -177,6 +180,7 @@ services:
       - *ch-config-cluster
       - *ch-config-memory
       - *ch-users
+      - *ch-secrets
       - ch-data-s2r1:/var/lib/clickhouse
 
   ch-s2r2:
@@ -192,7 +196,39 @@ services:
       - *ch-config-cluster
       - *ch-config-memory
       - *ch-users
+      - *ch-secrets
       - ch-data-s2r2:/var/lib/clickhouse
+
+  # One-shot: write the cluster login the nodes use to talk to each other.
+  #
+  # A Distributed query does not carry the client's credentials to the other
+  # shards; it authenticates with what the cluster definition holds. Those
+  # cannot come from the environment — ClickHouse does not substitute
+  # from_env inside remote_servers — so cluster.xml refers to them with
+  # `incl` and this writes the file it includes. Run it BEFORE the nodes.
+  ch-secrets-init:
+    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    environment:
+      TZ: ${TZ:-UTC}
+      CH_USER: ${CH_USER:-nus}
+      CH_PASSWORD: ${CH_PASSWORD:?set it in .env}
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        printf '<clickhouse>\n  <cluster_user>%s</cluster_user>\n  <cluster_password>%s</cluster_password>\n</clickhouse>\n' \
+          "$$CH_USER" "$$CH_PASSWORD" > /secrets/cluster-credentials.xml
+        chmod 0444 /secrets/cluster-credentials.xml
+        echo "cluster credentials written for user $$CH_USER"
+    volumes:
+      - ch-secrets:/secrets
+    networks:
+      - backbone
 
   # One-shot: create the tables. Run it after the nodes are healthy. Every
   # statement uses IF NOT EXISTS, so re-running is safe and is how a newly
@@ -216,6 +252,13 @@ services:
       - backbone
 
 volumes:
+  ch-secrets:
+    name: nus-ch-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-secrets
   keeper-data-1:
     name: nus-ch-keeper-1
     driver: local

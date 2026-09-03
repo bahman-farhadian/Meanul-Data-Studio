@@ -345,6 +345,7 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory certgen
+	@$(MAKE) --no-print-directory ch-secrets
 	$(call say,Starting the infrastructure — pieces a to g)
 	@$(COMPOSE) up -d $(PIECE_D)
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
@@ -398,6 +399,11 @@ restart: ## Restart one service:  make restart SVC=driver-service
 volume-perms: ## Hand each data directory to the user that writes to it (BEFORE first start)
 	$(call say,Data directory ownership)
 	@$(COMPOSE) run --rm volume-perms
+
+.PHONY: ch-secrets
+ch-secrets: ## Write the ClickHouse inter-node login (BEFORE the nodes start)
+	$(call say,ClickHouse cluster credentials)
+	@$(COMPOSE) run --rm ch-secrets-init
 
 .PHONY: certgen
 certgen: ## Generate the etcd TLS material (skips itself once the certs exist)
