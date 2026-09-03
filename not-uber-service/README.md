@@ -21,10 +21,10 @@ steps only work once an earlier one has happened.
 git clone <this repo> && cd Meanul-Data-Studio/not-uber-service
 make init                  # .env, the nus-backbone network, the data directories
 $EDITOR .env               # section 1: the eight passwords. Nothing else is required.
-make preflight             # checks the host and the settings; changes nothing
-make pull                  # every pinned image, ~15 GB
+make prepare               # pull every image, build the eleven, fetch the street map
+                           # THE ONLY STEP THAT REACHES OUTSIDE THIS HOST
 
-# --- the deployment -------------------------------------------------------
+# --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
                            #   volume-perms -> certgen -> infrastructure (a-g)
                            #   -> topics -> ch-ddl -> superset-init
@@ -61,6 +61,26 @@ else.
 Every step of `make up` is also a target of its own, and every one is
 idempotent, so a failed run is resumed by fixing the cause and running that
 step again rather than starting over.
+
+## Deploying without outside network
+
+`make prepare` is the only step that reaches the internet: it pulls the
+pinned images, builds the eleven this repository defines, and fetches the
+street map. Everything after it is local — the containers talk to each other
+on `nus-backbone`, and the map, the stack's single runtime download, is
+already on disk.
+
+That separation matters on a host whose route out is a tunnel capturing
+traffic that originates on the host but not traffic forwarded from
+containers, sshuttle being the common case. The give-away is that
+`docker pull` works while the first `apt-get` inside a build is refused.
+Set `BUILD_NETWORK=host` in `.env`, run `make prepare` with the tunnel up,
+then switch the tunnel off and run `make up`.
+
+`make up` never builds — that is `make prepare`'s job — because a build
+re-resolves image metadata from the registry even when the image already
+exists locally, which is a network call. `make preflight` checks every image
+is present and says plainly when nothing left to do needs the internet.
 
 ## One settings file
 

@@ -63,10 +63,11 @@ getenv = $(shell grep -E "^$(1)=" $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f
 .PHONY: help
 help:
 	@printf "\n$(B)not-uber-service$(X) — a cab platform's whole data lifecycle, in containers\n\n"
-	@printf "  First deployment, in three commands:\n"
+	@printf "  First deployment, in four commands:\n"
 	@printf "    $(C)make init$(X)        create .env and the shared network\n"
 	@printf "    $(C)\$$EDITOR .env$(X)     change every password in section 1\n"
-	@printf "    $(C)make up$(X)          preflight, then the whole ordered bring-up\n\n"
+	@printf "    $(C)make prepare$(X)     pull, build, fetch the map — the only step needing the net\n"
+	@printf "    $(C)make up$(X)          the whole ordered bring-up\n\n"
 	@awk 'BEGIN {FS = ":.*##"} \
 		/^##@/ { printf "\n$(B)%s$(X)\n", substr($$0, 5) } \
 		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  $(C)%-16s$(X) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -115,7 +116,9 @@ init: ## Create .env from the template and the shared nus-backbone network
 	fi
 	@$(MAKE) --no-print-directory _mk-data-tree
 	@printf "\n  Now edit $(B)$(ENV_FILE)$(X) — section 1 holds every password.\n"
-	@printf "  Then: $(C)make preflight$(X), and $(C)make up$(X).\n\n"
+	@printf "  Then, in order:\n"
+	@printf "    $(C)make prepare$(X)    pull, build and fetch the map (needs the internet)\n"
+	@printf "    $(C)make up$(X)         the bring-up (needs no internet at all)\n\n"
 
 # Create exactly the directories the compose model mounts. Both `init` and
 # `up` call it: after `make destroy` the tree is gone, and requiring a manual
@@ -206,22 +209,38 @@ preflight: ## Check the host, Docker and the settings before anything is started
 		printf "              model mounts. A container cannot start without its own.\n"; \
 		fail=1; \
 	fi; \
-	probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
-	probe=$${probe:-busybox:1.38.0}; \
-	docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
-	if ! docker image inspect "$$probe" >/dev/null 2>&1; then \
+	missingimg=""; nimg=0; \
+	for i in $$($(COMPOSE) --profile init config --images 2>/dev/null | sort -u || true); do \
+		nimg=$$((nimg+1)); docker image inspect "$$i" >/dev/null 2>&1 || missingimg="$$missingimg $$i"; done; \
+	osm=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-osm-data/region-latest.osm.pbf; \
+	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$osm" ]; then \
+		printf "  $(G)ok$(X)      all %s images built and the street map is on disk\n" "$$nimg"; \
+		printf "  $(G)ok$(X)      nothing left to do needs the internet\n"; \
+	else \
+		if [ -n "$$missingimg" ]; then \
+			printf "  $(R)FAIL$(X)    %s image(s) not built or pulled yet:\n" "$$(echo $$missingimg | wc -w)"; \
+			for m in $$missingimg; do printf "                %s\n" "$$m"; done; \
+			printf "              Run $(C)make prepare$(X) — it pulls, builds and fetches the map.\n"; \
+			printf "              That is the only step that needs the internet.\n"; \
+			fail=1; \
+		fi; \
+		[ -s "$$osm" ] || printf "  $(Y)warn$(X)    the street map is not on disk yet — $(C)make osm-fetch$(X)\n"; \
+		probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+		probe=$${probe:-busybox:1.38.0}; \
+		docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
+		if ! docker image inspect "$$probe" >/dev/null 2>&1; then \
 		printf "  $(Y)warn$(X)    could not fetch %s, so container networking was not checked\n" "$$probe"; \
-	elif docker run --rm "$$probe" sh -c 'nslookup deb.debian.org >/dev/null 2>&1' >/dev/null 2>&1; then \
+		elif docker run --rm "$$probe" sh -c 'nslookup deb.debian.org >/dev/null 2>&1' >/dev/null 2>&1; then \
 		if docker run --rm "$$probe" sh -c 'wget -q -T5 -O- http://deb.debian.org/ >/dev/null 2>&1' >/dev/null 2>&1; then \
 			printf "  $(G)ok$(X)      containers can resolve DNS and reach the internet\n"; \
-		elif [ "$$(grep -E '^BUILD_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)" = host ]; then \
+			elif [ "$$(grep -E '^BUILD_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)" = host ]; then \
 			printf "  $(Y)warn$(X)    containers cannot reach the internet, but BUILD_NETWORK=host is set,\n"; \
 			printf "              so the image builds will use the host's network and succeed.\n"; \
 			printf "              $(Y)One runtime fetch is still not covered:$(X) h-bootstrap downloads the\n"; \
 			printf "              street map from download.geofabrik.de, in a container. Fetch it on\n"; \
 			printf "              the host first and bootstrap will skip the download:\n"; \
 			printf "                $(C)make osm-fetch$(X)\n"; \
-		else \
+			else \
 			printf "  $(R)FAIL$(X)    containers resolve DNS but cannot reach the internet.\n"; \
 			printf "              Image pulls still work (the daemon fetches those over the host's\n"; \
 			printf "              own stack), but every image built here installs packages, and that\n"; \
@@ -240,8 +259,8 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			printf "              captures host traffic but not forwarded traffic (sshuttle and similar).\n"; \
 			printf "              Then set $(C)BUILD_NETWORK=host$(X) in $(ENV_FILE) and re-run.\n"; \
 			fail=1; \
-		fi; \
-	else \
+			fi; \
+		else \
 		printf "  $(R)FAIL$(X)    containers cannot resolve DNS, so no image can be built.\n"; \
 		printf "              Image pulls still work (the daemon uses the host's stack), so this\n"; \
 		printf "              looks fine until the first build. Usual causes:\n"; \
@@ -251,6 +270,7 @@ preflight: ## Check the host, Docker and the settings before anything is started
 		printf "              Reproduce it directly:\n"; \
 		printf "                $(C)docker run --rm %s nslookup deb.debian.org$(X)\n" "$$probe"; \
 		fail=1; \
+		fi; \
 	fi; \
 	$(COMPOSE) config -q 2>/dev/null \
 		&& printf "  $(G)ok$(X)      all 14 components resolve from $(ENV_FILE)\n" \
@@ -325,8 +345,8 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory certgen
 	$(call say,Starting the infrastructure — pieces a to g)
-	@$(COMPOSE) up -d --build $(PIECE_D)
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
+	@$(COMPOSE) up -d $(PIECE_D)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
 	$(call ok,infrastructure healthy; Debezium Connect still loading its plugins)
 	@$(MAKE) --no-print-directory topics
 	@$(MAKE) --no-print-directory ch-ddl
@@ -334,7 +354,7 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory bootstrap
 	@$(MAKE) --no-print-directory cdc-register
 	$(call say,Starting the six services — pieces i to n)
-	@$(COMPOSE) up -d --build $(SERVICES)
+	@$(COMPOSE) up -d $(SERVICES)
 	@printf "\n$(G)$(B)The stack is up.$(X)\n\n"
 	@printf "  One step is left, and it is $(B)local state you must never commit$(X):\n"
 	@printf "    $(C)make etcd-existing$(X)   flip the etcd cluster out of bootstrap mode\n\n"
@@ -342,27 +362,27 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 
 .PHONY: up-infra
 up-infra: ## Start pieces a to g only (no bootstrap, no services)
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA)
 
 .PHONY: up-services
 up-services: ## Start pieces i to n only
-	@$(COMPOSE) up -d --build $(SERVICES)
+	@$(COMPOSE) up -d $(SERVICES)
 
 .PHONY: up-a up-b up-c up-d up-e up-f up-g
 up-a: ## Piece a — PostgreSQL (Patroni) + etcd, behind the entry tier
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(ENTRY) $(PIECE_A)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(ENTRY) $(PIECE_A)
 up-b: ## Piece b — Redis + Sentinel
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_B)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_B)
 up-c: ## Piece c — Kafka + Schema Registry
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_C)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_C)
 up-d: ## Piece d — Debezium Connect
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_D)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_D)
 up-e: ## Piece e — ClickHouse + Keeper
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_E)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_E)
 up-f: ## Piece f — Grafana
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_F)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_F)
 up-g: ## Piece g — Superset
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_G)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_G)
 
 .PHONY: restart
 restart: ## Restart one service:  make restart SVC=driver-service
@@ -407,7 +427,7 @@ superset-init: ## Superset's own tables, admin user, roles and ClickHouse connec
 bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet part)
 	$(call say,Bootstrap — schema, street map, people, a week of history)
 	@printf "  This takes a while: the OSM import is the slow step.\n"
-	@$(COMPOSE) up -d --build bootstrap
+	@$(COMPOSE) up -d bootstrap
 	@$(COMPOSE) logs -f bootstrap & LOGS=$$!; \
 	code=$$(docker wait bootstrap 2>/dev/null || echo 1); \
 	kill $$LOGS 2>/dev/null || true; wait $$LOGS 2>/dev/null || true; \
