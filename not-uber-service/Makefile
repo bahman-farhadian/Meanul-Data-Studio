@@ -703,7 +703,7 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "  %-18s %-24s %s\n" "ClickHouse native" "$$host:$(call getenv,LB_A_CH_NATIVE_PORT)" "$$host:$(call getenv,LB_B_CH_NATIVE_PORT)"; \
 	printf "  %-18s %-24s %s\n" "Grafana"           "http://$$host:$(call getenv,LB_A_GRAFANA_PORT)"  "http://$$host:$(call getenv,LB_B_GRAFANA_PORT)"; \
 	printf "  %-18s %-24s %s\n" "Superset"          "http://$$host:$(call getenv,LB_A_SUPERSET_PORT)" "http://$$host:$(call getenv,LB_B_SUPERSET_PORT)"; \
-	printf "  %-18s %-24s %s\n" "HAProxy stats"     "http://$$host:$(call getenv,LB_A_STATS_PORT)"    "http://$$host:$(call getenv,LB_B_STATS_PORT)"; \
+	printf "  %-18s %-24s %s\n" "HAProxy stats"     "http://$$host:$(call getenv,LB_A_STATS_PORT)/stats"    "http://$$host:$(call getenv,LB_B_STATS_PORT)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above — no extra proxy is needed.\n"; \
 	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \
