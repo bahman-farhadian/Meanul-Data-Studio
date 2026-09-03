@@ -1,0 +1,95 @@
+# The hourly summary, filled by a materialized view as trip events land.
+#
+# It is a SummingMergeTree filled PER NODE, so the same hour and zone exists on
+# both shards. Every metric here therefore sums first and divides afterwards -
+# an average taken directly off a row would be an average of two half-rows.
+# This is the same rule the DDL states in e-infra-clickhouse/ddl/005_rollups.sql
+# and it is enforced here by defining the metrics, so a chart cannot get it
+# wrong by picking "AVG" from a menu.
+table_name: trip_stats_hourly
+schema: nus
+uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+database_uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
+version: 1.0.0
+main_dttm_col: hour
+description: Completed trips, revenue, surge and overruns per hour and pickup zone.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+metrics:
+  - metric_name: trips
+    verbose_name: Completed trips
+    expression: sum(completed_trips)
+    metric_type: count
+    d3format: ',d'
+    description: Trips that finished and were charged for.
+  - metric_name: revenue
+    verbose_name: Revenue
+    expression: sum(revenue)
+    metric_type: sum
+    d3format: '$,.0f'
+    description: Final fares, surge included.
+  - metric_name: avg_surge
+    verbose_name: Average surge
+    expression: sum(surge_sum) / greatest(sum(completed_trips), 1)
+    metric_type: avg
+    d3format: ',.2f'
+    description: Surge added up, divided by trips - never an average of averages.
+  - metric_name: overrun_pct
+    verbose_name: Slower than predicted
+    expression: 100 * sum(overrun_trips) / greatest(sum(completed_trips), 1)
+    metric_type: avg
+    d3format: ',.1f'
+    description: Share of trips that took longer than the route calculation promised.
+  - metric_name: km_total
+    verbose_name: Distance driven
+    expression: sum(route_km_total)
+    metric_type: sum
+    d3format: ',.0f'
+columns:
+  - column_name: hour
+    type: DATETIME
+    is_dttm: true
+    groupby: true
+    filterable: true
+    verbose_name: Hour
+  - column_name: pickup_zone_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Pickup zone
+  - column_name: completed_trips
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: revenue
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: surge_sum
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: route_km_total
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: overrun_trips
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true

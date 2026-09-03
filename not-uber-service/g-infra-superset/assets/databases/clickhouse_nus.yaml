@@ -1,0 +1,15 @@
+# The warehouse connection. init/register_database.py creates it with the real
+# password from the environment; this file exists only so the datasets below
+# have a uuid to point at. The uri here is a placeholder - importing does not
+# overwrite the password of an existing connection, and the uuid is what ties
+# the two together.
+database_name: ClickHouse (nus)
+sqlalchemy_uri: clickhousedb://nus@lb-a:8123/nus
+uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
+version: 1.0.0
+expose_in_sqllab: true
+allow_ctas: false
+allow_cvas: false
+allow_dml: false
+cache_timeout: null
+extra: {}

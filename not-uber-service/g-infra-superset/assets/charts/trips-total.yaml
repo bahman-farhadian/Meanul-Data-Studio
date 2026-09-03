@@ -1,0 +1,11 @@
+slice_name: "Completed trips"
+description: "Trips that finished and were charged for."
+uuid: 87456cfa-626d-5b8b-a668-e6146a9d7baf
+dataset_uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+version: 1.0.0
+viz_type: big_number_total
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "big_number_total", "metric": "trips", "adhoc_filters": [], "subheader": "finished and charged for", "y_axis_format": ",d", "datasource": "1__table"}

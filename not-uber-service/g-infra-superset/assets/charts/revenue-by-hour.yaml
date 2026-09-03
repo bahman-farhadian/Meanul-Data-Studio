@@ -1,0 +1,11 @@
+slice_name: "Revenue by hour"
+description: "Where the money arrives across the day. Two peaks, because people travel to work and home again."
+uuid: 1ccb7490-3dc6-5bc9-b7ac-87432c04ed5d
+dataset_uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+version: 1.0.0
+viz_type: echarts_timeseries_bar
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_bar", "x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["revenue"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": "$,.0f", "show_legend": false, "orientation": "vertical", "datasource": "1__table"}

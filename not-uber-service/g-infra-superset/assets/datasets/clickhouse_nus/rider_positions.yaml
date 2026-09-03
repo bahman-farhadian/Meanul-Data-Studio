@@ -1,0 +1,80 @@
+# Rider telemetry. Deliberately a separate stream from the driver one: a phone
+# in a pocket and a device on a windscreen report at different rates and with
+# different accuracy, so the two are produced by two independent services that
+# happen to describe the same trips.
+table_name: rider_positions
+schema: nus
+uuid: 575090d6-36b7-59ed-a97b-74c13055e534
+database_uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
+version: 1.0.0
+main_dttm_col: event_time
+description: Where riders' phones reported them during a trip, and how precise the fix was.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+metrics:
+  - metric_name: reports
+    verbose_name: Position reports
+    expression: count(*)
+    metric_type: count
+    d3format: ',d'
+  - metric_name: riders
+    verbose_name: Riders travelling
+    expression: uniqExact(rider_id)
+    metric_type: count_distinct
+    d3format: ',d'
+  - metric_name: median_accuracy
+    verbose_name: Median GPS accuracy
+    expression: median(accuracy_m)
+    metric_type: avg
+    d3format: ',.1f'
+    description: Metres. A phone reports less precisely than a mounted device, which is why the two streams are kept apart.
+columns:
+  - column_name: event_time
+    type: DATETIME
+    is_dttm: true
+    groupby: true
+    filterable: true
+    verbose_name: When
+  - column_name: zone_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Zone
+  - column_name: rider_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+  - column_name: accuracy_m
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Accuracy (m)
+  - column_name: lat
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: lon
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: trip_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Trip

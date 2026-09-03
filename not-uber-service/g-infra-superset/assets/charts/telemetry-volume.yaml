@@ -1,0 +1,11 @@
+slice_name: "Telemetry arriving"
+description: "Position reports landing in the warehouse. This is the pipeline's pulse: driver devices report far more often than rider phones do."
+uuid: 1b27f80b-4bfd-5c04-ae92-449f99ec6b0c
+dataset_uuid: 382f6b0a-313c-51a7-b553-919c222f93e5
+version: 1.0.0
+viz_type: echarts_timeseries_bar
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_bar", "x_axis": "event_time", "time_grain_sqla": "PT1H", "metrics": ["reports"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": ",d", "show_legend": false, "orientation": "vertical", "datasource": "1__table"}

@@ -1,0 +1,11 @@
+slice_name: "Fleet utilisation"
+description: "Share of position reports from a driver actually carrying a rider. Low means the fleet is larger than the demand needs; high means riders are waiting."
+uuid: 5e694198-302e-5468-b396-a738651b7fab
+dataset_uuid: 382f6b0a-313c-51a7-b553-919c222f93e5
+version: 1.0.0
+viz_type: echarts_timeseries_line
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_line", "x_axis": "event_time", "time_grain_sqla": "PT1H", "metrics": ["earning_share"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": ",.1f", "show_legend": false, "seriesType": "line", "markerEnabled": false, "datasource": "1__table"}

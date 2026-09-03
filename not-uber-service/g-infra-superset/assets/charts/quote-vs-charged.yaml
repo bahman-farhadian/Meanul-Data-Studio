@@ -1,0 +1,11 @@
+slice_name: "Quoted against charged"
+description: "The fare promised at assignment against the fare actually taken. They separate when trips run longer than the route predicted - traffic turning into money."
+uuid: ed5c66f7-a27e-58ca-8a90-8e8b6862c42f
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: echarts_timeseries_line
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_line", "x_axis": "event_time", "time_grain_sqla": "PT1H", "metrics": ["revenue_quoted", "revenue_final"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": "$,.0f", "show_legend": true, "seriesType": "line", "markerEnabled": false, "datasource": "1__table"}

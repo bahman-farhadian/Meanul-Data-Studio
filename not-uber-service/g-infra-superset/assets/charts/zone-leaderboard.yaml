@@ -1,0 +1,11 @@
+slice_name: "Zones by revenue"
+description: "Every pickup zone, with the surge it charged and how often its trips ran late."
+uuid: 7796ff96-7839-5642-8e4c-0161abc4a3da
+dataset_uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["trips", "revenue", "avg_surge", "overrun_pct", "km_total"], "adhoc_filters": [], "row_limit": 50, "order_desc": true, "timeseries_limit_metric": "revenue", "show_totals": true, "table_timestamp_format": "smart_date", "datasource": "1__table"}

@@ -1,0 +1,11 @@
+slice_name: "Drivers working"
+description: "Distinct drivers who were assigned at least one trip."
+uuid: 6873dd23-ac37-50c0-895f-cd0c57bd1099
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: big_number_total
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "big_number_total", "metric": "drivers_working", "adhoc_filters": [], "subheader": "distinct drivers", "y_axis_format": ",d", "datasource": "1__table"}

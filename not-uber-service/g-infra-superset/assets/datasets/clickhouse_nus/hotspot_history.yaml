@@ -1,0 +1,92 @@
+# The demand score of each zone over time, as city-service published it.
+# Redis holds only the current value, with a six-hour lifetime; this is the
+# history behind it, which is what makes "when is this zone busy" answerable.
+table_name: hotspot_history
+schema: nus
+uuid: 7f7ea46a-17a9-5f35-a08e-782d7ab1e79b
+database_uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
+version: 1.0.0
+main_dttm_col: computed_at
+description: Demand score per zone per part of the day, and the surge it produced.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+metrics:
+  - metric_name: demand
+    verbose_name: Demand score
+    expression: avg(demand_score)
+    metric_type: avg
+    d3format: ',.3f'
+    description: Riders waiting against drivers free, normalised to roughly 0 to 1.
+  - metric_name: peak_demand
+    verbose_name: Peak demand
+    expression: max(demand_score)
+    metric_type: max
+    d3format: ',.3f'
+  - metric_name: waiting
+    verbose_name: Riders waiting
+    expression: avg(open_requests)
+    metric_type: avg
+    d3format: ',.1f'
+  - metric_name: free_drivers
+    verbose_name: Drivers free
+    expression: avg(available_drivers)
+    metric_type: avg
+    d3format: ',.1f'
+  - metric_name: avg_surge
+    verbose_name: Surge
+    expression: avg(surge_multiplier)
+    metric_type: avg
+    d3format: ',.2f'
+columns:
+  - column_name: computed_at
+    type: DATETIME
+    is_dttm: true
+    groupby: true
+    filterable: true
+    verbose_name: When
+  - column_name: zone_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Zone
+  - column_name: period
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Part of day
+  - column_name: demand_score
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Demand score
+  - column_name: open_requests
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Riders waiting
+  - column_name: available_drivers
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Drivers free
+  - column_name: surge_multiplier
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Surge

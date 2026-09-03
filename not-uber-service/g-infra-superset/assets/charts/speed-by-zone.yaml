@@ -1,0 +1,11 @@
+slice_name: "Congestion by zone"
+description: "Median speed of drivers on a trip, per zone. Free flow here is about 26 km/h - well below that is the congestion the routing costs should already reflect."
+uuid: f0d3fc76-4518-5c34-9555-5912c8df8ad9
+dataset_uuid: 382f6b0a-313c-51a7-b553-919c222f93e5
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["zone_id"], "metrics": ["median_speed", "reports", "drivers"], "adhoc_filters": [], "row_limit": 50, "order_desc": true, "timeseries_limit_metric": "reports", "show_totals": false, "table_timestamp_format": "smart_date", "datasource": "1__table"}

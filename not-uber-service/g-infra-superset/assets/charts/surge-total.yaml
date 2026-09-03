@@ -1,0 +1,11 @@
+slice_name: "Average surge"
+description: "Surge summed and divided by trips - never an average of averages, because the rollup holds one row per node."
+uuid: a5ee7385-4fd9-5698-a3ce-adc32519ba35
+dataset_uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+version: 1.0.0
+viz_type: big_number_total
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "big_number_total", "metric": "avg_surge", "adhoc_filters": [], "subheader": "1.00 means normal price", "y_axis_format": ",.2f", "datasource": "1__table"}

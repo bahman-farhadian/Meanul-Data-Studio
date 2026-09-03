@@ -1,0 +1,11 @@
+slice_name: "Riders served"
+description: "Distinct riders who took at least one trip."
+uuid: f321e3e5-7ae0-58bc-82e9-c8f73f380646
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: big_number_total
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "big_number_total", "metric": "riders_served", "adhoc_filters": [], "subheader": "distinct riders", "y_axis_format": ",d", "datasource": "1__table"}

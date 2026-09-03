@@ -1,0 +1,11 @@
+slice_name: "Demand by zone and time of day"
+description: "Which zones are busy, and when. A zone is not busy in general - it is busy at certain hours, which is why the score is kept per part of the day."
+uuid: 37377415-3e2d-5854-b4c7-a42b8467fa78
+dataset_uuid: 7f7ea46a-17a9-5f35-a08e-782d7ab1e79b
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["zone_id", "period"], "metrics": ["demand", "waiting", "free_drivers", "avg_surge"], "adhoc_filters": [], "row_limit": 100, "order_desc": true, "timeseries_limit_metric": "demand", "show_totals": false, "table_timestamp_format": "smart_date", "datasource": "1__table"}
