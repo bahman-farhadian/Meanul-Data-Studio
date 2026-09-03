@@ -291,7 +291,17 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			echo "$$listening" | grep -qE "[:.]$$p\$$" || continue; \
 			if echo "$$ours" | grep -qx "$$p"; then mine="$$mine $$p"; else busy="$$busy $$p"; fi; done; \
 		if [ -n "$$busy" ]; then \
-			printf "  $(R)FAIL$(X)    host ports held by something else:%s — change them in $(ENV_FILE)\n" "$$busy"; fail=1; \
+			printf "  $(R)FAIL$(X)    host ports held by something else:%s\n" "$$busy"; fail=1; \
+			for p in $$busy; do \
+				who=$$(ss -ltnp 2>/dev/null | grep -E "[:.]$$p[[:space:]]" \
+					| grep -oE 'users:\(\("[^"]+"' | grep -oE '"[^"]+"' | tr -d '"' | sort -u | paste -sd, - || true); \
+				ctr=$$(docker ps --format '{{.Names}}\t{{.Ports}}' 2>/dev/null | grep -E "[:.]$$p->" | cut -f1 | paste -sd, - || true); \
+				if [ -n "$$ctr" ]; then label="container $$ctr"; \
+				elif [ -n "$$who" ]; then label="host process $$who"; \
+				else label="something this user cannot see — retry: sudo ss -ltnp | grep :$$p"; fi; \
+				printf "            %-6s held by %s\n" "$$p" "$$label"; \
+			done; \
+			printf "            Either stop that, or change the LB_* port in $(ENV_FILE).\n"; \
 		elif [ -n "$$mine" ]; then \
 			printf "  $(G)ok$(X)      published ports are held by this stack's own containers (already up)\n"; \
 		else \
