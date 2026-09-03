@@ -44,6 +44,15 @@ x-superset-env: &superset-env
   CH_DATABASE: ${CH_DATABASE:-nus}
   CH_USER: ${CH_USER:-nus}
   CH_PASSWORD: ${CH_PASSWORD:?set it in g-infra-superset/.env}
+  # And how it logs in to PostgreSQL, for SQL Lab only. PG_READ_PORT is the
+  # replica pool: a standby refuses every write at the server, whatever the
+  # credential, so this connection cannot touch the node the platform writes
+  # to even if Superset's own allow_dml guard were lifted.
+  PG_HOST: ${PG_HOST:-lb-a}
+  PG_READ_PORT: ${PG_READ_PORT:-5433}
+  PG_DATABASE: ${PG_DATABASE:-postgres}
+  PG_USER: ${PG_USER:-postgres}
+  PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
 
 services:
   superset:
