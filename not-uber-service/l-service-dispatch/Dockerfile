@@ -36,7 +36,16 @@ COPY l-service-dispatch/pyproject.toml l-service-dispatch/uv.lock /app/l-service
 # The cache mount is what makes a rebuild survive a network outage: uv keeps
 # its downloads there, so changing application code re-runs this step against
 # the cache instead of reaching for the index.
-ENV UV_LINK_MODE=copy
+# hatchling is the one thing uv.lock cannot pin: it is a build-system
+# requirement, resolved against the index on every build, so `--frozen` does
+# not cover it. On a slow or intermittent link that single request is what
+# stalls — uv's default is a 30 second timeout and three tries, which is not
+# enough when one file takes two minutes. The cache mount below means it is
+# fetched once and then read from disk.
+ENV UV_LINK_MODE=copy \
+    UV_HTTP_TIMEOUT=180 \
+    UV_HTTP_RETRIES=5 \
+    UV_CONCURRENT_DOWNLOADS=4
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv sync --frozen --no-dev --no-install-project
 
