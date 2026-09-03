@@ -541,8 +541,8 @@ ps: ## What is running, and what state it is in
 .PHONY: health
 health: ## One line per container: health, restarts, and whether it was OOM-killed
 	@printf "  %-22s %-12s %-9s %s\n" CONTAINER HEALTH RESTARTS OOMKILLED
-	@for c in $$($(COMPOSE) ps -aq); do \
-		docker inspect -f '  {{printf "%-22s" .Name}} {{printf "%-12s" (or .State.Health.Status .State.Status)}} {{printf "%-9d" .RestartCount}} {{.State.OOMKilled}}' $$c 2>/dev/null | sed 's|/||'; echo; \
+	@$(COMPOSE) ps -aq | while read -r c; do \
+		docker inspect -f '  {{printf "%-22s" (slice .Name 1)}} {{if .State.Health}}{{printf "%-12s" .State.Health.Status}}{{else}}{{printf "%-12s" .State.Status}}{{end}} {{printf "%-9d" .RestartCount}} {{.State.OOMKilled}}' "$$c" 2>/dev/null; \
 	done
 
 .PHONY: oom
