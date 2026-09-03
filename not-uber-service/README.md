@@ -140,15 +140,16 @@ happened, which is the whole reason this is a Makefile and not one
 
 | Step | Command | Why here |
 | --- | --- | --- |
-| 1 | `make certgen` | etcd needs its TLS material before it starts. |
-| 2 | `make kafka-dirs` | A new volume belongs to root and the broker is not root, so the volumes are handed over **before** the first start. |
-| 3 | `up` pieces a–g | Infrastructure, waited on until every healthcheck passes. |
-| 4 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
-| 5 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
-| 6 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
-| 7 | `make bootstrap` | Migrations, the street map, the people, a week of history, then the `system:bootstrap:done` marker. |
-| 8 | `make cdc-register` | The connector names the tables it follows, so they must exist first. |
-| 9 | `up` pieces i–n | The six services, which were waiting on the marker. |
+| 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
+| 2 | `make certgen` | etcd needs its TLS material before it starts. |
+| 3 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until step 8. |
+| 4 | `up` pieces a–g | The rest of the infrastructure, waited on until every healthcheck passes. |
+| 5 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
+| 6 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
+| 7 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
+| 8 | `make bootstrap` | Migrations, the street map, the people, a week of history, then the `system:bootstrap:done` marker. |
+| 9 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. |
+| 10 | `up` pieces i–n | The six services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is
