@@ -247,11 +247,19 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	if [ -z "$$listening" ]; then \
 		printf "  $(Y)warn$(X)    no ss or netstat here, so host ports were not checked\n"; \
 	else \
-		busy=""; \
+		ours=$$(docker ps --filter "label=com.docker.compose.project=not-uber-service" \
+			--format '{{.Ports}}' 2>/dev/null | grep -oE '[0-9]+->' | tr -d '>-' | sort -u); \
+		busy=""; mine=""; \
 		for p in $$(grep -oE '^LB_[AB]_[A-Z_]+PORT=[0-9]+' $(ENV_FILE) 2>/dev/null | cut -d= -f2); do \
-			echo "$$listening" | grep -qE "[:.]$$p\$$" && busy="$$busy $$p"; done; \
-		[ -z "$$busy" ] && printf "  $(G)ok$(X)      every published host port is free\n" \
-			|| { printf "  $(R)FAIL$(X)    host ports already in use:%s — change them in $(ENV_FILE)\n" "$$busy"; fail=1; }; \
+			echo "$$listening" | grep -qE "[:.]$$p\$$" || continue; \
+			if echo "$$ours" | grep -qx "$$p"; then mine="$$mine $$p"; else busy="$$busy $$p"; fi; done; \
+		if [ -n "$$busy" ]; then \
+			printf "  $(R)FAIL$(X)    host ports held by something else:%s — change them in $(ENV_FILE)\n" "$$busy"; fail=1; \
+		elif [ -n "$$mine" ]; then \
+			printf "  $(G)ok$(X)      published ports are held by this stack's own containers (already up)\n"; \
+		else \
+			printf "  $(G)ok$(X)      every published host port is free\n"; \
+		fi; \
 	fi; \
 	state=$$(grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | cut -d= -f2); \
 	if docker volume inspect nus-etcd-data-1 >/dev/null 2>&1; then \
@@ -615,9 +623,11 @@ destroy: ## Remove the containers AND DESTROY every data volume
 	@printf "\n  Volumes gone and etcd put back to 'new'. The next 'make up' starts fresh.\n"
 
 .PHONY: nuke
-nuke: destroy ## destroy, and remove the shared network too
+nuke: ## destroy EVERYTHING including the street map, and the shared network
+	@$(MAKE) --no-print-directory destroy
+	@$(MAKE) --no-print-directory _rm-data-tree RM_OSM=1
 	@docker network rm $(NETWORK) 2>/dev/null || true
-	@printf "  Network $(NETWORK) removed.\n"
+	@printf "  Network $(NETWORK) removed, and the street map with it.\n"
 
 # The volumes are bind mounts, so `docker compose down -v` removes the volume
 # entries and leaves every byte on disk. Nothing else deletes them, and a
@@ -631,12 +641,18 @@ _rm-data-tree:
 	else \
 		case "$$root" in /|/root|/home|/usr|/etc|/var|/boot|/data-root) \
 			printf "  $(R)REFUSED$(X) NUS_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
-		before=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
-		find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' -exec rm -rf {} + 2>/dev/null || true; \
-		after=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
-		rmdir "$$root" 2>/dev/null || true; \
+		if [ "$(RM_OSM)" = 1 ]; then keep=""; else keep="nus-osm-data"; fi; \
+		before=0; after=0; \
+		for d in $$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null); do \
+			[ -n "$$keep" ] && [ "$$(basename "$$d")" = "$$keep" ] && continue; \
+			before=$$((before+1)); rm -rf "$$d" 2>/dev/null || true; \
+			[ -d "$$d" ] && after=$$((after+1)) || true; done; \
+		[ -z "$$keep" ] && rmdir "$$root" 2>/dev/null || true; \
 		if [ "$$after" -eq 0 ]; then \
 			printf "  $(G)removed$(X) %s data directories under %s\n" "$$before" "$$root"; \
+			[ -n "$$keep" ] && [ -d "$$root/$$keep" ] && \
+				printf "  $(G)kept$(X)    %s (%s) — the street map, so the next bootstrap need not refetch it\n" \
+					"$$keep" "$$(du -sh "$$root/$$keep" 2>/dev/null | cut -f1)" || true; \
 		else \
 			printf "  $(R)FAIL$(X)    %s of %s data directories could NOT be removed under %s\n" "$$after" "$$before" "$$root"; \
 			printf "              The containers write as their own users, so these files are\n"; \
