@@ -297,6 +297,19 @@ build: ## Build the six images this repo defines
 	$(call say,Building images)
 	@$(COMPOSE) build
 
+.PHONY: prepare
+prepare: ## EVERYTHING THAT NEEDS THE INTERNET: pull, build, fetch the map
+	$(call say,Fetching everything the stack needs from the internet)
+	@printf "  Run this with your tunnel up. Afterwards the stack needs no outside\n"
+	@printf "  network at all: the containers talk to each other on %s, and\n" "$(NETWORK)"
+	@printf "  the only runtime download — the street map — is done here.\n\n"
+	@$(MAKE) --no-print-directory pull
+	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory osm-fetch
+	@printf "\n$(G)$(B)Ready.$(X) You can stop the tunnel now and run $(C)make up$(X).\n"
+	@printf "  Images are built, the map is on disk, and nothing left to do reaches\n"
+	@printf "  outside this host.\n\n"
+
 .PHONY: config
 config: ## Print the fully merged compose model (what Docker actually sees)
 	@$(COMPOSE) config
