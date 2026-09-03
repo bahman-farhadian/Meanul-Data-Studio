@@ -11,20 +11,56 @@ Everything runs from this directory, through the [Makefile](Makefile):
 make            # the help, which is the short version of this file
 ```
 
-## The short version
+## Every command, in order
+
+From a clone to a running, verified stack. Run them in this order — several
+steps only work once an earlier one has happened.
 
 ```bash
-make init          # create .env and the shared nus-backbone network
-$EDITOR .env       # change every password in section 1
-make pull          # fetch every pinned image (tags do move)
-make up            # preflight, then the whole ordered bring-up
-make etcd-existing # the one post-bootstrap step (local state — never commit)
-make verify        # prove each layer is actually working
+# --- once, to set up ------------------------------------------------------
+git clone <this repo> && cd Meanul-Data-Studio/not-uber-service
+make init                  # .env, the nus-backbone network, the data directories
+$EDITOR .env               # section 1: the eight passwords. Nothing else is required.
+make preflight             # checks the host and the settings; changes nothing
+make pull                  # every pinned image, ~15 GB
+
+# --- the deployment -------------------------------------------------------
+make up                    # preflight, then the whole ordered bring-up:
+                           #   volume-perms -> certgen -> infrastructure (a-g)
+                           #   -> topics -> ch-ddl -> superset-init
+                           #   -> bootstrap -> cdc-register -> services (i-n)
+make etcd-existing         # once, after the first successful start
+make verify                # prove each layer works
+
+# --- running it -----------------------------------------------------------
+make urls                  # where to point a browser or a client
+make ps                    # what is running
+make lag                   # consumer lag — the pipeline's health signal
+make oom                   # anything killed for memory
+make stats                 # live usage against each limit
+
+# --- stopping and removing ------------------------------------------------
+make stop                  # stop the containers, keep everything
+make down                  # remove the containers, keep the data
+make destroy               # remove the data too, but KEEP the street map
+make clean                 # leave no trace: images, network, .env, map and all
 ```
 
-`make up` takes a while, and most of it is one step: `h-bootstrap` downloads
-the New York street map and builds the routing graph out of it. Everything
-else is minutes.
+Two of those deserve a note.
+
+**`make osm-fetch`** is needed only if the container that downloads the street
+map cannot reach the internet while the host can. It fetches the ~470 MB
+extract on the host, to the exact path and name `h-bootstrap` looks for, so
+bootstrap skips the download. `make preflight` tells you when you need it.
+
+**`make destroy` keeps the street map** on purpose — it is the one piece of
+data that is slow and awkward to obtain again, and nothing else depends on
+its being fresh. `make clean` and `make nuke` remove it along with everything
+else.
+
+Every step of `make up` is also a target of its own, and every one is
+idempotent, so a failed run is resumed by fixing the cause and running that
+step again rather than starting over.
 
 ## One settings file
 
