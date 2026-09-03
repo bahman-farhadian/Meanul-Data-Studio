@@ -70,12 +70,14 @@ street map. Everything after it is local — the containers talk to each other
 on `nus-backbone`, and the map, the stack's single runtime download, is
 already on disk.
 
-That separation matters on a host whose route out is a tunnel capturing
-traffic that originates on the host but not traffic forwarded from
-containers, sshuttle being the common case. The give-away is that
-`docker pull` works while the first `apt-get` inside a build is refused.
-Set `BUILD_NETWORK=host` in `.env`, run `make prepare` with the tunnel up,
-then switch the tunnel off and run `make up`.
+That separation matters wherever network access is restricted, intermittent,
+or only available from the host itself. Run `make prepare` where the host can
+reach the internet; run `make up` anywhere, including with no network at all.
+
+If builds fail while `docker pull` succeeds, the host's route out captures
+its own traffic but not traffic forwarded from containers. Set
+`BUILD_NETWORK=host` in `.env` and `make prepare` will build through the
+host's network instead. It changes nothing about how the stack runs.
 
 `make up` never builds — that is `make prepare`'s job — because a build
 re-resolves image metadata from the registry even when the image already

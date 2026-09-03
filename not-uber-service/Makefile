@@ -124,15 +124,17 @@ init: ## Create .env from the template and the shared nus-backbone network
 # `up` call it: after `make destroy` the tree is gone, and requiring a manual
 # `make init` in between would be a trap — the error would arrive from
 # preflight, several steps away from the cause.
-.PHONY: _mk-data-tree
-_mk-data-tree:
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
-	[ -n "$$root" ] || exit 0; \
-	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
-		mkdir -p "$$d"; done; \
-	made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
-	free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
-	printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"
+.PHONY: prepare
+prepare: ## Pull, build and fetch the map — the only step needing network access
+	$(call say,Fetching everything the stack needs)
+	@printf "  This is the only step that reaches outside this host. After it the\n"
+	@printf "  stack is self-contained: the containers talk to each other on %s,\n" "$(NETWORK)"
+	@printf "  and the one runtime download — the street map — is done here.\n\n"
+	@$(MAKE) --no-print-directory pull
+	@$(MAKE) --no-print-directory build
+	@$(MAKE) --no-print-directory osm-fetch
+	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
+	@printf "  Every image is built and the map is on disk.\n\n"
 
 .PHONY: preflight
 preflight: ## Check the host, Docker and the settings before anything is started
@@ -256,7 +258,8 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			printf "              Reproduce it directly:\n"; \
 			printf "                $(C)docker run --rm %s wget -O- -T8 http://deb.debian.org/$(X)\n" "$$probe"; \
 			printf "              If the host CAN reach them and only containers cannot, its route out\n"; \
-			printf "              captures host traffic but not forwarded traffic (sshuttle and similar).\n"; \
+			printf "              captures traffic originating on the host but not traffic forwarded\n"; \
+			printf "              from containers.\n"; \
 			printf "              Then set $(C)BUILD_NETWORK=host$(X) in $(ENV_FILE) and re-run.\n"; \
 			fail=1; \
 			fi; \
@@ -307,28 +310,26 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	if [ "$$fail" -ne 0 ]; then printf "$(R)$(B)preflight failed — fix the above before deploying.$(X)\n\n"; exit 1; \
 	else printf "$(G)$(B)preflight passed.$(X)\n\n"; fi
 
+
+.PHONY: _mk-data-tree
+_mk-data-tree:
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	[ -n "$$root" ] || exit 0; \
+	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
+		mkdir -p "$$d"; done; \
+	made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
+	free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
+	printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"
+
 .PHONY: pull
-pull: ## Pull every pinned image (do this first on a new host — tags do move)
+pull: ## Pull every pinned image (a moved or withdrawn tag surfaces here)
 	$(call say,Pulling pinned images)
 	@$(COMPOSE) --profile init pull --ignore-buildable
 
 .PHONY: build
-build: ## Build the six images this repo defines
+build: ## Build the eleven images this repository defines
 	$(call say,Building images)
 	@$(COMPOSE) build
-
-.PHONY: prepare
-prepare: ## EVERYTHING THAT NEEDS THE INTERNET: pull, build, fetch the map
-	$(call say,Fetching everything the stack needs from the internet)
-	@printf "  Run this with your tunnel up. Afterwards the stack needs no outside\n"
-	@printf "  network at all: the containers talk to each other on %s, and\n" "$(NETWORK)"
-	@printf "  the only runtime download — the street map — is done here.\n\n"
-	@$(MAKE) --no-print-directory pull
-	@$(MAKE) --no-print-directory build
-	@$(MAKE) --no-print-directory osm-fetch
-	@printf "\n$(G)$(B)Ready.$(X) You can stop the tunnel now and run $(C)make up$(X).\n"
-	@printf "  Images are built, the map is on disk, and nothing left to do reaches\n"
-	@printf "  outside this host.\n\n"
 
 .PHONY: config
 config: ## Print the fully merged compose model (what Docker actually sees)
@@ -393,15 +394,15 @@ restart: ## Restart one service:  make restart SVC=driver-service
 ##@ One-shots (idempotent — safe to re-run at any time)
 # =============================================================================
 
-.PHONY: certgen
-certgen: ## Generate the etcd TLS material (skips itself once the certs exist)
-	$(call say,etcd TLS certificates)
-	@$(COMPOSE) run --rm etcd-certgen
-
 .PHONY: volume-perms
 volume-perms: ## Hand each data directory to the user that writes to it (BEFORE first start)
 	$(call say,Data directory ownership)
 	@$(COMPOSE) run --rm volume-perms
+
+.PHONY: certgen
+certgen: ## Generate the etcd TLS material (skips itself once the certs exist)
+	$(call say,etcd TLS certificates)
+	@$(COMPOSE) run --rm etcd-certgen
 
 .PHONY: kafka-dirs
 kafka-dirs: ## Hand the Kafka volumes to the user inside the image (covered by volume-perms)
@@ -435,6 +436,11 @@ bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet pa
 	else printf "\n  $(R)FAIL$(X)    bootstrap exited $$code — the services stay in standby on purpose.\n"; \
 	     printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; fi
 
+.PHONY: cdc-register
+cdc-register: ## Register the Debezium connector (only AFTER bootstrap made the tables)
+	$(call say,Debezium connector)
+	@$(COMPOSE) run --rm connector-register
+
 .PHONY: osm-fetch
 osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
 	$(call say,Fetching the street map on the host)
@@ -454,11 +460,6 @@ osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
 	fi; \
 	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true; \
 	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip the download\n"
-
-.PHONY: cdc-register
-cdc-register: ## Register the Debezium connector (only AFTER bootstrap made the tables)
-	$(call say,Debezium connector)
-	@$(COMPOSE) run --rm connector-register
 
 .PHONY: etcd-existing
 etcd-existing: ## Post-bootstrap: flip etcd to 'existing' (LOCAL STATE — never commit)
