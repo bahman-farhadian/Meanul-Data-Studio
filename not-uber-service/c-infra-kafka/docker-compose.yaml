@@ -164,11 +164,21 @@ services:
       SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: backward
       SCHEMA_REGISTRY_HEAP_OPTS: -Xmx512m -Xms512m
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8081/subjects || exit 1"]
+      # python3, not curl. This image is built on cp-base-java-micro, which
+      # ships neither curl nor wget nor nc — so a curl healthcheck can never
+      # pass, the container is marked unhealthy however well it is running,
+      # and everything that waits on it refuses to start. python3 is present.
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8081/subjects", timeout=3)
       interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      timeout: 10s
+      retries: 6
+      # The registry runs its own preflight against every broker before it
+      # listens, so give it room on a cold start.
+      start_period: 60s
     networks:
       - backbone
 
