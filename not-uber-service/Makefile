@@ -36,6 +36,11 @@ PIECE_F  := grafana
 PIECE_G  := superset
 SERVICES := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink
 INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F) $(PIECE_G)
+# Everything the bring-up waits on. Debezium Connect is started with the rest
+# but deliberately not waited for: it takes minutes to scan its plugins, and
+# nothing needs it until `cdc-register`, which runs after bootstrap. By then
+# it has had the whole bootstrap to come up.
+INFRA_WAIT := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_E) $(PIECE_F) $(PIECE_G)
 
 # Consumer groups, for the lag report. Must match the consumer-group section of .env.example.
 GROUPS := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink
@@ -296,8 +301,9 @@ up: preflight ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory certgen
 	$(call say,Starting the infrastructure — pieces a to g)
-	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA)
-	$(call ok,all infrastructure healthy)
+	@$(COMPOSE) up -d --build $(PIECE_D)
+	@$(COMPOSE) up -d --build --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
+	$(call ok,infrastructure healthy; Debezium Connect still loading its plugins)
 	@$(MAKE) --no-print-directory topics
 	@$(MAKE) --no-print-directory ch-ddl
 	@$(MAKE) --no-print-directory superset-init

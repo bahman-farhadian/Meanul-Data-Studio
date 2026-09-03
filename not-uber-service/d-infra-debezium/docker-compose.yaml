@@ -64,9 +64,13 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null || exit 1"]
       interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 45s
+      timeout: 10s
+      retries: 10
+      # Connect scans every plugin in the image before it opens the REST port,
+      # and this image carries the full Debezium connector set. Measured at
+      # 196 seconds to first answer; the previous 45s start_period with 5
+      # retries gave up at 105 and marked a perfectly healthy worker unhealthy.
+      start_period: 240s
     networks:
       - backbone
 
