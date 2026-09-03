@@ -31,6 +31,10 @@ WORKDIR /app/h-bootstrap
 COPY z-lib/nus-common /app/z-lib/nus-common
 COPY h-bootstrap/pyproject.toml h-bootstrap/uv.lock /app/h-bootstrap/
 COPY h-bootstrap/bootstrap /app/h-bootstrap/bootstrap
+# The migrations are data the container reads at run time, not code, so it is
+# easy to forget them here — and the failure comes much later, from inside a
+# container that has already waited for five services to be healthy.
+COPY h-bootstrap/migrations /app/h-bootstrap/migrations
 
 # --frozen: install exactly what uv.lock says, and fail if the lock file does
 # not match pyproject.toml. A build must never quietly pick newer versions.
@@ -82,6 +86,14 @@ ENV PATH="/app/h-bootstrap/.venv/bin:${PATH}" \
     PYTHONDONTWRITEBYTECODE=1
 
 USER nus
+
+# Fail the build rather than ship an image that cannot do its job. Both of
+# these have been wrong before: the migrations were missing entirely, and the
+# routing config comes from an apt package whose layout can change.
+RUN python -c "import bootstrap, nus_common" \
+ && test "$(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l)" -gt 0 \
+ && test -f /usr/share/osm2pgrouting/mapconfig_for_cars.xml \
+ && echo "bootstrap: $(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l) migrations, routing config present"
 
 # Runs once and exits. A non-zero exit means the stack is not prepared, and
 # the services keep waiting rather than working with half-made data.
