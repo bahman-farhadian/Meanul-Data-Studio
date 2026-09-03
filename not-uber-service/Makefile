@@ -579,6 +579,38 @@ oom: ## Anything killed for using too much memory, or restarting in a loop
 	done; [ "$$bad" = 0 ] && printf "  $(G)ok$(X)      nothing OOM-killed, nothing restart-looping\n" || \
 		printf "\n  $(Y)An OOM kill means that component's limit or the pacing must come down.$(X)\n"
 
+.PHONY: errors
+errors: ## Collect what actually went wrong: exit codes, healthcheck output, error logs
+	$(call say,Errors across the stack)
+	@found=0; \
+	for c in $$($(COMPOSE) ps -aq); do \
+		name=$$(docker inspect -f '{{slice .Name 1}}' "$$c" 2>/dev/null); \
+		state=$$(docker inspect -f '{{.State.Status}}' "$$c" 2>/dev/null); \
+		code=$$(docker inspect -f '{{.State.ExitCode}}' "$$c" 2>/dev/null); \
+		hs=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$$c" 2>/dev/null); \
+		bad=""; \
+		[ "$$state" = exited ] && [ "$$code" != 0 ] && bad="exited $$code"; \
+		[ "$$hs" = unhealthy ] && bad="$$bad unhealthy"; \
+		[ "$$state" = restarting ] && bad="$$bad restarting"; \
+		logs=$$(docker logs --tail 400 "$$c" 2>&1 \
+			| grep -iE 'error|fatal|exception|traceback|refused|denied|no such file|cannot|failed' \
+			| grep -viE 'errorCode=0|error_count=0|0 errors' | tail -6 || true); \
+		[ -z "$$bad" ] && [ -z "$$logs" ] && continue; \
+		found=1; \
+		printf "\n  $(B)%s$(X)  $(R)%s$(X)\n" "$$name" "$${bad:-log errors only}"; \
+		if [ "$$hs" = unhealthy ]; then \
+			out=$$(docker inspect -f '{{if .State.Health}}{{range .State.Health.Log}}{{.Output}}{{end}}{{end}}' "$$c" 2>/dev/null | tail -3); \
+			[ -n "$$out" ] && printf "    $(Y)healthcheck said:$(X)\n%s\n" "$$(echo "$$out" | sed 's/^/      /')"; \
+		fi; \
+		[ -n "$$logs" ] && printf "%s\n" "$$(echo "$$logs" | cut -c1-150 | sed 's/^/      /')"; \
+	done; \
+	if [ "$$found" = 0 ]; then \
+		printf "  $(G)ok$(X)      nothing exited badly, nothing unhealthy, no errors in the logs\n"; \
+	else \
+		printf "\n  Full log for any of them: $(C)make logs SVC=<name>$(X)\n"; \
+	fi
+	@printf "\n"
+
 .PHONY: stats
 stats: ## Live memory and CPU against each container's limit
 	@docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}' $$($(COMPOSE) ps -q) 2>/dev/null || true
