@@ -30,16 +30,28 @@ WORKDIR /app/h-bootstrap
 # Docker reuses this layer on most rebuilds.
 COPY z-lib/nus-common /app/z-lib/nus-common
 COPY h-bootstrap/pyproject.toml h-bootstrap/uv.lock /app/h-bootstrap/
+
+# --frozen: install exactly what uv.lock says. A build must never quietly
+# pick up a newer version of anything.
+#
+# The cache mount is what makes a rebuild survive a network outage: uv keeps
+# its downloads there, so changing application code re-runs this step against
+# the cache instead of reaching for the index.
+ENV UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev --no-install-project
+
+# The application code comes AFTER the dependency install, so editing it
+# cannot invalidate the layer above. With the source copied before it, a
+# one-line change re-resolved every dependency — which fails outright on a
+# host that has no route to the index at that moment.
 COPY h-bootstrap/bootstrap /app/h-bootstrap/bootstrap
 # The migrations are data the container reads at run time, not code, so it is
 # easy to forget them here — and the failure comes much later, from inside a
 # container that has already waited for five services to be healthy.
 COPY h-bootstrap/migrations /app/h-bootstrap/migrations
-
-# --frozen: install exactly what uv.lock says, and fail if the lock file does
-# not match pyproject.toml. A build must never quietly pick newer versions.
-ENV UV_LINK_MODE=copy
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev
 
 # --------------------------------------------------------------------------
 # Runtime stage
