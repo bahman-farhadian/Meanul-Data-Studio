@@ -1,0 +1,11 @@
+slice_name: "How trips ended"
+description: "Completed is the ending that earns money; the other three are the ways demand goes unserved. Watch the proportions rather than the heights."
+uuid: 304c739e-bddd-5fbb-91ef-4fa0b77830a6
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: echarts_timeseries_bar
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_bar", "x_axis": "event_time", "time_grain_sqla": "PT1H", "metrics": ["events"], "groupby": ["status"], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": ",d", "show_legend": true, "orientation": "vertical", "stack": "Stack", "datasource": "1__table"}

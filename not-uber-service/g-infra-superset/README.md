@@ -45,6 +45,43 @@ Superset can no longer read back that stored password. Both are fixable —
 run `superset-init` again — but it is better to set it once and leave it
 alone.
 
+## What ships in the box
+
+Superset comes up populated. `init/register_database.py` registers two
+connections and `assets/` holds the datasets, charts and dashboard, imported
+by the one-shot — the same "provisioned from files" contract Grafana has.
+
+| Connection | Points at | Why |
+| --- | --- | --- |
+| `ClickHouse (nus)` | `lb-a:8123` | The warehouse every chart reads. |
+| `PostgreSQL (nus, read-only)` | `lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the **replica pool**, never the leader, and DML is refused — an exploratory query from a browser has no business on the database the platform writes to. |
+
+The dashboard **not-uber-service - analytics** is six sections over 20 charts
+and five datasets: the week in numbers, money, demand that went unserved,
+whether the routing held up, the city, and the fleet.
+
+Two things the datasets encode so a chart cannot get them wrong:
+
+- **`trip_stats_hourly` metrics sum before they divide.** It is a
+  SummingMergeTree filled per node, so the same hour and zone exists on both
+  shards. `avg_surge` is `sum(surge_sum) / sum(completed_trips)`, never an
+  average of averages — picking "AVG" off a menu would be wrong, so the metric
+  is defined for you.
+- **`trip_events` holds one row per status change**, not per trip, so `trips`
+  is `uniqExact(trip_id)` and each outcome is a `countIf`.
+
+### Changing a chart
+
+Edit the YAML and run the one-shot again:
+
+```bash
+docker compose run --rm superset-init
+```
+
+`--overwrite` means the file wins. A chart edited in the browser is **not**
+written back to `assets/` — export it from Superset and commit the export, the
+same way the Grafana dashboards work.
+
 ## Files
 
 | File | Purpose |

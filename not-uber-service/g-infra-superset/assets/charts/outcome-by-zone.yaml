@@ -1,0 +1,11 @@
+slice_name: "Where demand goes unserved"
+description: "Per zone: how many trips, and what share of them found nobody. A zone high on this list needs drivers, not analysis."
+uuid: 36d159f8-538a-531d-b18b-b8c7cf2bbcd6
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["trips", "no_driver", "completed"], "adhoc_filters": [], "row_limit": 50, "order_desc": true, "timeseries_limit_metric": "trips", "show_totals": false, "table_timestamp_format": "smart_date", "datasource": "1__table"}

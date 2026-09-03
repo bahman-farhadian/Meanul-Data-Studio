@@ -1,0 +1,11 @@
+slice_name: "How wrong was the route estimate"
+description: "Actual minus predicted seconds, per zone. Positive means trips ran later than pgRouting promised - the traffic factors being stale, not the router being wrong."
+uuid: 55ebfdba-f547-56d0-816a-dbf2e394416a
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["trips", "avg_delta_s", "overrun_share"], "adhoc_filters": [], "row_limit": 50, "order_desc": true, "timeseries_limit_metric": "avg_delta_s", "show_totals": false, "table_timestamp_format": "smart_date", "datasource": "1__table"}

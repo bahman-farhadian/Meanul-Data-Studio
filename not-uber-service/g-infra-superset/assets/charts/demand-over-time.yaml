@@ -1,0 +1,11 @@
+slice_name: "Demand through the week"
+description: "The city's demand score over time. The shape repeats daily; the height is how hard the fleet was pushed."
+uuid: c4656b1c-16ef-5268-aba9-c688ea6fd3c1
+dataset_uuid: 7f7ea46a-17a9-5f35-a08e-782d7ab1e79b
+version: 1.0.0
+viz_type: echarts_timeseries_line
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_line", "x_axis": "computed_at", "time_grain_sqla": "PT1H", "metrics": ["demand"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": ",.3f", "show_legend": false, "seriesType": "line", "markerEnabled": false, "datasource": "1__table"}

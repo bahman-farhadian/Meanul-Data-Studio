@@ -27,6 +27,11 @@ FROM ${SUPERSET_IMAGE}
 
 ARG SUPERSET_IMAGE
 ARG CLICKHOUSE_CONNECT_VERSION=1.7.2
+# Superset ships no PostgreSQL driver of its own — verified by importing
+# psycopg2 in the stock image, where it is absent. Without it the read-only
+# PostgreSQL connection registered by init/register_database.py cannot open,
+# and the failure appears only when somebody runs a query in SQL Lab.
+ARG PSYCOPG2_VERSION=2.9.12
 
 LABEL org.opencontainers.image.title="nus/superset" \
       org.opencontainers.image.description="Apache Superset with the ClickHouse driver, for the not-uber-service stack" \
@@ -39,7 +44,11 @@ USER root
 
 RUN uv pip install --python /app/.venv/bin/python --no-cache \
         "clickhouse-connect==${CLICKHOUSE_CONNECT_VERSION}" \
- && python -c "import clickhouse_connect, clickhouse_connect.cc_sqlalchemy; \
-print('clickhouse-connect', clickhouse_connect.__version__, 'importable by Superset')"
+        "psycopg2-binary==${PSYCOPG2_VERSION}" \
+ && python -c "import clickhouse_connect, clickhouse_connect.cc_sqlalchemy, psycopg2; \
+import sqlalchemy; \
+sqlalchemy.create_engine('clickhousedb://u:p@h:8123/d'); \
+sqlalchemy.create_engine('postgresql+psycopg2://u:p@h:5433/d'); \
+print('drivers importable by Superset: clickhouse-connect', clickhouse_connect.__version__, '/ psycopg2', psycopg2.__version__.split()[0])"
 
 USER superset

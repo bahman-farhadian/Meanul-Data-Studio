@@ -99,6 +99,9 @@ services:
     volumes:
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
       - ./init:/init:ro
+      # The dashboard definitions. Read-only: Superset imports them, and a
+      # chart edited in the browser never writes back here.
+      - ./assets:/app/assets:ro
       - superset-home:/app/superset_home
     networks:
       - backbone

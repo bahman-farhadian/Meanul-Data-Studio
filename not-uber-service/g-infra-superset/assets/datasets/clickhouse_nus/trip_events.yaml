@@ -1,0 +1,199 @@
+# Every status change of every trip, enriched by clickhouse-sink.
+#
+# One row per CHANGE, not per trip: a trip that runs to completion writes
+# several. So "how many trips" is uniqExact(trip_id), and "how many ended this
+# way" is a countIf on the status. Counting rows would count the same trip
+# once per stage it passed through.
+table_name: trip_events
+schema: nus
+uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+database_uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
+version: 1.0.0
+main_dttm_col: event_time
+description: One row per trip status change, with the fare, the route and how far the prediction was out.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+metrics:
+  - metric_name: trips
+    verbose_name: Trips
+    expression: uniqExact(trip_id)
+    metric_type: count_distinct
+    d3format: ',d'
+    description: Distinct trips, however many status changes each one wrote.
+  - metric_name: events
+    verbose_name: Status changes
+    expression: count(*)
+    metric_type: count
+    d3format: ',d'
+  - metric_name: completed
+    verbose_name: Completed
+    expression: countIf(status = 'completed')
+    metric_type: count
+    d3format: ',d'
+  - metric_name: no_driver
+    verbose_name: Nobody available
+    expression: countIf(status = 'no_driver_found')
+    metric_type: count
+    d3format: ',d'
+    description: Requests that found no driver at all - the fleet-is-too-small number.
+  - metric_name: avg_delta_s
+    verbose_name: Prediction error
+    expression: avg(duration_delta_s)
+    metric_type: avg
+    d3format: ',.0f'
+    description: Actual minus predicted seconds. Positive means the trip ran late.
+  - metric_name: revenue_final
+    verbose_name: Revenue
+    expression: sum(fare_final)
+    metric_type: sum
+    d3format: '$,.0f'
+  - metric_name: revenue_quoted
+    verbose_name: Revenue quoted
+    expression: sum(fare_estimate)
+    metric_type: sum
+    d3format: '$,.0f'
+    description: What riders were told at assignment, before the trip actually ran.
+  - metric_name: quote_drift_pct
+    verbose_name: Charged vs quoted
+    expression: 100 * (sum(fare_final) - sum(fare_estimate)) / greatest(sum(fare_estimate), 1)
+    metric_type: avg
+    d3format: ',.1f'
+    description: How far the final fare drifted from the estimate. Positive means traffic cost the rider money.
+  - metric_name: predicted_min
+    verbose_name: Predicted minutes
+    expression: sum(predicted_duration_s) / 60
+    metric_type: sum
+    d3format: ',.0f'
+  - metric_name: actual_min
+    verbose_name: Actual minutes
+    expression: sum(actual_duration_s) / 60
+    metric_type: sum
+    d3format: ',.0f'
+  - metric_name: overrun_share
+    verbose_name: Ran late
+    expression: 100 * countIf(took_longer_than_predicted = 1) / greatest(countIf(took_longer_than_predicted IS NOT NULL), 1)
+    metric_type: avg
+    d3format: ',.1f'
+  - metric_name: hotspot_share
+    verbose_name: Started in a busy zone
+    expression: 100 * countIf(is_hotspot_trip = 1) / greatest(countIf(is_hotspot_trip IS NOT NULL), 1)
+    metric_type: avg
+    d3format: ',.1f'
+    description: Share of trips whose pickup zone was above the hotspot threshold at the time.
+  - metric_name: avg_km
+    verbose_name: Average distance
+    expression: avg(route_km)
+    metric_type: avg
+    d3format: ',.2f'
+  - metric_name: avg_surge_charged
+    verbose_name: Average surge
+    expression: avg(surge_multiplier)
+    metric_type: avg
+    d3format: ',.2f'
+  - metric_name: drivers_working
+    verbose_name: Drivers who took a trip
+    expression: uniqExact(driver_id)
+    metric_type: count_distinct
+    d3format: ',d'
+  - metric_name: riders_served
+    verbose_name: Riders served
+    expression: uniqExact(rider_id)
+    metric_type: count_distinct
+    d3format: ',d'
+columns:
+  - column_name: event_time
+    type: DATETIME
+    is_dttm: true
+    groupby: true
+    filterable: true
+    verbose_name: When
+  - column_name: status
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: How it ended
+  - column_name: pickup_zone_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Pickup zone
+  - column_name: trip_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+  - column_name: duration_delta_s
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Seconds late
+  - column_name: route_km
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: surge_multiplier
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: is_hotspot_trip
+    type: BIGINT
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Started in a busy zone
+  - column_name: driver_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+  - column_name: rider_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+  - column_name: took_longer_than_predicted
+    type: BIGINT
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Ran late
+  - column_name: hotspot_score
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: fare_final
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: fare_estimate
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: predicted_duration_s
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: actual_duration_s
+    type: BIGINT
+    is_dttm: false
+    groupby: false
+    filterable: true

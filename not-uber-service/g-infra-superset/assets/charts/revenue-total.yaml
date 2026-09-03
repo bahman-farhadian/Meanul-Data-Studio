@@ -1,0 +1,11 @@
+slice_name: "Revenue"
+description: "Final fares of every completed trip in range, surge included."
+uuid: d59a91ea-87d6-5975-a862-835c280ffd77
+dataset_uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+version: 1.0.0
+viz_type: big_number_total
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "big_number_total", "metric": "revenue", "adhoc_filters": [], "subheader": "final fares, surge included", "y_axis_format": "$,.0f", "datasource": "1__table"}

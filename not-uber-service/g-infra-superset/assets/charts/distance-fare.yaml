@@ -1,0 +1,11 @@
+slice_name: "Distance, surge and price by zone"
+description: "What a trip from each zone looks like: how far, how surged, how much. The three numbers that together explain a fare."
+uuid: c6b8772b-7e4a-539e-a203-1a3077931ed1
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["trips", "avg_km", "avg_surge_charged", "quote_drift_pct"], "adhoc_filters": [], "row_limit": 50, "order_desc": true, "timeseries_limit_metric": "trips", "show_totals": false, "table_timestamp_format": "smart_date", "datasource": "1__table"}

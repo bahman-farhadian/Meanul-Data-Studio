@@ -1,0 +1,11 @@
+slice_name: "Rider GPS accuracy"
+description: "How precise the riders' phone fixes were, per zone. A phone in a pocket is not a mounted device, which is exactly why the two streams are kept apart."
+uuid: 4ece4477-e459-520a-8107-fdfa34a9b0f8
+dataset_uuid: 575090d6-36b7-59ed-a97b-74c13055e534
+version: 1.0.0
+viz_type: table
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "table", "query_mode": "aggregate", "groupby": ["zone_id"], "metrics": ["reports", "riders", "median_accuracy"], "adhoc_filters": [], "row_limit": 50, "order_desc": true, "timeseries_limit_metric": "reports", "show_totals": false, "table_timestamp_format": "smart_date", "datasource": "1__table"}

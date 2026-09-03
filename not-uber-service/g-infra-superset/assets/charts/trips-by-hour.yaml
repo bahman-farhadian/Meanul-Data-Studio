@@ -1,0 +1,11 @@
+slice_name: "Completed trips by hour"
+description: "Trip count on its own axis. Deliberately a second chart rather than a second axis on the revenue one: two scales sharing an axis invite a comparison the geometry cannot support."
+uuid: b4aded9e-9c41-5690-b648-3879ab8a1264
+dataset_uuid: b89d7a31-89d7-5d47-b700-05e6c9bc5d0b
+version: 1.0.0
+viz_type: echarts_timeseries_line
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "echarts_timeseries_line", "x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["trips"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "x_axis_sort_asc": true, "y_axis_format": ",d", "show_legend": false, "seriesType": "line", "markerEnabled": false, "datasource": "1__table"}

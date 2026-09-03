@@ -1,0 +1,104 @@
+# Driver telemetry: one row per position report, every few seconds per online
+# driver. It is the highest-volume table in the stack and the one that shows
+# what the fleet is physically doing - where it is, how fast it is moving, and
+# how much of it is earning rather than waiting.
+table_name: driver_positions
+schema: nus
+uuid: 382f6b0a-313c-51a7-b553-919c222f93e5
+database_uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
+version: 1.0.0
+main_dttm_col: event_time
+description: Position, speed and state of every online driver, sampled every few seconds.
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+metrics:
+  - metric_name: reports
+    verbose_name: Position reports
+    expression: count(*)
+    metric_type: count
+    d3format: ',d'
+  - metric_name: drivers
+    verbose_name: Drivers seen
+    expression: uniqExact(driver_id)
+    metric_type: count_distinct
+    d3format: ',d'
+  - metric_name: median_speed
+    verbose_name: Median speed
+    expression: median(speed_kmh)
+    metric_type: avg
+    d3format: ',.1f'
+    description: Free flow in this city is about 26 km/h; below that is congestion.
+  - metric_name: moving_share
+    verbose_name: Share actually moving
+    expression: 100 * countIf(speed_kmh > 1) / greatest(count(*), 1)
+    metric_type: avg
+    d3format: ',.1f'
+  - metric_name: earning_share
+    verbose_name: Share carrying a rider
+    expression: 100 * countIf(status = 'on_trip') / greatest(count(*), 1)
+    metric_type: avg
+    d3format: ',.1f'
+    description: Utilisation. A fleet that is mostly idle is a fleet that is too big for the demand.
+columns:
+  - column_name: event_time
+    type: DATETIME
+    is_dttm: true
+    groupby: true
+    filterable: true
+    verbose_name: When
+  - column_name: status
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Driver state
+  - column_name: zone_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Zone
+  - column_name: driver_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+  - column_name: speed_kmh
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Speed (km/h)
+  - column_name: heading_deg
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+  - column_name: lat
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Latitude
+  - column_name: lon
+    type: FLOAT
+    is_dttm: false
+    groupby: false
+    filterable: true
+    verbose_name: Longitude
+  - column_name: trip_id
+    type: STRING
+    is_dttm: false
+    groupby: true
+    filterable: true
+    verbose_name: Trip

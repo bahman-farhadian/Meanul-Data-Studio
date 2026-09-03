@@ -1,0 +1,11 @@
+slice_name: "Nobody available"
+description: "Requests that found no driver at all. The number that says the fleet is too small."
+uuid: 8b1175c7-7221-5e1a-89a7-1ac347f942f9
+dataset_uuid: b124e4d6-cb6b-5014-a9e9-e5fa6f6114e0
+version: 1.0.0
+viz_type: big_number_total
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"viz_type": "big_number_total", "metric": "no_driver", "adhoc_filters": [], "subheader": "requests with no driver", "y_axis_format": ",d", "datasource": "1__table"}
