@@ -108,7 +108,7 @@ init: ## Create .env from the template and the shared nus-backbone network
 		printf "                or point NUS_VOLUME_ROOT at a path you can write\n"; \
 		exit 1; \
 	else \
-		for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2-); do \
+		for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
 			mkdir -p "$$d"; done; \
 		made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' | wc -l); \
 		free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
@@ -159,7 +159,7 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			grep -qE "^$$v=.+" $(ENV_FILE) || missing="$$missing $$v"; done; \
 		[ -z "$$missing" ] && printf "  $(G)ok$(X)      every required setting has a value\n" \
 			|| { printf "  $(R)FAIL$(X)    missing or empty:%s\n" "$$missing"; fail=1; }; \
-		dupes=$$(grep -oE '^[A-Z_][A-Z0-9_]*=' $(ENV_FILE) | sort | uniq -d | tr -d '=' | tr '\n' ' '); \
+		dupes=$$(grep -oE '^[A-Z_][A-Z0-9_]*=' $(ENV_FILE) | sort | uniq -d | tr -d '=' | tr '\n' ' ' || true); \
 		[ -z "$$dupes" ] && printf "  $(G)ok$(X)      no setting is defined twice\n" \
 			|| printf "  $(Y)warn$(X)    defined more than once (the last wins): %s\n" "$$dupes"; \
 	fi; \
@@ -180,7 +180,7 @@ preflight: ## Check the host, Docker and the settings before anything is started
 		&& printf "  $(G)ok$(X)      network $(NETWORK) exists\n" \
 		|| { printf "  $(R)FAIL$(X)    network $(NETWORK) is missing — run 'make init'\n"; fail=1; }; \
 	missing=""; n=0; \
-	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2-); do \
+	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
 		n=$$((n+1)); [ -d "$$d" ] || missing="$$missing $$(basename "$$d")"; done; \
 	if [ "$$n" -eq 0 ]; then :; \
 	elif [ -z "$$missing" ]; then \
@@ -241,14 +241,14 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	$(COMPOSE) config -q 2>/dev/null \
 		&& printf "  $(G)ok$(X)      all 14 components resolve from $(ENV_FILE)\n" \
 		|| { printf "  $(R)FAIL$(X)    the compose model does not resolve:\n"; $(COMPOSE) config -q 2>&1 | sed 's/^/              /'; fail=1; }; \
-	if command -v ss >/dev/null 2>&1; then listening=$$(ss -ltn 2>/dev/null | awk 'NR>1{print $$4}'); \
-	elif command -v netstat >/dev/null 2>&1; then listening=$$(netstat -ltn 2>/dev/null | awk 'NR>2{print $$4}'); \
+	if command -v ss >/dev/null 2>&1; then listening=$$(ss -ltn 2>/dev/null | awk 'NR>1{print $$4}' || true); \
+	elif command -v netstat >/dev/null 2>&1; then listening=$$(netstat -ltn 2>/dev/null | awk 'NR>2{print $$4}' || true); \
 	else listening=""; fi; \
 	if [ -z "$$listening" ]; then \
 		printf "  $(Y)warn$(X)    no ss or netstat here, so host ports were not checked\n"; \
 	else \
 		ours=$$(docker ps --filter "label=com.docker.compose.project=not-uber-service" \
-			--format '{{.Ports}}' 2>/dev/null | grep -oE '[0-9]+->' | tr -d '>-' | sort -u); \
+			--format '{{.Ports}}' 2>/dev/null | grep -oE '[0-9]+->' | tr -d '>-' | sort -u || true); \
 		busy=""; mine=""; \
 		for p in $$(grep -oE '^LB_[AB]_[A-Z_]+PORT=[0-9]+' $(ENV_FILE) 2>/dev/null | cut -d= -f2); do \
 			echo "$$listening" | grep -qE "[:.]$$p\$$" || continue; \
