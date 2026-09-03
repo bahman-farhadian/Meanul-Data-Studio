@@ -23,15 +23,21 @@ superset fab create-admin \
 echo "== loading the built-in roles and permissions =="
 superset init
 
-echo "== registering the database connections =="
-python /init/register_database.py
 
 # The datasets, charts and dashboard live in assets/ as plain YAML, the same
 # way Grafana's dashboards do. --overwrite makes this the way an edited chart
 # is rolled out: change the file, run the one-shot again. A chart edited in the
 # browser is NOT written back to these files - export it and commit it.
 echo "== importing the datasets, charts and dashboard =="
+# Before the credentials, deliberately. The bundle carries a database file so
+# the datasets have a uuid to attach to, and its uri has no password in it --
+# a password in a committed file is not an option. --overwrite applies that
+# passwordless uri to the connection, so whatever ran before it loses its
+# password. Registering afterwards is what makes the credential survive.
 superset import-directory /app/assets --overwrite
+
+echo "== registering the database connections =="
+python /init/register_database.py
 
 echo
 echo "Superset is ready. Log in as ${SUPERSET_ADMIN_USER}."
