@@ -29,12 +29,24 @@ WORKDIR /app/m-service-city
 # layer survives most rebuilds.
 COPY z-lib/nus-common /app/z-lib/nus-common
 COPY m-service-city/pyproject.toml m-service-city/uv.lock /app/m-service-city/
-COPY m-service-city/city_service /app/m-service-city/city_service
 
 # --frozen: install exactly what uv.lock says. A build must never quietly
 # pick up a newer version of anything.
+#
+# The cache mount is what makes a rebuild survive a network outage: uv keeps
+# its downloads there, so changing application code re-runs this step against
+# the cache instead of reaching for the index.
 ENV UV_LINK_MODE=copy
-RUN uv sync --frozen --no-dev
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev --no-install-project
+
+# The application code comes AFTER the dependency install, so editing it
+# cannot invalidate the layer above. With the source copied before it, a
+# one-line change re-resolved every dependency — which fails outright on a
+# host that has no route to the index at that moment.
+COPY m-service-city/city_service /app/m-service-city/city_service
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev
 
 # --------------------------------------------------------------------------
 # Runtime stage
