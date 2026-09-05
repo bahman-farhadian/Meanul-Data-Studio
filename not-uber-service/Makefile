@@ -25,6 +25,14 @@ ETCD_ENV := a-infra-postgres/etcd.env
 # Superset have a 40-60s start_period of their own, so this is generous.
 WAIT_TIMEOUT ?= 420
 
+# How far back `make errors` reads each container's logs. Every service logs
+# something transient in its first few seconds (a client probing before it is
+# ready, a watch reconnecting while a cluster forms) and a container that
+# never restarts carries that moment for its whole life — a fixed line count
+# never ages it out. A short, recent window does: it still catches anything
+# actively wrong, and a one-time startup line falls out of it on its own.
+ERRORS_WINDOW ?= 15m
+
 # --- the stack, in the pieces the runbook names -------------------------------
 ENTRY    := lb-a lb-b
 PIECE_A  := etcd-1 etcd-2 etcd-3 pg-1 pg-2 pg-3
@@ -611,7 +619,7 @@ errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck 
 		[ "$$state" = restarting ] && bad="$$bad restarting"; \
 		[ "$$oomed" = true ] && bad="$$bad oom-killed"; \
 		[ "$${restarts:-0}" -gt 3 ] && bad="$$bad restart-looping(x$$restarts)"; \
-		logs=$$(docker logs --tail 400 "$$c" 2>&1 \
+		logs=$$(docker logs --since $(ERRORS_WINDOW) "$$c" 2>&1 \
 			| grep -E '"level": ?"(ERROR|CRITICAL)"|level=error|<Error>|ERROR:|FATAL:|\[error\]|Traceback \(most recent|^[A-Za-z_.]*(Error|Exception):' \
 			| tail -6 || true); \
 		[ -z "$$bad" ] && [ -z "$$logs" ] && continue; \
