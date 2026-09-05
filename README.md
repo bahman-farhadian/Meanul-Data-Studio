@@ -713,7 +713,7 @@ file. Each service sets `cpus`, `mem_limit`, and `memswap_limit`, with
 `memswap_limit` equal to `mem_limit` so no container can swap.
 
 Whether the budget holds is observable rather than hoped for: `make stats`
-shows live usage against each limit, `make oom` reports anything killed for
+shows live usage against each limit, `make errors` reports anything killed for
 memory or restart-looping, and `make lag` reports consumer lag.
 
 Two assumptions keep the budget realistic: generation pacing is configured

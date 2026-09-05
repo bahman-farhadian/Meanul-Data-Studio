@@ -342,7 +342,7 @@ build: ## Build the eleven images this repository defines
 	@$(COMPOSE) build
 
 .PHONY: config
-config: ## Print the fully merged compose model (what Docker actually sees)
+config: # Print the fully merged compose model (what Docker actually sees)
 	@$(COMPOSE) config
 
 # =============================================================================
@@ -372,29 +372,22 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@printf "    $(C)make etcd-existing$(X)   flip the etcd cluster out of bootstrap mode\n\n"
 	@printf "  Then: $(C)make verify$(X), $(C)make urls$(X), $(C)make lag$(X)\n\n"
 
-.PHONY: up-infra
-up-infra: ## Start pieces a to g only (no bootstrap, no services)
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA)
-
-.PHONY: up-services
-up-services: ## Start pieces i to n only
-	@$(COMPOSE) up -d $(SERVICES)
-
-.PHONY: up-a up-b up-c up-d up-e up-f up-g
-up-a: ## Piece a — PostgreSQL (Patroni) + etcd, behind the entry tier
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(ENTRY) $(PIECE_A)
-up-b: ## Piece b — Redis + Sentinel
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_B)
-up-c: ## Piece c — Kafka + Schema Registry
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_C)
-up-d: ## Piece d — Debezium Connect
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_D)
-up-e: ## Piece e — ClickHouse + Keeper
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_E)
-up-f: ## Piece f — Grafana
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_F)
-up-g: ## Piece g — Superset
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(PIECE_G)
+.PHONY: up-piece
+up-piece: ## One piece only:  make up-piece PIECE=a  (a-g, or infra, or services)
+	@case "$(PIECE)" in \
+		a) set -- $(ENTRY) $(PIECE_A) ;; \
+		b) set -- $(PIECE_B) ;; \
+		c) set -- $(PIECE_C) ;; \
+		d) set -- $(PIECE_D) ;; \
+		e) set -- $(PIECE_E) ;; \
+		f) set -- $(PIECE_F) ;; \
+		g) set -- $(PIECE_G) ;; \
+		infra) set -- $(INFRA) ;; \
+		services) $(COMPOSE) up -d $(SERVICES); exit $$? ;; \
+		"") printf "$(R)set PIECE=a..g, infra, or services$(X)\n"; exit 1 ;; \
+		*) printf "$(R)unknown PIECE '$(PIECE)' — a..g, infra, or services$(X)\n"; exit 1 ;; \
+	esac; \
+	$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) "$$@"
 
 .PHONY: restart
 restart: ## Restart one service:  make restart SVC=driver-service
@@ -586,11 +579,6 @@ verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
 	@printf "\n  Trips should be roughly HISTORY_DAYS x HISTORY_TRIPS_PER_DAY, and 'ways'\n"
 	@printf "  in the hundreds of thousands. 'ways' at 0 means the map import did not run.\n"
 
-.PHONY: verify-limits
-verify-limits: ## Prove the resource budget holds: nothing OOM-killed, nothing pinned
-	@$(MAKE) --no-print-directory oom
-	@$(MAKE) --no-print-directory stats
-
 # =============================================================================
 ##@ Operate
 # =============================================================================
@@ -606,18 +594,8 @@ health: ## One line per container: health, restarts, and whether it was OOM-kill
 		docker inspect -f '  {{printf "%-22s" (slice .Name 1)}} {{if .State.Health}}{{printf "%-12s" .State.Health.Status}}{{else}}{{printf "%-12s" .State.Status}}{{end}} {{printf "%-9d" .RestartCount}} {{.State.OOMKilled}}' "$$c" 2>/dev/null; \
 	done
 
-.PHONY: oom
-oom: ## Anything killed for using too much memory, or restarting in a loop
-	$(call say,Restart counts and OOM kills)
-	@bad=0; for c in $$($(COMPOSE) ps -aq); do \
-		read -r name count oom <<< "$$(docker inspect -f '{{.Name}} {{.RestartCount}} {{.State.OOMKilled}}' $$c | tr -d '/')"; \
-		if [ "$$oom" = true ] || [ "$$count" -gt 3 ]; then \
-			printf "  $(R)%-24s$(X) restarts=%s oomkilled=%s\n" "$$name" "$$count" "$$oom"; bad=1; fi; \
-	done; [ "$$bad" = 0 ] && printf "  $(G)ok$(X)      nothing OOM-killed, nothing restart-looping\n" || \
-		printf "\n  $(Y)An OOM kill means that component's limit or the pacing must come down.$(X)\n"
-
 .PHONY: errors
-errors: ## Collect what actually went wrong: exit codes, healthcheck output, error logs
+errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck output, error logs
 	$(call say,Errors across the stack)
 	@found=0; \
 	for c in $$($(COMPOSE) ps -aq); do \
@@ -625,10 +603,14 @@ errors: ## Collect what actually went wrong: exit codes, healthcheck output, err
 		state=$$(docker inspect -f '{{.State.Status}}' "$$c" 2>/dev/null); \
 		code=$$(docker inspect -f '{{.State.ExitCode}}' "$$c" 2>/dev/null); \
 		hs=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$$c" 2>/dev/null); \
+		oomed=$$(docker inspect -f '{{.State.OOMKilled}}' "$$c" 2>/dev/null); \
+		restarts=$$(docker inspect -f '{{.RestartCount}}' "$$c" 2>/dev/null); \
 		bad=""; \
 		[ "$$state" = exited ] && [ "$$code" != 0 ] && bad="exited $$code"; \
 		[ "$$hs" = unhealthy ] && bad="$$bad unhealthy"; \
 		[ "$$state" = restarting ] && bad="$$bad restarting"; \
+		[ "$$oomed" = true ] && bad="$$bad oom-killed"; \
+		[ "$${restarts:-0}" -gt 3 ] && bad="$$bad restart-looping(x$$restarts)"; \
 		logs=$$(docker logs --tail 400 "$$c" 2>&1 \
 			| grep -E '"level": ?"(ERROR|CRITICAL)"|level=error|<Error>|ERROR:|FATAL:|\[error\]|Traceback \(most recent|^[A-Za-z_.]*(Error|Exception):' \
 			| tail -6 || true); \
@@ -642,9 +624,10 @@ errors: ## Collect what actually went wrong: exit codes, healthcheck output, err
 		[ -n "$$logs" ] && printf "%s\n" "$$(echo "$$logs" | cut -c1-150 | sed 's/^/      /')"; \
 	done; \
 	if [ "$$found" = 0 ]; then \
-		printf "  $(G)ok$(X)      nothing exited badly, nothing unhealthy, no errors in the logs\n"; \
+		printf "  $(G)ok$(X)      nothing exited badly, nothing unhealthy, nothing OOM-killed, no errors in the logs\n"; \
 	else \
-		printf "\n  Full log for any of them: $(C)make logs SVC=<name>$(X)\n"; \
+		printf "\n  An OOM kill or a restart loop means that component's limit or the\n"; \
+		printf "  pacing must come down. Full log for any of them: $(C)make logs SVC=<name>$(X)\n"; \
 	fi
 	@printf "\n"
 

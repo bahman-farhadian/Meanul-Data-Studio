@@ -36,7 +36,7 @@ make verify                # prove each layer works
 make urls                  # where to point a browser or a client
 make ps                    # what is running
 make lag                   # consumer lag — the pipeline's health signal
-make oom                   # anything killed for memory
+make errors                # exit codes, OOM kills, healthcheck output, error logs
 make stats                 # live usage against each limit
 
 # --- stopping and removing ------------------------------------------------
@@ -226,7 +226,7 @@ make urls          # where to point a browser or a client
 make ps            # what is running
 make health        # health, restart counts, OOM kills, one line each
 make stats         # live memory and CPU against each container's limit
-make oom           # anything killed for memory, or restart-looping
+make errors        # exit codes, OOM kills, healthcheck output, error logs
 make lag           # consumer lag per group — the pipeline's health signal
 make logs SVC=dispatch-service
 ```
@@ -261,16 +261,16 @@ The pieces can still be brought up individually, in the alphabetic build
 order, which is how each was written and tested:
 
 ```bash
-make up-a   # PostgreSQL (Patroni) + etcd, behind the entry tier
-make up-b   # Redis + Sentinel
-make up-c   # Kafka + Schema Registry        (then: make topics)
-make up-d   # Debezium Connect               (register the connector after piece h)
-make up-e   # ClickHouse + Keeper            (then: make ch-ddl)
-make up-f   # Grafana
-make up-g   # Superset                       (then: make superset-init)
+make up-piece PIECE=a   # PostgreSQL (Patroni) + etcd, behind the entry tier
+make up-piece PIECE=b   # Redis + Sentinel
+make up-piece PIECE=c   # Kafka + Schema Registry        (then: make topics)
+make up-piece PIECE=d   # Debezium Connect               (register the connector after piece h)
+make up-piece PIECE=e   # ClickHouse + Keeper            (then: make ch-ddl)
+make up-piece PIECE=f   # Grafana
+make up-piece PIECE=g   # Superset                       (then: make superset-init)
 make bootstrap
 make cdc-register
-make up-services
+make up-piece PIECE=services
 ```
 
 Each waits for its healthchecks before returning, so a piece that does not
