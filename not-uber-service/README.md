@@ -74,10 +74,13 @@ That separation matters wherever network access is restricted, intermittent,
 or only available from the host itself. Run `make prepare` where the host can
 reach the internet; run `make up` anywhere, including with no network at all.
 
-If builds fail while `docker pull` succeeds, the host's route out captures
-its own traffic but not traffic forwarded from containers. Set
-`BUILD_NETWORK=host` in `.env` and `make prepare` will build through the
-host's network instead. It changes nothing about how the stack runs.
+Builds already run in the host's own network namespace by default
+(`BUILD_NETWORK=host`) — a build stage's traffic is forwarded through the
+bridge, which is exactly what a route in front of this host often cannot
+see, even while the host's own connections work fine. It changes nothing
+about how the stack runs. If a build ever fails while `docker pull` succeeds
+anyway, set `BUILD_NETWORK=default` and re-run — some hosts are the other
+way around.
 
 `make up` never builds — that is `make prepare`'s job — because a build
 re-resolves image metadata from the registry even when the image already
@@ -275,6 +278,57 @@ make up-piece PIECE=services
 
 Each waits for its healthchecks before returning, so a piece that does not
 come up stops the sequence where the problem is.
+
+### Worked example: piece `a` alone, from a fresh clone
+
+`make up-piece` only starts containers — it never builds or pulls, and it
+never runs the one-shots a piece needs before its first start. Bringing up
+one piece in isolation is those three things done by hand, scoped to that
+piece, followed by `up-piece`:
+
+```bash
+# once, regardless of which piece: the master .env, the shared network,
+# and the whole data-directory tree (all 27 directories — the merged
+# compose model is interpolated as one file, so this isn't piece-specific)
+make init
+$EDITOR .env        # Section 1 — all 8 passwords need real values, even
+                     # though piece a only reads three of them: every
+                     # ${VAR:?...} across all 14 components is checked
+                     # before Docker will start anything at all
+
+# build/pull ONLY piece a's images — not `make prepare`, which does all 14
+docker compose build pg-1                          # nus/patroni-postgres; pg-2/pg-3 share the tag
+docker compose pull etcd-1 etcd-2 etcd-3 lb-a lb-b
+
+# the one-shots piece a needs before its first start
+docker compose run --rm volume-perms   # whole tree, harmless to run unscoped
+docker compose run --rm etcd-certgen   # piece a's own TLS bootstrap
+
+# start it — lb-a, lb-b, etcd-1/2/3, pg-1/2/3, nothing else
+make up-piece PIECE=a
+
+# verify, then the one post-first-start step
+make ps
+make errors
+make verify-pg
+make etcd-existing
+```
+
+Connect a SQL client through `lb-a` (never a `pg-*` container directly —
+see [Connecting as a DBA](a-infra-postgres/README.md#connecting-as-a-dba)):
+host = this server, port `5432` (writes) or `5433` (reads), database
+`postgres`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. Expect an
+empty database — `h-bootstrap` is what creates the application schema, and
+it runs several pieces later.
+
+Skip `make preflight` and `make prepare` for this: both check readiness of
+all 14 components and will fail on the 13 you have not touched yet. They
+become the right tools again once every piece is ready and you are doing
+the full-stack pass.
+
+The build/pull lines are specific to piece `a` — each later piece gets its
+own two lines here as we reach it, rather than a guessed-at general form for
+components not yet verified.
 
 ## Adding a component later
 
