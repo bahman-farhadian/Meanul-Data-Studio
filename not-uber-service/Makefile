@@ -621,6 +621,7 @@ errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck 
 		[ "$${restarts:-0}" -gt 3 ] && bad="$$bad restart-looping(x$$restarts)"; \
 		logs=$$(docker logs --since $(ERRORS_WINDOW) "$$c" 2>&1 \
 			| grep -E '"level": ?"(ERROR|CRITICAL)"|level=error|<Error>|ERROR:|FATAL:|\[error\]|Traceback \(most recent|^[A-Za-z_.]*(Error|Exception):' \
+			| grep -Ev 'FATAL: +the database system is starting up' \
 			| tail -6 || true); \
 		[ -z "$$bad" ] && [ -z "$$logs" ] && continue; \
 		found=1; \
