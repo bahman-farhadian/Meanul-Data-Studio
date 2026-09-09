@@ -26,9 +26,10 @@ make prepare               # pull every image, build the eleven, fetch the stree
 
 # --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
-                           #   volume-perms -> certgen -> infrastructure (a-g)
-                           #   -> topics -> ch-ddl -> superset-init
-                           #   -> bootstrap -> cdc-register -> services (i-n)
+                           #   volume-perms -> lb-config -> certgen
+                           #   -> infrastructure (a-g) -> topics -> ch-ddl
+                           #   -> superset-init -> bootstrap -> cdc-register
+                           #   -> services (i-n)
 make etcd-existing         # once, after the first successful start
 make verify                # prove each layer works
 
@@ -166,15 +167,16 @@ happened, which is the whole reason this is a Makefile and not one
 | Step | Command | Why here |
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
-| 2 | `make certgen` | etcd needs its TLS material before it starts. |
-| 3 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until step 8. |
-| 4 | `up` pieces a–g | The rest of the infrastructure, waited on until every healthcheck passes. |
-| 5 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
-| 6 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
-| 7 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
-| 8 | `make bootstrap` | Migrations, the street map, the people, a week of history, then the `system:bootstrap:done` marker. |
-| 9 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. |
-| 10 | `up` pieces i–n | The six services, which were waiting on the marker. |
+| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a`/`lb-b` start, the same reason `ch-secrets` exists. |
+| 3 | `make certgen` | etcd needs its TLS material before it starts. |
+| 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until step 9. |
+| 5 | `up` pieces a–g | The rest of the infrastructure, waited on until every healthcheck passes. |
+| 6 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
+| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
+| 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
+| 9 | `make bootstrap` | Migrations, the street map, the people, a week of history, then the `system:bootstrap:done` marker. |
+| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. |
+| 11 | `up` pieces i–n | The six services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is
@@ -301,8 +303,9 @@ docker compose build pg-1                          # nus/patroni-postgres; pg-2/
 docker compose pull etcd-1 etcd-2 etcd-3 lb-a lb-b
 
 # the one-shots piece a needs before its first start
-docker compose run --rm volume-perms   # whole tree, harmless to run unscoped
-docker compose run --rm etcd-certgen   # piece a's own TLS bootstrap
+docker compose run --rm volume-perms          # whole tree, harmless to run unscoped
+docker compose run --rm haproxy-config-render # lb-a/lb-b's config — piece a's ENTRY tier needs this too
+docker compose run --rm etcd-certgen          # piece a's own TLS bootstrap
 
 # start it — lb-a, lb-b, etcd-1/2/3, pg-1/2/3, nothing else
 make up-piece PIECE=a
