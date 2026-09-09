@@ -177,10 +177,23 @@ docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml list
 ## Connecting as a DBA
 
 **In the full stack, always connect through the HAProxy pair** — never to
-a `pg-*` container directly: the leader moves on failover, and only the
-proxies track it (via Patroni's REST API). This requires the **root**
-`docker-compose.yaml` to be up (it owns `lb-a`/`lb-b`); see the runbook in
+a `pg-*` container directly: those publish no port to the host at all, and
+even reaching one another way would be the wrong node the moment a
+failover moves the leader. Only the proxies track where it currently is
+(via Patroni's REST API). This requires the **root** `docker-compose.yaml`
+to be up (it owns `lb-a`/`lb-b`); see the runbook in
 [`../README.md`](../README.md).
+
+The port to give a client — psql, DBeaver, anything — is always one of
+these four, never a `pg-*` container's own port:
+
+| | via lb-a (canonical) | via lb-b (failover twin) |
+| --- | --- | --- |
+| **Write** — lands on the current leader | `5432` | `15432` |
+| **Read** — round-robins the replica pool | `5433` | `15433` |
+
+Host: this server's address. User: `postgres`. Password:
+`PG_SUPERUSER_PASSWORD` from your `.env`.
 
 ```bash
 # writes — always lands on the current leader (lb-a, canonical ports)
