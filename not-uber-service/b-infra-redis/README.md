@@ -16,11 +16,46 @@ the first failover the cluster's own state decides.
 > **Naming:** the `nus-` prefix on shared resources (`nus-cache`, `nus-pg`,
 > `nus-etcd`, `nus-backbone`) is the acronym of **n**ot-**u**ber-**s**ervice.
 
-Nothing publishes ports to the host. Unlike PostgreSQL, Redis is **not**
-reached through the `lb-a`/`lb-b` HAProxy pair: clients ask Sentinel for the
-current primary and reconnect themselves. A TCP proxy in the middle would
-happily hand a client a connection to a node Sentinel had already demoted,
-which is precisely the failure Sentinel exists to prevent.
+Nothing publishes a port directly from `redis-1/2/3` or `sentinel-1/2/3` —
+but Redis **is** reached through the `lb-a`/`lb-b` HAProxy pair, the same
+proxy PostgreSQL uses. The thing a naive TCP proxy gets wrong — happily
+handing a client a connection to a node Sentinel has already demoted — is
+solved the same way `pg_write`/`pg_read` solve it in piece a: the health
+check is **role-aware**, not a bare passthrough. It authenticates, asks the
+node `INFO replication` who it is, and only routes to a node whose own
+answer matches the role that backend wants.
+
+That is not the only guard. A demoted node also refuses writes **on its
+own** — Redis's `replica-read-only` default — so even in the few seconds
+while a check is still catching up right after a failover, a stray write
+cannot land on the wrong node silently; Redis itself rejects it with
+`READONLY`.
+
+## Connecting as a DBA
+
+**Always through `lb-a`/`lb-b`, never `redis-1/2/3` directly** — same
+reasoning as piece a: only the proxy tracks which node currently holds the
+role you want, across failovers.
+
+| | via lb-a (canonical) | via lb-b (failover twin) |
+| --- | --- | --- |
+| **Write** — lands on the current primary | `6379` | `16379` |
+| **Read** — round-robins the replica pool | `6380` | `16380` |
+
+Host: this server's address. Password: `REDIS_PASSWORD` from your `.env`,
+sent as `AUTH` — most GUI Redis clients just want it in a password field,
+no separate auth step.
+
+**`REDIS_PASSWORD` must not contain whitespace.** The health check sends
+`AUTH` as a raw inline Redis command, which splits on spaces; a password
+with a space in it fails every check closed, not just the GUI connection.
+
+For standalone testing of this component only (no lb running), exec into
+a node directly:
+
+```bash
+docker compose exec redis-1 redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping
+```
 
 ## Config-file lifecycle — the one thing to know
 

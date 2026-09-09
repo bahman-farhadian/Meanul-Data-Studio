@@ -387,6 +387,7 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory _mk-data-tree
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
+	@$(MAKE) --no-print-directory lb-config
 	@$(MAKE) --no-print-directory certgen
 	@$(MAKE) --no-print-directory ch-secrets
 	$(call say,Starting the infrastructure — pieces a to g)
@@ -435,6 +436,11 @@ restart: ## Restart one service:  make restart SVC=driver-service
 volume-perms: ## Hand each data directory to the user that writes to it (BEFORE first start)
 	$(call say,Data directory ownership)
 	@$(COMPOSE) run --rm volume-perms
+
+.PHONY: lb-config
+lb-config: ## Render haproxy.cfg with REDIS_PASSWORD (BEFORE lb-a/lb-b first start)
+	$(call say,Entry tier config)
+	@$(COMPOSE) run --rm haproxy-config-render
 
 # =============================================================================
 ##@ Verify
@@ -563,6 +569,8 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "  %-18s %-24s %s\n" "" "via lb-a (canonical)" "via lb-b (failover twin)"; \
 	printf "  %-18s %-24s %s\n" "PostgreSQL writes" "$$host:$(call getenv,LB_A_PG_WRITE_PORT)" "$$host:$(call getenv,LB_B_PG_WRITE_PORT)"; \
 	printf "  %-18s %-24s %s\n" "PostgreSQL reads"  "$$host:$(call getenv,LB_A_PG_READ_PORT)"  "$$host:$(call getenv,LB_B_PG_READ_PORT)"; \
+	printf "  %-18s %-24s %s\n" "Redis writes"      "$$host:$(call getenv,LB_A_REDIS_WRITE_PORT)" "$$host:$(call getenv,LB_B_REDIS_WRITE_PORT)"; \
+	printf "  %-18s %-24s %s\n" "Redis reads"       "$$host:$(call getenv,LB_A_REDIS_READ_PORT)"  "$$host:$(call getenv,LB_B_REDIS_READ_PORT)"; \
 	printf "  %-18s %-24s %s\n" "ClickHouse HTTP"   "$$host:$(call getenv,LB_A_CH_HTTP_PORT)"  "$$host:$(call getenv,LB_B_CH_HTTP_PORT)"; \
 	printf "  %-18s %-24s %s\n" "ClickHouse native" "$$host:$(call getenv,LB_A_CH_NATIVE_PORT)" "$$host:$(call getenv,LB_B_CH_NATIVE_PORT)"; \
 	printf "  %-18s %-24s %s\n" "Grafana"           "http://$$host:$(call getenv,LB_A_GRAFANA_PORT)"  "http://$$host:$(call getenv,LB_B_GRAFANA_PORT)"; \
