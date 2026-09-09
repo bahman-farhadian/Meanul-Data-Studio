@@ -91,7 +91,14 @@ warn= @printf "  $(Y)warn$(X)    %s\n" "$(1)"
 bad = @printf "  $(R)FAIL$(X)    %s\n" "$(1)"
 
 # Read one literal setting out of .env (no ${...} expansion — ports only).
-getenv = $(shell grep -E "^$(1)=" $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)
+# Optional second argument: a fallback if the var is genuinely absent from
+# .env — not unset, absent. This happens whenever a new port variable lands
+# in .env.example after a real .env already exists: `make init` correctly
+# refuses to overwrite it (it holds real passwords), so the new line never
+# arrives there even though docker-compose.yaml's own ${VAR:-default} means
+# the actual deployment is fine. Without this, `make urls` prints a blank
+# instead of the port that is genuinely in use.
+getenv = $(or $(shell grep -E "^$(1)=" $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-),$(2))
 
 .PHONY: help
 help:
@@ -567,15 +574,15 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "\n  The entry tier binds $(B)0.0.0.0$(X), so every address below works from\n"; \
 	printf "  this host and from anywhere that can reach it on the network.\n\n"; \
 	printf "  %-18s %-24s %s\n" "" "via lb-a (canonical)" "via lb-b (failover twin)"; \
-	printf "  %-18s %-24s %s\n" "PostgreSQL writes" "$$host:$(call getenv,LB_A_PG_WRITE_PORT)" "$$host:$(call getenv,LB_B_PG_WRITE_PORT)"; \
-	printf "  %-18s %-24s %s\n" "PostgreSQL reads"  "$$host:$(call getenv,LB_A_PG_READ_PORT)"  "$$host:$(call getenv,LB_B_PG_READ_PORT)"; \
-	printf "  %-18s %-24s %s\n" "Redis writes"      "$$host:$(call getenv,LB_A_REDIS_WRITE_PORT)" "$$host:$(call getenv,LB_B_REDIS_WRITE_PORT)"; \
-	printf "  %-18s %-24s %s\n" "Redis reads"       "$$host:$(call getenv,LB_A_REDIS_READ_PORT)"  "$$host:$(call getenv,LB_B_REDIS_READ_PORT)"; \
-	printf "  %-18s %-24s %s\n" "ClickHouse HTTP"   "$$host:$(call getenv,LB_A_CH_HTTP_PORT)"  "$$host:$(call getenv,LB_B_CH_HTTP_PORT)"; \
-	printf "  %-18s %-24s %s\n" "ClickHouse native" "$$host:$(call getenv,LB_A_CH_NATIVE_PORT)" "$$host:$(call getenv,LB_B_CH_NATIVE_PORT)"; \
-	printf "  %-18s %-24s %s\n" "Grafana"           "http://$$host:$(call getenv,LB_A_GRAFANA_PORT)"  "http://$$host:$(call getenv,LB_B_GRAFANA_PORT)"; \
-	printf "  %-18s %-24s %s\n" "Superset"          "http://$$host:$(call getenv,LB_A_SUPERSET_PORT)" "http://$$host:$(call getenv,LB_B_SUPERSET_PORT)"; \
-	printf "  %-18s %-24s %s\n" "HAProxy stats"     "http://$$host:$(call getenv,LB_A_STATS_PORT)/stats"    "http://$$host:$(call getenv,LB_B_STATS_PORT)/stats"; \
+	printf "  %-18s %-24s %s\n" "PostgreSQL writes" "$$host:$(call getenv,LB_A_PG_WRITE_PORT,5432)" "$$host:$(call getenv,LB_B_PG_WRITE_PORT,15432)"; \
+	printf "  %-18s %-24s %s\n" "PostgreSQL reads"  "$$host:$(call getenv,LB_A_PG_READ_PORT,5433)"  "$$host:$(call getenv,LB_B_PG_READ_PORT,15433)"; \
+	printf "  %-18s %-24s %s\n" "Redis writes"      "$$host:$(call getenv,LB_A_REDIS_WRITE_PORT,6379)" "$$host:$(call getenv,LB_B_REDIS_WRITE_PORT,16379)"; \
+	printf "  %-18s %-24s %s\n" "Redis reads"       "$$host:$(call getenv,LB_A_REDIS_READ_PORT,6380)"  "$$host:$(call getenv,LB_B_REDIS_READ_PORT,16380)"; \
+	printf "  %-18s %-24s %s\n" "ClickHouse HTTP"   "$$host:$(call getenv,LB_A_CH_HTTP_PORT,8123)"  "$$host:$(call getenv,LB_B_CH_HTTP_PORT,18123)"; \
+	printf "  %-18s %-24s %s\n" "ClickHouse native" "$$host:$(call getenv,LB_A_CH_NATIVE_PORT,9000)" "$$host:$(call getenv,LB_B_CH_NATIVE_PORT,19000)"; \
+	printf "  %-18s %-24s %s\n" "Grafana"           "http://$$host:$(call getenv,LB_A_GRAFANA_PORT,3000)"  "http://$$host:$(call getenv,LB_B_GRAFANA_PORT,13000)"; \
+	printf "  %-18s %-24s %s\n" "Superset"          "http://$$host:$(call getenv,LB_A_SUPERSET_PORT,8088)" "http://$$host:$(call getenv,LB_B_SUPERSET_PORT,18088)"; \
+	printf "  %-18s %-24s %s\n" "HAProxy stats"     "http://$$host:$(call getenv,LB_A_STATS_PORT,8404)/stats"    "http://$$host:$(call getenv,LB_B_STATS_PORT,18404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above — no extra proxy is needed.\n"; \
 	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \

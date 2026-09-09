@@ -39,7 +39,7 @@ verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 	@echo
 	@$(COMPOSE) exec -T pg-1 patronictl -c /etc/patroni/patroni.yml list || true
 	@printf "\n  Expect exactly one Leader and two Replicas, with lag at or near 0.\n"
-	@printf "  HAProxy view: http://localhost:$(call getenv,LB_A_STATS_PORT)/stats\n"
+	@printf "  HAProxy view: http://localhost:$(call getenv,LB_A_STATS_PORT,8404)/stats\n"
 	@printf "  Red rows there are $(B)expected$(X): the checks ask which ROLE a node holds,\n"
 	@printf "  so pg_write shows 1 UP and pg_read shows 2 UP. A node down in BOTH is the\n"
 	@printf "  only real failure signal.\n"
