@@ -3,6 +3,13 @@
 # fail over client-side. Backends resolve through Docker's embedded DNS
 # (127.0.0.11) with init-addr none, so HAProxy starts cleanly even while
 # a backend's containers do not exist yet.
+#
+# THIS IS A TEMPLATE, not the file HAProxy reads. __REDIS_PASSWORD__ below
+# is filled in by the render-haproxy-config one-shot before lb-a/lb-b start
+# (HAProxy does not expand ${VAR} from its own environment inside a
+# tcp-check string — confirmed, not assumed) — see
+# z-config/haproxy/render-config.sh. Never put a real password in this
+# file; it is committed.
 
 global
     log stdout format raw local0 info
@@ -71,6 +78,52 @@ listen pg_read
     server pg-1 pg-1:5432 check port 8008
     server pg-2 pg-2:5432 check port 8008
     server pg-3 pg-3:5432 check port 8008
+
+# Redis (b-infra-redis) --------------------------------------------------------
+# Unlike Postgres, Redis was deliberately NOT proxied for a long time: a naive
+# TCP passthrough would keep routing to a node Sentinel had already demoted.
+# This check is role-aware instead, the same idea as pg_write/pg_read: it
+# authenticates, sends INFO replication, and only routes to a node whose own
+# answer matches the role this backend wants. A demoted node also refuses
+# writes on its own (Redis's replica-read-only default), so the few seconds
+# while a check is catching up after a failover cannot cause a stray write to
+# land on the wrong node — it is rejected there, not silently accepted.
+#
+# REDIS_PASSWORD must not contain whitespace: AUTH is sent as a raw inline
+# Redis command here, which splits on spaces.
+
+listen redis_write
+    bind :6379
+    option tcp-check
+    tcp-check send AUTH\ __REDIS_PASSWORD__\r\n
+    tcp-check expect string +OK
+    tcp-check send PING\r\n
+    tcp-check expect string +PONG
+    tcp-check send info\ replication\r\n
+    tcp-check expect string role:master
+    tcp-check send QUIT\r\n
+    tcp-check expect string +OK
+    default-server on-marked-down shutdown-sessions
+    server redis-1 redis-1:6379 check
+    server redis-2 redis-2:6379 check
+    server redis-3 redis-3:6379 check
+
+listen redis_read
+    bind :6380
+    balance roundrobin
+    option tcp-check
+    tcp-check send AUTH\ __REDIS_PASSWORD__\r\n
+    tcp-check expect string +OK
+    tcp-check send PING\r\n
+    tcp-check expect string +PONG
+    tcp-check send info\ replication\r\n
+    tcp-check expect string role:slave
+    tcp-check send QUIT\r\n
+    tcp-check expect string +OK
+    default-server on-marked-down shutdown-sessions
+    server redis-1 redis-1:6379 check
+    server redis-2 redis-2:6379 check
+    server redis-3 redis-3:6379 check
 
 # ClickHouse (e-infra-clickhouse) ---------------------------------------------
 # All four nodes are equal here: any of them can answer any query, because a
