@@ -8,6 +8,14 @@
 # accident — several steps only work if something else has happened first, and
 # `make up` puts them where they belong.
 #
+# ONE MAKEFILE PER COMPONENT, included below, exactly like the root
+# docker-compose.yaml includes each component's own compose file. This file
+# keeps only what is genuinely stack-wide: setup, the ordered bring-up,
+# teardown, and diagnostics that cross more than one component. Everything
+# specific to one piece — its own verify-*, a shell into it, a failover demo —
+# lives in that piece's own Makefile and shows under its own heading in
+# `make help`.
+#
 # Full explanation of each piece: README.md. Architecture: ../README.md
 # =============================================================================
 
@@ -20,6 +28,23 @@ NETWORK  := nus-backbone
 ENV_FILE := .env
 EXAMPLE  := .env.example
 ETCD_ENV := a-infra-postgres/etcd.env
+
+# Every component's own Makefile. Order follows the build order (README
+# section 2.8.1) purely for readability — `include` does not care.
+include a-infra-postgres/Makefile
+include b-infra-redis/Makefile
+include c-infra-kafka/Makefile
+include d-infra-debezium/Makefile
+include e-infra-clickhouse/Makefile
+include f-infra-grafana/Makefile
+include g-infra-superset/Makefile
+include h-bootstrap/Makefile
+include i-service-cache-updater/Makefile
+include j-service-driver/Makefile
+include k-service-passenger/Makefile
+include l-service-dispatch/Makefile
+include m-service-city/Makefile
+include n-service-clickhouse-sink/Makefile
 
 # How long to wait for a group of containers to report healthy. ClickHouse and
 # Superset have a 40-60s start_period of their own, so this is generous.
@@ -411,88 +436,6 @@ volume-perms: ## Hand each data directory to the user that writes to it (BEFORE 
 	$(call say,Data directory ownership)
 	@$(COMPOSE) run --rm volume-perms
 
-.PHONY: ch-secrets
-ch-secrets: ## Write the ClickHouse inter-node login (BEFORE the nodes start)
-	$(call say,ClickHouse cluster credentials)
-	@$(COMPOSE) run --rm ch-secrets-init
-
-.PHONY: certgen
-certgen: ## Generate the etcd TLS material (skips itself once the certs exist)
-	$(call say,etcd TLS certificates)
-	@$(COMPOSE) run --rm etcd-certgen
-
-.PHONY: kafka-dirs
-kafka-dirs: ## Hand the Kafka volumes to the user inside the image (covered by volume-perms)
-	$(call say,Kafka data directory ownership)
-	@$(COMPOSE) run --rm kafka-dirs
-
-.PHONY: topics
-topics: ## Create the Kafka topics from topics.tsv (after the brokers are healthy)
-	$(call say,Kafka topics)
-	@$(COMPOSE) run --rm kafka-topics-init
-
-.PHONY: ch-ddl
-ch-ddl: ## Create the ClickHouse tables (after the four nodes are healthy)
-	$(call say,ClickHouse tables)
-	@$(COMPOSE) run --rm ch-ddl-init
-
-.PHONY: superset-init
-superset-init: ## Superset's own tables, admin user, roles and ClickHouse connection
-	$(call say,Superset initialisation)
-	@$(COMPOSE) run --rm superset-init
-
-.PHONY: bootstrap
-bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet part)
-	$(call say,Bootstrap — schema, street map, people, a week of history)
-	@printf "  This takes a while: the OSM import is the slow step.\n"
-	@$(COMPOSE) up -d bootstrap
-	@$(COMPOSE) logs -f bootstrap & LOGS=$$!; \
-	code=$$(docker wait bootstrap 2>/dev/null || echo 1); \
-	kill $$LOGS 2>/dev/null || true; wait $$LOGS 2>/dev/null || true; \
-	if [ "$$code" = 0 ]; then printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
-	else printf "\n  $(R)FAIL$(X)    bootstrap exited $$code — the services stay in standby on purpose.\n"; \
-	     printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; fi
-
-.PHONY: cdc-register
-cdc-register: ## Register the Debezium connector (only AFTER bootstrap made the tables)
-	$(call say,Debezium connector)
-	@$(COMPOSE) run --rm connector-register
-
-.PHONY: osm-fetch
-osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
-	$(call say,Fetching the street map on the host)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	url=$$(grep -E '^OSM_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	dest="$$root/nus-osm-data"; file="$$dest/region-latest.osm.pbf"; \
-	mkdir -p "$$dest"; \
-	if [ -s "$$file" ]; then \
-		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
-	else \
-		printf "  from    %s\n  to      %s\n" "$$url" "$$file"; \
-		curl -fL --progress-bar -o "$$file.part" "$$url" || { rm -f "$$file.part"; \
-			printf "  $(R)FAIL$(X)    download failed. This runs on the HOST, so if it cannot reach\n"; \
-			printf "              Geofabrik either, neither will bootstrap.\n"; exit 1; }; \
-		mv "$$file.part" "$$file"; \
-		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
-	fi; \
-	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true; \
-	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip the download\n"
-
-.PHONY: etcd-existing
-etcd-existing: ## Post-bootstrap: flip etcd to 'existing' (LOCAL STATE — never commit)
-	$(call say,Flipping the etcd cluster state to existing)
-	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=new$$/ETCD_INITIAL_CLUSTER_STATE=existing/' $(ETCD_ENV)
-	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
-	@$(COMPOSE) up -d --wait --wait-timeout 120 etcd-1 etcd-2 etcd-3
-	$(call ok,etcd recreated; the data volumes were kept)
-	@printf "  $(Y)Do not commit $(ETCD_ENV).$(X) A fresh clone must bootstrap from 'new';\n"
-	@printf "  on a live cluster 'new' would let a member with a lost volume start its own.\n"
-
-.PHONY: etcd-new
-etcd-new: ## Put etcd back to 'new' (only before a fresh bootstrap from empty volumes)
-	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=existing$$/ETCD_INITIAL_CLUSTER_STATE=new/' $(ETCD_ENV)
-	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
-
 # =============================================================================
 ##@ Verify
 # =============================================================================
@@ -500,92 +443,8 @@ etcd-new: ## Put etcd back to 'new' (only before a fresh bootstrap from empty vo
 .PHONY: verify
 verify: verify-pg verify-redis verify-kafka verify-cdc verify-ch verify-dash verify-data ## Every check below, in order
 
-.PHONY: verify-pg
-verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
-	$(call say,PostgreSQL)
-	@$(COMPOSE) exec -T etcd-1 etcdctl \
-		--endpoints=https://etcd-1:2379,https://etcd-2:2379,https://etcd-3:2379 \
-		--cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
-		endpoint health || true
-	@echo
-	@$(COMPOSE) exec -T pg-1 patronictl -c /etc/patroni/patroni.yml list || true
-	@printf "\n  Expect exactly one Leader and two Replicas, with lag at or near 0.\n"
-	@printf "  HAProxy view: http://localhost:$(call getenv,LB_A_STATS_PORT)/stats\n"
-	@printf "  Red rows there are $(B)expected$(X): the checks ask which ROLE a node holds,\n"
-	@printf "  so pg_write shows 1 UP and pg_read shows 2 UP. A node down in BOTH is the\n"
-	@printf "  only real failure signal.\n"
-
-.PHONY: verify-redis
-verify-redis: ## Node roles, what Sentinel believes, and whether it could fail over
-	$(call say,Redis)
-	@for n in redis-1 redis-2 redis-3; do \
-		printf "  %-9s %s\n" "$$n" "$$($(COMPOSE) exec -T $$n redis-cli -a "$$(grep -E '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2-)" --no-auth-warning info replication 2>/dev/null | awk -F: '/^role:/{print $$2}' | tr -d '\r')"; \
-	done
-	@echo
-	@$(COMPOSE) exec -T sentinel-1 redis-cli -p 26379 sentinel ckquorum nus-cache || true
-	@printf "\n  Expect one master, two slaves, and a quorum that can be reached.\n"
-
-.PHONY: verify-kafka
-verify-kafka: ## Brokers, the controller quorum, and every topic's replication
-	$(call say,Kafka)
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh \
-		--bootstrap-server kafka-1:9092 2>/dev/null | grep -E '^kafka-[0-9]' || true
-	@echo
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server kafka-1:9092 --describe 2>/dev/null | grep -E '^Topic:' || true
-	@printf "\n  Every partition should list three replicas and three in-sync.\n"
-
-.PHONY: verify-cdc
-verify-cdc: ## Connector state, the cdc.* topics, and the replication slot
-	$(call say,Debezium)
-	@$(COMPOSE) exec -T debezium-connect curl -sS http://localhost:8083/connectors/nus-pg/status 2>/dev/null || true
-	@echo
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server kafka-1:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
-	@echo
-	@$(COMPOSE) exec -T pg-1 psql -U postgres -c \
-		"SELECT slot_name, active, wal_status FROM pg_replication_slots;" 2>/dev/null || true
-	@printf "\n  The connector should be RUNNING and the slot active with wal_status 'reserved'.\n"
-	@printf "  A slot that exists but is inactive makes PostgreSQL keep WAL for ever.\n"
-
-.PHONY: verify-ch
-verify-ch: ## Cluster members, Keeper, the tables, and replication delay
-	$(call say,ClickHouse)
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT host_name, shard_num, replica_num FROM system.clusters WHERE cluster='nus_cluster' FORMAT PrettyCompact" 2>/dev/null || true
-	@echo
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT database, name, engine FROM system.tables WHERE database='nus' ORDER BY name FORMAT PrettyCompact" 2>/dev/null || true
-	@echo
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT table, absolute_delay FROM system.replicas FORMAT PrettyCompact" 2>/dev/null || true
-	@printf "\n  Four members, the tables present, and absolute_delay at or near 0.\n"
-
 .PHONY: verify-dash
-verify-dash: ## Grafana and Superset answer, with their data sources registered
-	$(call say,Dashboards)
-	@$(COMPOSE) exec -T grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
-	@echo
-	@$(COMPOSE) exec -T superset curl -sS http://localhost:8088/health 2>/dev/null || true
-	@printf "\n\n  Empty panels are fine before bootstrap; an error is not.\n"
-
-.PHONY: verify-data
-verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
-	$(call say,Data)
-	@printf "  bootstrap marker: "
-	@$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
-		get system:bootstrap:done 2>/dev/null || printf "(not set)\n"
-	@$(COMPOSE) exec -T pg-1 psql -U postgres -t -c \
-		"SELECT 'drivers      ' || count(*) FROM drivers UNION ALL \
-		 SELECT 'passengers   ' || count(*) FROM passengers UNION ALL \
-		 SELECT 'trips        ' || count(*) FROM trips UNION ALL \
-		 SELECT 'city_zones   ' || count(*) FROM city_zones UNION ALL \
-		 SELECT 'road segments' || count(*) FROM ways UNION ALL \
-		 SELECT 'seg. traffic ' || count(*) FROM segment_traffic;" 2>/dev/null | sed 's/^ */  /' || true
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT 'trip_events ' || toString(count()) FROM nus.trip_events" 2>/dev/null | sed 's/^/  /' || true
-	@printf "\n  Trips should be roughly HISTORY_DAYS x HISTORY_TRIPS_PER_DAY, and 'ways'\n"
-	@printf "  in the hundreds of thousands. 'ways' at 0 means the map import did not run.\n"
+verify-dash: grafana-health superset-health ## Grafana and Superset answer, with their data sources registered
 
 # =============================================================================
 ##@ Operate
@@ -713,26 +572,6 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "  ClickHouse addresses above — no extra proxy is needed.\n"; \
 	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \
 	printf "  to a bound form such as $(C)192.168.8.3:5432$(X).\n\n"
-
-.PHONY: psql psql-read redis-cli ch-client patronictl
-psql: ## A psql shell on the current leader, through the proxy
-	@$(COMPOSE) exec pg-1 psql "host=lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
-psql-read: ## A psql shell on the replica pool, through the proxy
-	@$(COMPOSE) exec pg-1 psql "host=lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
-redis-cli: ## A redis-cli shell on the current primary
-	@$(COMPOSE) exec redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning
-ch-client: ## A clickhouse-client shell
-	@$(COMPOSE) exec ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" --database nus
-patronictl: ## patronictl, for switchover and friends:  make patronictl ARGS=list
-	@$(COMPOSE) exec pg-1 patronictl -c /etc/patroni/patroni.yml $(or $(ARGS),list)
-
-.PHONY: failover-pg failover-redis
-failover-pg: ## Demo: hand the PostgreSQL leadership to another node
-	@$(COMPOSE) exec pg-1 patronictl -c /etc/patroni/patroni.yml switchover --force
-	@printf "\n  HAProxy follows the promotion on its own. Watch: make verify-pg\n"
-failover-redis: ## Demo: ask Sentinel to promote a Redis replica
-	@$(COMPOSE) exec sentinel-1 redis-cli -p 26379 sentinel failover nus-cache
-	@printf "\n  Watch it land: make verify-redis\n"
 
 # =============================================================================
 ##@ Teardown
