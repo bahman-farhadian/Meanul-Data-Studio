@@ -28,3 +28,10 @@ verify-kafka: ## Brokers, the controller quorum, and every topic's replication
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
 		--bootstrap-server kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
 	@printf "\n  Every partition should list three replicas and three in-sync.\n"
+
+.PHONY: verify-ksqldb
+verify-ksqldb: ## ksqlDB's own status, and every stream/table it currently knows about
+	$(call say,ksqlDB)
+	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json; print(json.dumps(json.loads(urllib.request.urlopen('http://localhost:8088/info', timeout=5).read()), indent=2))"
+	@echo
+	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json; req=urllib.request.Request('http://localhost:8088/ksql', data=json.dumps({'ksql':'SHOW STREAMS;'}).encode(), headers={'Content-Type':'application/vnd.ksql.v1+json'}); print(urllib.request.urlopen(req, timeout=5).read().decode())"

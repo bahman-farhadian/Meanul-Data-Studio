@@ -170,6 +170,20 @@ listen kafka-3-b
     bind :9099
     server kafka-3 kafka-3:9095 check
 
+# ksqlDB (c-infra-kafka) -------------------------------------------------------
+# The SQL layer over the cluster above: DBeaver's own Kafka support only
+# speaks ksqlDB's REST API, not the raw broker protocol the six ports above
+# use. One backend, so this is the same single-entry-point pattern as
+# Grafana/Superset below, not the per-broker passthrough above it — ksqlDB
+# is one stateless server, not something with a per-node advertised address.
+
+listen ksqldb
+    bind :8089
+    option httpchk
+    http-check send meth GET uri /info
+    http-check expect status 200
+    server ksqldb-server ksqldb-server:8088 check
+
 # ClickHouse (e-infra-clickhouse) ---------------------------------------------
 # All four nodes are equal here: any of them can answer any query, because a
 # Distributed table sends the work to the shard that owns the rows. So this is

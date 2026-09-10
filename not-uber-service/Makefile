@@ -506,7 +506,7 @@ lb-config: ## Render haproxy.cfg with REDIS_PASSWORD (BEFORE lb-a/lb-b first sta
 # =============================================================================
 
 .PHONY: verify
-verify: verify-pg verify-redis verify-kafka verify-cdc verify-ch verify-dash verify-data ## Every check below, in order
+verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch verify-dash verify-data ## Every check below, in order
 
 .PHONY: verify-dash
 verify-dash: grafana-health superset-health ## Grafana and Superset answer, with their data sources registered
@@ -637,14 +637,18 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "  %-18s %-26s %s\n" "ClickHouse native" "<host>:$(call getenv,LB_A_CH_NATIVE_PORT,9000)" "<host>:$(call getenv,LB_B_CH_NATIVE_PORT,19000)"; \
 	printf "  %-18s %-26s %s\n" "Grafana"           "http://<host>:$(call getenv,LB_A_GRAFANA_PORT,3000)"  "http://<host>:$(call getenv,LB_B_GRAFANA_PORT,13000)"; \
 	printf "  %-18s %-26s %s\n" "Superset"          "http://<host>:$(call getenv,LB_A_SUPERSET_PORT,8088)" "http://<host>:$(call getenv,LB_B_SUPERSET_PORT,18088)"; \
+	printf "  %-18s %-26s %s\n" "ksqlDB"            "http://<host>:$(call getenv,LB_A_KSQLDB_PORT,8089)" "http://<host>:$(call getenv,LB_B_KSQLDB_PORT,18089)"; \
 	printf "  %-18s %-26s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,LB_A_STATS_PORT,8404)/stats" "http://<host>:$(call getenv,LB_B_STATS_PORT,18404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
-	printf "  ClickHouse addresses above — no extra proxy is needed.\n"; \
+	printf "  ClickHouse addresses above — no extra proxy is needed. For Kafka, point\n"; \
+	printf "  DBeaver at the ksqlDB address instead: its Kafka support only speaks\n"; \
+	printf "  ksqlDB's REST API, not the raw broker protocol below.\n"; \
 	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \
 	printf "  to a bound form such as $(C)192.168.8.3:5432$(X).\n\n"; \
-	printf "  Kafka is different: each broker advertises one fixed address, not\n"; \
-	printf "  $(B)<host>$(X) — set by $(C)KAFKA_ADVERTISED_HOST_A$(X)/$(C)_B$(X) in $(ENV_FILE). Bootstrap on any\n"; \
-	printf "  one; a client resolves the rest from there.\n\n"; \
+	printf "  The six ports below are different: a raw Kafka client (kcat, a\n"; \
+	printf "  producer/consumer library) bootstraps here and gets handed one fixed\n"; \
+	printf "  address per broker, not $(B)<host>$(X) — set by $(C)KAFKA_ADVERTISED_HOST_A$(X)/$(C)_B$(X)\n"; \
+	printf "  in $(ENV_FILE). Bootstrap on any one; a client resolves the rest from there.\n\n"; \
 	printf "  %-10s %-24s %s\n" "" "via address A" "via address B"; \
 	printf "  %-10s %-24s %s\n" "kafka-1" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9094" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9097"; \
 	printf "  %-10s %-24s %s\n" "kafka-2" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9095" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9098"; \

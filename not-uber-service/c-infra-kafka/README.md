@@ -1,8 +1,8 @@
 # c-infra-kafka — the streaming backbone
 
-Three Kafka brokers (`kafka-1/2/3`) in **KRaft mode** plus the
-**Schema Registry**. Every event the stack produces travels through here:
-driver and rider positions, ride requests, trip status changes, city
+Three Kafka brokers (`kafka-1/2/3`) in **KRaft mode**, the **Schema
+Registry**, and **ksqlDB**. Every event the stack produces travels through
+here: driver and rider positions, ride requests, trip status changes, city
 hotspot scores, and the `cdc.*` change stream Debezium reads out of
 PostgreSQL.
 
@@ -48,6 +48,23 @@ fixed at broker startup the way it does for `pg_write`/`pg_read`. The
 3-broker cluster's own bootstrap-list fallback is Kafka's actual redundancy
 story: if one broker is unreachable, a client with several bootstrap
 addresses configured just tries the next one.
+
+## Connecting with a SQL client (DBeaver)
+
+The six ports above are the raw broker protocol — what a producer/consumer
+library speaks, not what DBeaver's Kafka support speaks. DBeaver only
+understands **ksqlDB's** REST API, so point it there instead:
+
+| | via `lb-a` | via `lb-b` |
+| --- | --- | --- |
+| ksqlDB | `<host>:8089` | `<host>:18089` |
+
+One backend, one address each — unlike the six ports above, ksqlDB is a
+single stateless server with nothing per-broker to advertise, so it is
+proxied the same simple way as Grafana and Superset. Verified locally before
+this shipped: `CREATE STREAM ... WITH (KAFKA_TOPIC='...', VALUE_FORMAT=...)`
+followed by `SELECT * FROM ... EMIT CHANGES` returned a real row produced
+onto the underlying topic.
 
 ## Why binary Avro
 
@@ -103,7 +120,7 @@ PostgreSQL table (see [`../d-infra-debezium`](../d-infra-debezium)).
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `kafka-1/2/3`, `schema-registry`, and the two one-shots (`kafka-dirs`, `kafka-topics-init`) behind the `init` profile. |
+| `docker-compose.yaml` | `kafka-1/2/3`, `schema-registry`, `ksqldb-server`, and the two one-shots (`kafka-dirs`, `kafka-topics-init`) behind the `init` profile. |
 | `topics/topics.tsv` | The topic list: name, partitions, message key, and what it is for. |
 | `topics/create-topics.sh` | Reads that file and creates anything missing. Safe to re-run. |
 | `schemas/*.avsc` | The Avro schema of each topic, in plain JSON with a `doc` note on every field. |
@@ -116,6 +133,7 @@ PostgreSQL table (see [`../d-infra-debezium`](../d-infra-debezium)).
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
 | `KAFKA_IMAGE` | `apache/kafka:4.3.1` | Broker image, also used by the one-shots. |
 | `SCHEMA_REGISTRY_IMAGE` | `confluentinc/cp-schema-registry:8.3.1` | Schema Registry image. |
+| `KSQLDB_IMAGE` | `confluentinc/cp-ksqldb-server:8.3.1` | ksqlDB image — same Confluent Platform line as the Schema Registry. |
 | `BUSYBOX_IMAGE` | `busybox:1.38.0` | Tiny image used by the `kafka-dirs` one-shot. |
 | `KAFKA_CLUSTER_ID` | (in `.env.example`) | Identity of the cluster. Same on all brokers, never changed after the first format. |
 | `KAFKA_UID` / `KAFKA_GID` | `1000` / `1000` | The user inside the Kafka image; `kafka-dirs` hands the volumes to it. |
@@ -176,11 +194,17 @@ docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
 
 # the Schema Registry answers, and lists what has been registered so far
 docker compose exec schema-registry curl -s http://localhost:8081/subjects
+
+# ksqlDB answers, and knows about the Kafka cluster it attached to
+docker compose exec ksqldb-server python3 -c \
+  "import urllib.request; print(urllib.request.urlopen('http://localhost:8088/info', timeout=5).read().decode())"
 ```
 
 In a healthy `--describe` output every partition shows three replicas and
 three in-sync replicas (`Isr`). A partition whose `Isr` is smaller than its
-replica list is a broker that has fallen behind or died.
+replica list is a broker that has fallen behind or died. `ksqldb-server`
+has no `curl`/`wget`/`nc` any more than `schema-registry` does, so its
+healthcheck and this command both go through `python3` instead.
 
 ## Reading topics by hand
 
@@ -206,10 +230,13 @@ docker compose exec schema-registry \
 `kafka-avro-console-consumer` above always works because it comes from the
 registry image itself.
 
-For SQL over a live topic, ClickHouse can read Kafka directly with its Kafka
-table engine (`format = 'AvroConfluent'` plus
-`format_avro_schema_registry_url`), and for SQL over the full history
-everything is in ClickHouse anyway, put there by `clickhouse-sink`.
+For SQL over a live topic, ksqlDB (see
+[Connecting with a SQL client](#connecting-with-a-sql-client-dbeaver) above)
+answers `CREATE STREAM` and `SELECT ... EMIT CHANGES` directly against a
+topic, and ClickHouse can also read Kafka directly with its Kafka table
+engine (`format = 'AvroConfluent'` plus `format_avro_schema_registry_url`).
+For SQL over the full history everything is in ClickHouse anyway, put there
+by `clickhouse-sink`.
 
 ## Failover demo
 
