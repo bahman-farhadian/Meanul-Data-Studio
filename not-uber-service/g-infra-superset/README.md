@@ -53,8 +53,8 @@ by the one-shot — the same "provisioned from files" contract Grafana has.
 
 | Connection | Points at | Why |
 | --- | --- | --- |
-| `ClickHouse (nus)` | `lb-a:8123` | The warehouse every chart reads. |
-| `PostgreSQL (nus, read-only)` | `lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the **replica pool**, never the leader, and DML is refused — an exploratory query from a browser has no business on the database the platform writes to. |
+| `ClickHouse (nus)` | `nus-lb-a:8123` | The warehouse every chart reads. |
+| `PostgreSQL (nus, read-only)` | `nus-lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the **replica pool**, never the leader, and DML is refused — an exploratory query from a browser has no business on the database the platform writes to. |
 
 The dashboard **not-uber-service - analytics** is six sections over 20 charts
 and five datasets: the week in numbers, money, demand that went unserved,
@@ -102,7 +102,7 @@ same way the Grafana dashboards work.
 | `CLICKHOUSE_CONNECT_VERSION` | `1.7.2` | ClickHouse driver installed into the image. |
 | `SUPERSET_SECRET_KEY` | — (required) | Signs cookies, encrypts stored passwords. Set once. |
 | `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` / `SUPERSET_ADMIN_EMAIL` | `admin` / — (required) / placeholder | The Superset login. |
-| `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `lb-a` / `8123` / `nus` | Where ClickHouse is, through the entry tier. |
+| `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `nus-lb-a` / `8123` / `nus` | Where ClickHouse is, through the entry tier. |
 | `CH_USER` / `CH_PASSWORD` | `nus` / — (required) | Must match `e-infra-clickhouse/.env`. |
 
 ## Standalone quickstart

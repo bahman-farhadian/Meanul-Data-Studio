@@ -243,7 +243,7 @@ listen ch_native
 
 listen grafana
     bind :3000
-    server grafana grafana:3000 check
+    server nus-grafana nus-grafana:3000 check
 
 # Superset (g-infra-superset) -------------------------------------------------
 # One backend again: the proxy is the single address, not a balancer. The
@@ -254,4 +254,4 @@ listen superset
     option httpchk
     http-check send meth GET uri /health
     http-check expect status 200
-    server superset superset:8088 check
+    server nus-superset nus-superset:8088 check

@@ -8,7 +8,7 @@
 # therefore runs register_database.py AFTER the import, so the real credential
 # from the environment is the last thing written. Do not reorder those two.
 database_name: ClickHouse (nus)
-sqlalchemy_uri: clickhousedb://nus@lb-a:8123/nus
+sqlalchemy_uri: clickhousedb://nus@nus-lb-a:8123/nus
 uuid: ec88ab80-c915-5ac9-8e2d-519bbed66b8f
 version: 1.0.0
 expose_in_sqllab: true
