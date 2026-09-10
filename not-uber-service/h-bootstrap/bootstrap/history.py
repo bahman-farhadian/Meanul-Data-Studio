@@ -311,7 +311,7 @@ def _finish_trip(
                 trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status=spec.outcome,
                 pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
                 pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
-                route_km=route_km, predicted_s=predicted_s, actual_s=None,
+                route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=None,
                 surge=surge, estimate=estimate, final=None,
                 requested_at=spec.requested_at, ended_at=ended,
             )
@@ -338,7 +338,7 @@ def _finish_trip(
             trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status="completed",
             pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
             pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
-            route_km=route_km, predicted_s=predicted_s, actual_s=actual_s,
+            route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=actual_s,
             surge=surge, estimate=estimate, final=final,
             requested_at=spec.requested_at, ended_at=ended_at, started_at=started_at,
         )
@@ -415,6 +415,7 @@ def _trip_row(**kwargs) -> dict:
         "pickup_zone_id": kwargs["pickup_zone"],
         "dropoff_zone_id": kwargs["dropoff_zone"],
         "route_km": kwargs["route_km"],
+        "route_wkt": kwargs.get("route_wkt"),
         "predicted_duration_s": kwargs["predicted_s"],
         "actual_duration_s": kwargs["actual_s"],
         "surge_multiplier": kwargs["surge"],
@@ -452,7 +453,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
         INSERT INTO trips (
             trip_id, rider_id, driver_id, status,
             pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
-            route_km, predicted_duration_s, actual_duration_s,
+            route, route_km, predicted_duration_s, actual_duration_s,
             surge_multiplier, fare_estimate, fare_final,
             requested_at, started_at, ended_at
         )
@@ -461,6 +462,10 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             ST_SetSRID(ST_MakePoint(%(pickup_lon)s, %(pickup_lat)s), 4326),
             ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
             %(pickup_zone_id)s, %(dropoff_zone_id)s,
+            -- NULL for no_driver_found, and for the straight-line fallback
+            -- when the map was not available - ST_GeomFromText(NULL, ...)
+            -- is itself NULL, no CASE needed.
+            ST_GeomFromText(%(route_wkt)s::text, 4326),
             %(route_km)s, %(predicted_duration_s)s, %(actual_duration_s)s,
             %(surge_multiplier)s, %(fare_estimate)s, %(fare_final)s,
             %(requested_at)s, %(started_at)s, %(ended_at)s
