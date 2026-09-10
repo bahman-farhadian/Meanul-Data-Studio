@@ -8,14 +8,29 @@
 
 CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
 (
-    driver_id     String,
-    trip_id       Nullable(String),
-    status        LowCardinality(String),
+    -- Ids are FixedString, not String: every one of these is a fixed-width
+    -- format by construction (see z-lib/nus-common/nus_common/ids.py, the
+    -- one place that mints them), so a variable-length column with its own
+    -- length prefix would only cost more to store and compare for no
+    -- benefit. A row that does not fit this width is a bug upstream, not
+    -- something the warehouse should quietly accept.
+    driver_id     FixedString(10),
+    trip_id       Nullable(FixedString(21)),
+    -- Enum, not LowCardinality(String): status is a closed set already
+    -- enforced by the Avro schema (DriverStatus) and by Postgres's own
+    -- CHECK constraint. Enum8 keeps that same guarantee here - a value
+    -- outside this list is a write-time error, not a silently accepted
+    -- new category threading through the dictionary.
+    status        Enum8('offline' = 1, 'idle' = 2, 'en_route_pickup' = 3, 'on_trip' = 4),
     lat           Float64,
     lon           Float64,
     heading_deg   Nullable(Float32),
     speed_kmh     Nullable(Float32),
-    zone_id       LowCardinality(String),
+    -- Still LowCardinality, not Enum: 36 zones is a config choice
+    -- (CITY_GRID_ROWS x COLS), not a closed set fixed at schema time. The
+    -- dictionary encoding is what buys the compression here; FixedString
+    -- underneath makes the dictionary's own entries fixed-width too.
+    zone_id       LowCardinality(FixedString(7)),
     event_time    DateTime64(3, 'UTC'),
     -- Computed on write and used for partitioning, so queries by day never
     -- have to look at months of data.
@@ -36,12 +51,14 @@ ENGINE = Distributed(nus_cluster, nus, driver_positions_local, cityHash64(driver
 
 CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
 (
-    rider_id      String,
-    trip_id       Nullable(String),
+    -- rider_id is a passenger id (psg-NNNNNN) - see driver_positions above
+    -- for why FixedString, not String.
+    rider_id      FixedString(10),
+    trip_id       Nullable(FixedString(21)),
     lat           Float64,
     lon           Float64,
     accuracy_m    Nullable(Float32),
-    zone_id       LowCardinality(String),
+    zone_id       LowCardinality(FixedString(7)),
     event_time    DateTime64(3, 'UTC'),
     event_date    Date MATERIALIZED toDate(event_time)
 )

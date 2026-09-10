@@ -7,11 +7,21 @@
 
 CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
 (
-    trip_id                    String,
-    rider_id                   String,
-    driver_id                  Nullable(String),
-    status                     LowCardinality(String),
-    pickup_zone_id             LowCardinality(String),
+    -- FixedString, Enum8, LowCardinality(FixedString) - same reasoning as
+    -- driver_positions/rider_positions in 002_positions.sql: every one of
+    -- these formats is fixed-width by construction, and status is a
+    -- closed set already enforced by the Avro schema (TripStatus) and by
+    -- Postgres's own CHECK constraint.
+    trip_id                    FixedString(21),
+    rider_id                   FixedString(10),
+    driver_id                  Nullable(FixedString(10)),
+    status                     Enum8(
+                                   'requested' = 1, 'matched' = 2, 'accepted' = 3,
+                                   'en_route_pickup' = 4, 'in_progress' = 5, 'completed' = 6,
+                                   'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8,
+                                   'no_driver_found' = 9
+                               ),
+    pickup_zone_id             LowCardinality(FixedString(7)),
 
     route_km                   Nullable(Float64),
     predicted_duration_s       Nullable(UInt32),
