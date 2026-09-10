@@ -196,15 +196,15 @@ docker compose logs kafka-1 | head -50
 ```bash
 # the three brokers, as the cluster itself sees them
 docker compose exec kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh \
-  --bootstrap-server kafka-1:9092
+  --bootstrap-server nus-kafka-1:9092
 
 # the controller quorum: one leader, two followers, nobody lagging
 docker compose exec kafka-1 /opt/kafka/bin/kafka-metadata-quorum.sh \
-  --bootstrap-server kafka-1:9092 describe --status
+  --bootstrap-server nus-kafka-1:9092 describe --status
 
 # every topic, with its partitions and where the copies live
 docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka-1:9092 --describe
+  --bootstrap-server nus-kafka-1:9092 --describe
 
 # the Schema Registry answers, and lists what has been registered so far
 docker compose exec schema-registry curl -s http://localhost:8081/subjects
@@ -228,13 +228,13 @@ The messages are binary, but nothing about them is hidden.
 
 ```bash
 # decoded to JSON as it arrives, from any container on nus-backbone
-kcat -b kafka-1:9092 -t driver_location -C -e \
-     -s value=avro -r http://schema-registry:8081
+kcat -b nus-kafka-1:9092 -t driver_location -C -e \
+     -s value=avro -r http://nus-schema-registry:8081
 
 # the same, using the tool that ships inside the Schema Registry image
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server kafka-1:9092 \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --bootstrap-server nus-kafka-1:9092 \
+  --property schema.registry.url=http://nus-schema-registry:8081 \
   --topic driver_location --from-beginning --max-messages 5
 
 # what the registry thinks a topic looks like right now
@@ -259,13 +259,13 @@ by `clickhouse-sink`.
 ```bash
 # who leads which partition right now
 docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka-1:9092 --describe --topic trip_lifecycle
+  --bootstrap-server nus-kafka-1:9092 --describe --topic trip_lifecycle
 
 # stop a broker and look again: leadership has moved to the other two,
 # and the stopped broker has dropped out of Isr
 docker stop kafka-2
 docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka-1:9092 --describe --topic trip_lifecycle
+  --bootstrap-server nus-kafka-1:9092 --describe --topic trip_lifecycle
 
 # bring it back: it catches up and rejoins Isr on its own
 docker start kafka-2

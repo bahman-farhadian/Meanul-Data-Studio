@@ -41,17 +41,17 @@
         <raft_configuration>
             <server>
                 <id>1</id>
-                <hostname>ch-keeper-1</hostname>
+                <hostname>nus-ch-keeper-1</hostname>
                 <port>9234</port>
             </server>
             <server>
                 <id>2</id>
-                <hostname>ch-keeper-2</hostname>
+                <hostname>nus-ch-keeper-2</hostname>
                 <port>9234</port>
             </server>
             <server>
                 <id>3</id>
-                <hostname>ch-keeper-3</hostname>
+                <hostname>nus-ch-keeper-3</hostname>
                 <port>9234</port>
             </server>
         </raft_configuration>

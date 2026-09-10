@@ -124,7 +124,8 @@ services:
 
   lb-a:
     image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
-    container_name: lb-a
+    container_name: nus-lb-a
+    hostname: nus-lb-a
     restart: unless-stopped
     cpus: 0.1
     mem_limit: 128m
@@ -170,7 +171,8 @@ services:
   # clients list both (lb-a,lb-b) and fail over client-side.
   lb-b:
     image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
-    container_name: lb-b
+    container_name: nus-lb-b
+    hostname: nus-lb-b
     restart: unless-stopped
     cpus: 0.1
     mem_limit: 128m

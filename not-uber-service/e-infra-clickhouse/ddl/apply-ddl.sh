@@ -9,7 +9,7 @@
 # table is a decision to take by hand, with the data in front of you.
 set -eu
 
-CH_HOST="${CH_HOST:-ch-s1r1}"
+CH_HOST="${CH_HOST:-nus-ch-s1r1}"
 CH_USER="${CH_USER:-default}"
 CH_PASSWORD="${CH_PASSWORD:-}"
 

@@ -602,7 +602,7 @@ lag: ## Consumer lag per group — the health signal for the whole pipeline
 	@for g in $(GROUPS); do \
 		printf "\n  $(B)%s$(X)\n" "$$g"; \
 		$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-			--bootstrap-server kafka-1:9092 --describe --group "$$g" 2>/dev/null \
+			--bootstrap-server nus-kafka-1:9092 --describe --group "$$g" 2>/dev/null \
 			| awk 'NR==1 || $$6 != "-"' | sed 's/^/    /' || printf "    (no such group yet)\n"; \
 	done
 	@printf "\n  Lag that stays small, or returns to small after a burst, is healthy.\n"
@@ -617,7 +617,7 @@ profile: ## Profile the generated data — every dimension, range and null rate
 	$(call say,Kafka — how many messages each topic actually holds)
 	@printf "  %-28s %10s %10s\n" TOPIC PARTITIONS MESSAGES
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-get-offsets.sh \
-		--bootstrap-server kafka-1:9092 2>/dev/null \
+		--bootstrap-server nus-kafka-1:9092 2>/dev/null \
 		| awk -F: '$$1 !~ /^(__|_schemas|connect_)/ {parts[$$1]++; total[$$1]+=$$3} \
 		           END{for (t in total) printf "  %-28s %10d %10d\n", t, parts[t], total[t]}' \
 		| sort || true
@@ -626,7 +626,7 @@ profile: ## Profile the generated data — every dimension, range and null rate
 	@printf "  while doing nothing at all.\n\n"
 	@for g in $(GROUPS); do \
 		$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-			--bootstrap-server kafka-1:9092 --describe --group "$$g" 2>/dev/null \
+			--bootstrap-server nus-kafka-1:9092 --describe --group "$$g" 2>/dev/null \
 			| awk -v g="$$g" 'NR>1 && $$6 != "-" {lag+=$$6; n++} END{if(n) printf "  %-24s partitions=%d total_lag=%d\n", g, n, lag}' || true; \
 	done
 	$(call say,Redis — what the services put in the cache)

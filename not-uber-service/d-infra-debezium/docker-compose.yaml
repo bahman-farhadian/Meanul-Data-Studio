@@ -37,15 +37,15 @@ services:
         CONNECT_IMAGE: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.6.2.Final}
         AVRO_CONVERTER_VERSION: ${AVRO_CONVERTER_VERSION:-8.3.1}
     image: nus/debezium-connect:${NUS_VERSION:-0.1.0}
-    container_name: debezium-connect
-    hostname: debezium-connect
+    container_name: nus-debezium-connect
+    hostname: nus-debezium-connect
     restart: unless-stopped
     cpus: 0.4
     mem_limit: 2g
     memswap_limit: 2g
     environment:
       TZ: ${TZ:-UTC}
-      BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      BOOTSTRAP_SERVERS: nus-kafka-1:9092,nus-kafka-2:9092,nus-kafka-3:9092
       GROUP_ID: nus-connect
       # Connect keeps its own state in Kafka: which connectors exist, how far
       # each one has read, and whether they are running. Three copies each,
@@ -60,8 +60,8 @@ services:
       # the schema kept in the Schema Registry.
       KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
       VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
       KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null || exit 1"]
@@ -91,9 +91,9 @@ services:
     entrypoint: ["python", "/register.py"]
     environment:
       TZ: ${TZ:-UTC}
-      CONNECT_URL: http://debezium-connect:8083
+      CONNECT_URL: http://nus-debezium-connect:8083
       CONNECTOR_FILE: /nus-pg.json
-      PG_HOST: ${CDC_PG_HOST:-lb-a}
+      PG_HOST: ${CDC_PG_HOST:-nus-lb-a}
       PG_PORT: ${CDC_PG_PORT:-5432}
       PG_DATABASE: ${CDC_PG_DATABASE:-postgres}
       PG_USER: ${CDC_PG_USER:-postgres}

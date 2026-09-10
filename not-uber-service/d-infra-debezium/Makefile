@@ -20,7 +20,7 @@ verify-cdc: ## Connector state, the cdc.* topics, and the replication slot
 	@$(COMPOSE) exec -T debezium-connect curl -sS http://localhost:8083/connectors/nus-pg/status 2>/dev/null || true
 	@echo
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server kafka-1:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
+		--bootstrap-server nus-kafka-1:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
 	@echo
 	@$(COMPOSE) exec -T pg-1 psql -U postgres -c \
 		"SELECT slot_name, active, wal_status FROM pg_replication_slots;" 2>/dev/null || true

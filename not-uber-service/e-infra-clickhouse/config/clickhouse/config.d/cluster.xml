@@ -47,13 +47,13 @@
             <shard>
                 <internal_replication>true</internal_replication>
                 <replica>
-                    <host>ch-s1r1</host>
+                    <host>nus-ch-s1r1</host>
                     <port>9000</port>
                     <user incl="cluster_user"/>
                     <password incl="cluster_password"/>
                 </replica>
                 <replica>
-                    <host>ch-s1r2</host>
+                    <host>nus-ch-s1r2</host>
                     <port>9000</port>
                     <user incl="cluster_user"/>
                     <password incl="cluster_password"/>
@@ -62,13 +62,13 @@
             <shard>
                 <internal_replication>true</internal_replication>
                 <replica>
-                    <host>ch-s2r1</host>
+                    <host>nus-ch-s2r1</host>
                     <port>9000</port>
                     <user incl="cluster_user"/>
                     <password incl="cluster_password"/>
                 </replica>
                 <replica>
-                    <host>ch-s2r2</host>
+                    <host>nus-ch-s2r2</host>
                     <port>9000</port>
                     <user incl="cluster_user"/>
                     <password incl="cluster_password"/>
@@ -81,15 +81,15 @@
          zookeeper for historical reasons; these are Keeper nodes. -->
     <zookeeper replace="true">
         <node>
-            <host>ch-keeper-1</host>
+            <host>nus-ch-keeper-1</host>
             <port>9181</port>
         </node>
         <node>
-            <host>ch-keeper-2</host>
+            <host>nus-ch-keeper-2</host>
             <port>9181</port>
         </node>
         <node>
-            <host>ch-keeper-3</host>
+            <host>nus-ch-keeper-3</host>
             <port>9181</port>
         </node>
     </zookeeper>

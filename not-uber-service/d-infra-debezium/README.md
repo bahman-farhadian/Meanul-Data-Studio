@@ -118,19 +118,19 @@ gate nothing that isn't already open one layer down.
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
 | `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.2.Final` | Base image for the build. |
-| `AVRO_CONVERTER_VERSION` | `8.0.0` | Confluent Avro converter version; keep it in step with the Schema Registry. |
+| `AVRO_CONVERTER_VERSION` | `8.3.1` | Confluent Avro converter version; keep it in step with the Schema Registry. |
 | `PYTHON_IMAGE` | `python:3.13.15-slim` | Image used by the registration one-shot. |
-| `CDC_PG_HOST` / `CDC_PG_PORT` | `lb-a` / `5432` | Where to read from — the write port, which always points at the current leader. |
+| `CDC_PG_HOST` / `CDC_PG_PORT` | `nus-lb-a` / `5432` | Where to read from — the write port, which always points at the current leader. |
 | `CDC_PG_DATABASE` / `CDC_PG_USER` | `postgres` / `postgres` | Database and login. The user must be allowed to read the WAL. |
 | `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
 
 ## Known limitation: one hostname
 
-Every other client in the stack lists both proxies (`lb-a,lb-b`) and fails
-over on its own. Debezium accepts a single `database.hostname`, so it
-cannot. If `lb-a` is lost, change `CDC_PG_HOST` to `lb-b` in `.env` and run
-`connector-register` again; the connector picks up where it stopped, because
-its read position lives in Kafka, not in the container.
+Every other client in the stack lists both proxies (`nus-lb-a,nus-lb-b`) and
+fails over on its own. Debezium accepts a single `database.hostname`, so it
+cannot. If `nus-lb-a` is lost, change `CDC_PG_HOST` to `nus-lb-b` in `.env`
+and run `connector-register` again; the connector picks up where it
+stopped, because its read position lives in Kafka, not in the container.
 
 ## Verify
 
@@ -140,15 +140,15 @@ docker compose exec debezium-connect curl -s http://localhost:8083/connectors/nu
 
 # the cdc.* topics Debezium created
 docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server kafka-1:9092 --list | grep '^cdc\.'
+  --bootstrap-server nus-kafka-1:9092 --list | grep '^cdc\.'
 
 # watch a change arrive: update a row, then read the topic
 docker compose exec pg-1 psql -U postgres -c \
   "update drivers set status = 'idle' where driver_id = (select driver_id from drivers limit 1);"
 
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server kafka-1:9092 \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --bootstrap-server nus-kafka-1:9092 \
+  --property schema.registry.url=http://nus-schema-registry:8081 \
   --topic cdc.drivers --max-messages 1
 ```
 

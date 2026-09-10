@@ -100,8 +100,8 @@ x-ch-secrets: &ch-secrets ch-secrets:/secrets:ro
 services:
   ch-keeper-1:
     <<: *keeper-node
-    container_name: ch-keeper-1
-    hostname: ch-keeper-1
+    container_name: nus-ch-keeper-1
+    hostname: nus-ch-keeper-1
     environment:
       TZ: ${TZ:-UTC}
       KEEPER_SERVER_ID: "1"
@@ -111,8 +111,8 @@ services:
 
   ch-keeper-2:
     <<: *keeper-node
-    container_name: ch-keeper-2
-    hostname: ch-keeper-2
+    container_name: nus-ch-keeper-2
+    hostname: nus-ch-keeper-2
     environment:
       TZ: ${TZ:-UTC}
       KEEPER_SERVER_ID: "2"
@@ -122,8 +122,8 @@ services:
 
   ch-keeper-3:
     <<: *keeper-node
-    container_name: ch-keeper-3
-    hostname: ch-keeper-3
+    container_name: nus-ch-keeper-3
+    hostname: nus-ch-keeper-3
     environment:
       TZ: ${TZ:-UTC}
       KEEPER_SERVER_ID: "3"
@@ -136,13 +136,13 @@ services:
   # makes one DDL file work on all four nodes.
   ch-s1r1:
     <<: *ch-node
-    container_name: ch-s1r1
-    hostname: ch-s1r1
+    container_name: nus-ch-s1r1
+    hostname: nus-ch-s1r1
     environment:
       <<: *ch-env
-      CH_HOSTNAME: ch-s1r1
+      CH_HOSTNAME: nus-ch-s1r1
       CH_SHARD: "1"
-      CH_REPLICA: ch-s1r1
+      CH_REPLICA: nus-ch-s1r1
     volumes:
       - *ch-config-cluster
       - *ch-config-memory
@@ -152,13 +152,13 @@ services:
 
   ch-s1r2:
     <<: *ch-node
-    container_name: ch-s1r2
-    hostname: ch-s1r2
+    container_name: nus-ch-s1r2
+    hostname: nus-ch-s1r2
     environment:
       <<: *ch-env
-      CH_HOSTNAME: ch-s1r2
+      CH_HOSTNAME: nus-ch-s1r2
       CH_SHARD: "1"
-      CH_REPLICA: ch-s1r2
+      CH_REPLICA: nus-ch-s1r2
     volumes:
       - *ch-config-cluster
       - *ch-config-memory
@@ -169,13 +169,13 @@ services:
   # Shard 2, both copies.
   ch-s2r1:
     <<: *ch-node
-    container_name: ch-s2r1
-    hostname: ch-s2r1
+    container_name: nus-ch-s2r1
+    hostname: nus-ch-s2r1
     environment:
       <<: *ch-env
-      CH_HOSTNAME: ch-s2r1
+      CH_HOSTNAME: nus-ch-s2r1
       CH_SHARD: "2"
-      CH_REPLICA: ch-s2r1
+      CH_REPLICA: nus-ch-s2r1
     volumes:
       - *ch-config-cluster
       - *ch-config-memory
@@ -185,13 +185,13 @@ services:
 
   ch-s2r2:
     <<: *ch-node
-    container_name: ch-s2r2
-    hostname: ch-s2r2
+    container_name: nus-ch-s2r2
+    hostname: nus-ch-s2r2
     environment:
       <<: *ch-env
-      CH_HOSTNAME: ch-s2r2
+      CH_HOSTNAME: nus-ch-s2r2
       CH_SHARD: "2"
-      CH_REPLICA: ch-s2r2
+      CH_REPLICA: nus-ch-s2r2
     volumes:
       - *ch-config-cluster
       - *ch-config-memory
@@ -242,7 +242,7 @@ services:
     entrypoint: ["/bin/sh", "/apply-ddl.sh"]
     environment:
       TZ: ${TZ:-UTC}
-      CH_HOST: ch-s1r1
+      CH_HOST: nus-ch-s1r1
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
     volumes:
