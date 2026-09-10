@@ -144,6 +144,7 @@ services:
       - "${LB_A_GRAFANA_PORT:-3000}:3000"
       - "${LB_A_SUPERSET_PORT:-8088}:8088"
       - "${LB_A_KSQLDB_PORT:-8089}:8089"
+      - "${LB_A_DEBEZIUM_PORT:-8083}:8083"
       # Fixed literals, not a `${VAR:-default}:CONTAINER` pair like every
       # line above: a broker's advertised address is baked into its own
       # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
@@ -189,6 +190,7 @@ services:
       - "${LB_B_GRAFANA_PORT:-13000}:3000"
       - "${LB_B_SUPERSET_PORT:-18088}:8088"
       - "${LB_B_KSQLDB_PORT:-18089}:8089"
+      - "${LB_B_DEBEZIUM_PORT:-18083}:8083"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s

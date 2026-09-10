@@ -73,6 +73,20 @@ So:
 - `heartbeat.interval.ms` is set so an idle stack still moves the slot
   forward instead of looking stuck.
 
+## Connecting to the REST API
+
+Connect's REST API is proxied through the entry tier like everything else in
+this stack, so `/connectors/nus-pg/status` and friends are reachable without
+shelling into the container:
+
+| | via `lb-a` | via `lb-b` |
+| --- | --- | --- |
+| Debezium Connect | `<host>:8083` | `<host>:18083` |
+
+One backend, no authentication — Connect's REST API has none of its own, and
+the raw Kafka ports it depends on have none either, so a login here would
+gate nothing that isn't already open one layer down.
+
 ## Connector settings that matter
 
 | Setting | Value | Why |
