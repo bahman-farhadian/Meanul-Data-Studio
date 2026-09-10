@@ -13,7 +13,7 @@
 CREATE TABLE IF NOT EXISTS nus.trip_stats_hourly_local ON CLUSTER nus_cluster
 (
     hour             DateTime('UTC'),
-    pickup_zone_id   LowCardinality(String),
+    pickup_zone_id   LowCardinality(FixedString(7)),
     completed_trips  UInt64,
     revenue          Float64,
     -- Surge added up, not averaged: an average of averages would be wrong.
@@ -22,8 +22,18 @@ CREATE TABLE IF NOT EXISTS nus.trip_stats_hourly_local ON CLUSTER nus_cluster
     route_km_total   Float64,
     overrun_trips    UInt64
 )
--- SummingMergeTree adds up rows that share the sort key as it merges parts,
--- so the table stays small on its own.
+-- SummingMergeTree, not AggregatingMergeTree: every metric here is a plain
+-- additive sum (a count, or sum() over a column), which is exactly what
+-- SummingMergeTree merges automatically with no *State/*Merge combinator
+-- functions needed anywhere in the view or in a query against it.
+-- AggregatingMergeTree earns its extra complexity for a NON-additive
+-- aggregate - a percentile (quantileState/quantileMerge), an approximate
+-- distinct count (uniqState/uniqMerge), a properly-weighted running
+-- average - none of which this table computes today. If a metric like
+-- that gets added later (p95 trip duration per hour, distinct active
+-- drivers per hour), that specific column is what moves to an
+-- AggregateFunction type under AggregatingMergeTree - the existing sums
+-- do not need to move with it.
 ENGINE = ReplicatedSummingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
