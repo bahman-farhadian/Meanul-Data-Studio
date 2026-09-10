@@ -14,10 +14,40 @@ themselves. Three nodes, one less cluster to run.
 > **Naming:** the `nus-` prefix on shared resources (`nus-kafka-data-*`,
 > `nus-backbone`) is the acronym of **n**ot-**u**ber-**s**ervice.
 
-Nothing publishes ports to the host, and Kafka is **not** placed behind the
-`lb-a`/`lb-b` HAProxy pair. A Kafka client asks any broker for the cluster
-layout and then talks to the exact broker that owns each partition, so a TCP
-proxy in front would break that routing rather than help it.
+No `kafka-*` container publishes a port to the host directly — but unlike
+that sentence for Redis, Kafka *is* reachable through `lb-a`, just not as a
+write/read pair. A client asks any broker for cluster metadata, which hands
+back the exact address to dial for every partition after that — an address
+baked into each broker's own config at startup, not something a proxy can
+redirect per request. So `lb-a` gives each broker its own dedicated TCP
+passthrough port instead: no balancing, no health-check role logic, because
+every broker is a specific destination, never an interchangeable one.
+
+## Connecting a client
+
+Two ports per broker, six in total, because this host typically has more
+than one real network path to it and a broker can only advertise one
+address per listener — `KAFKA_ADVERTISED_HOST_A`/`_B` in `.env` say which
+two. `make init` fills those in from this host's own interfaces on first
+run; confirm they're actually how you'll reach it before relying on them.
+
+| Broker | via address A | via address B |
+| --- | --- | --- |
+| `kafka-1` | `9094` | `9097` |
+| `kafka-2` | `9095` | `9098` |
+| `kafka-3` | `9096` | `9099` |
+
+Bootstrap on any one of the six — `<host-A>:9094`, say — and a client
+library resolves the rest from there. Verified before this shipped: a
+message produced through one broker's port was consumed back through a
+completely different broker's port, and separately, through the other
+address entirely.
+
+`lb-a` only, deliberately — `lb-b` failover doesn't compose with an address
+fixed at broker startup the way it does for `pg_write`/`pg_read`. The
+3-broker cluster's own bootstrap-list fallback is Kafka's actual redundancy
+story: if one broker is unreachable, a client with several bootstrap
+addresses configured just tries the next one.
 
 ## Why binary Avro
 

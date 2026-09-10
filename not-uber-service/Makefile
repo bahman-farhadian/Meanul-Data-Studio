@@ -120,7 +120,8 @@ help:
 .PHONY: init
 init: ## Create .env from the template and the shared nus-backbone network
 	$(call say,Preparing the working copy)
-	@if [ -f $(ENV_FILE) ] && [ -z "$(FORCE)" ]; then \
+	@fresh=""; \
+	if [ -f $(ENV_FILE) ] && [ -z "$(FORCE)" ]; then \
 		printf "  $(Y)kept$(X)    $(ENV_FILE) already exists — not overwriting it\n"; \
 		if ! grep -qE '^PG_SUPERUSER_PASSWORD=' $(ENV_FILE); then \
 			printf "  $(R)but$(X)     it predates the master settings file: it has no passwords in it.\n"; \
@@ -132,9 +133,35 @@ init: ## Create .env from the template and the shared nus-backbone network
 		cp $(ENV_FILE) $(ENV_FILE).bak; \
 		cp $(EXAMPLE) $(ENV_FILE); \
 		printf "  $(G)created$(X) $(ENV_FILE) from $(EXAMPLE) (previous kept as $(ENV_FILE).bak)\n"; \
+		fresh=1; \
 	else \
 		cp $(EXAMPLE) $(ENV_FILE); \
 		printf "  $(G)created$(X) $(ENV_FILE) from $(EXAMPLE)\n"; \
+		fresh=1; \
+	fi; \
+	if [ -n "$$fresh" ]; then \
+		def=$$(ip route get 1.1.1.1 2>/dev/null | grep -oE 'dev [a-z0-9.-]+' | awk '{print $$2}' | head -1 || true); \
+		ips=$$(ip -4 -o addr show scope global 2>/dev/null \
+			| awk '{gsub(/\/.*/,"",$$4); print $$2, $$4}' \
+			| grep -vE '^(docker[0-9]*|br-[0-9a-f]+|veth[0-9a-f]*) ' || true); \
+		a=$$(echo "$$ips" | awk -v d="$$def" '$$1==d{print $$2; f=1} END{if(!f) exit 1}' \
+			|| echo "$$ips" | head -1 | awk '{print $$2}'); \
+		b=$$(echo "$$ips" | awk -v skip="$$a" '$$2!=skip{print $$2; exit}'); \
+		if [ -n "$$a" ]; then \
+			sed -i "s/^KAFKA_ADVERTISED_HOST_A=.*/KAFKA_ADVERTISED_HOST_A=$$a/" $(ENV_FILE); \
+			printf "  $(G)detected$(X) KAFKA_ADVERTISED_HOST_A=$$a\n"; \
+		fi; \
+		if [ -n "$$b" ]; then \
+			sed -i "s/^KAFKA_ADVERTISED_HOST_B=.*/KAFKA_ADVERTISED_HOST_B=$$b/" $(ENV_FILE); \
+			printf "  $(G)detected$(X) KAFKA_ADVERTISED_HOST_B=$$b\n"; \
+		elif [ -n "$$a" ]; then \
+			sed -i "s/^KAFKA_ADVERTISED_HOST_B=.*/KAFKA_ADVERTISED_HOST_B=$$a/" $(ENV_FILE); \
+			printf "  $(Y)note$(X)    only one network path found — KAFKA_ADVERTISED_HOST_B set the same as A\n"; \
+		else \
+			printf "  $(Y)warn$(X)    no network interface found — edit KAFKA_ADVERTISED_HOST_A/B by hand\n"; \
+		fi; \
+		printf "  $(Y)Both are a guess from this host's current interfaces — confirm they are\n"; \
+		printf "  actually how a client will reach this host before deploying piece c.$(X)\n"; \
 	fi
 	@if docker network inspect $(NETWORK) >/dev/null 2>&1; then \
 		printf "  $(G)ok$(X)      network $(NETWORK) exists\n"; \
@@ -589,7 +616,15 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above — no extra proxy is needed.\n"; \
 	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \
-	printf "  to a bound form such as $(C)192.168.8.3:5432$(X).\n\n"
+	printf "  to a bound form such as $(C)192.168.8.3:5432$(X).\n\n"; \
+	printf "  Kafka is different: each broker advertises one fixed address, not\n"; \
+	printf "  $(B)<host>$(X) — set by $(C)KAFKA_ADVERTISED_HOST_A$(X)/$(C)_B$(X) in $(ENV_FILE). Bootstrap on any\n"; \
+	printf "  one; a client resolves the rest from there.\n\n"; \
+	printf "  %-10s %-24s %s\n" "" "via address A" "via address B"; \
+	printf "  %-10s %-24s %s\n" "kafka-1" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9094" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9097"; \
+	printf "  %-10s %-24s %s\n" "kafka-2" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9095" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9098"; \
+	printf "  %-10s %-24s %s\n" "kafka-3" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9096" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9099"; \
+	printf "\n"
 
 # =============================================================================
 ##@ Teardown

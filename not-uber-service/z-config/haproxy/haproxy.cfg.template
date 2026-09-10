@@ -125,6 +125,51 @@ listen redis_read
     server redis-2 redis-2:6379 check
     server redis-3 redis-3:6379 check
 
+# Kafka (c-infra-kafka) --------------------------------------------------------
+# Not a write/read pair like everything above: a Kafka client asks any broker
+# for cluster metadata, which hands back the exact address to dial for every
+# partition after that, baked into each broker's own advertised.listeners at
+# startup — nothing a proxy can redirect per-request. So this is one dedicated
+# TCP passthrough port per (broker, external address) pair; balance/role-
+# awareness would be meaningless here since every broker is a different,
+# specific destination, not an interchangeable one.
+#
+# Two addresses (A/B) per broker because this host has more than one real
+# network path to it and a broker can only advertise one address per listener
+# name — see c-infra-kafka/docker-compose.yaml for the mechanism, verified
+# against a real cluster before this shipped: producing through one broker's
+# port and consuming through a different broker's port, and separately,
+# producing through address A and consuming through address B, both worked.
+#
+# lb-a only, deliberately: lb-a/lb-b failover doesn't compose with an address
+# fixed at broker startup the way it does for a role-aware health check
+# elsewhere in this file. The cluster's own bootstrap-list fallback is
+# Kafka's actual redundancy story.
+
+listen kafka-1-a
+    bind :9094
+    server kafka-1 kafka-1:9094 check
+
+listen kafka-2-a
+    bind :9095
+    server kafka-2 kafka-2:9094 check
+
+listen kafka-3-a
+    bind :9096
+    server kafka-3 kafka-3:9094 check
+
+listen kafka-1-b
+    bind :9097
+    server kafka-1 kafka-1:9095 check
+
+listen kafka-2-b
+    bind :9098
+    server kafka-2 kafka-2:9095 check
+
+listen kafka-3-b
+    bind :9099
+    server kafka-3 kafka-3:9095 check
+
 # ClickHouse (e-infra-clickhouse) ---------------------------------------------
 # All four nodes are equal here: any of them can answer any query, because a
 # Distributed table sends the work to the shard that owns the rows. So this is
