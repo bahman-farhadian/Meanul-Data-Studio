@@ -645,6 +645,7 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "  %-18s %-26s %s\n" "Grafana"           "http://<host>:$(call getenv,LB_A_GRAFANA_PORT,3000)"  "http://<host>:$(call getenv,LB_B_GRAFANA_PORT,13000)"; \
 	printf "  %-18s %-26s %s\n" "Superset"          "http://<host>:$(call getenv,LB_A_SUPERSET_PORT,8088)" "http://<host>:$(call getenv,LB_B_SUPERSET_PORT,18088)"; \
 	printf "  %-18s %-26s %s\n" "ksqlDB"            "http://<host>:$(call getenv,LB_A_KSQLDB_PORT,8089)" "http://<host>:$(call getenv,LB_B_KSQLDB_PORT,18089)"; \
+	printf "  %-18s %-26s %s\n" "Debezium Connect"  "http://<host>:$(call getenv,LB_A_DEBEZIUM_PORT,8083)" "http://<host>:$(call getenv,LB_B_DEBEZIUM_PORT,18083)"; \
 	printf "  %-18s %-26s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,LB_A_STATS_PORT,8404)/stats" "http://<host>:$(call getenv,LB_B_STATS_PORT,18404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above — no extra proxy is needed. For Kafka, point\n"; \

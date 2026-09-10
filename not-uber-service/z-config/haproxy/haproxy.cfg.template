@@ -192,6 +192,22 @@ listen ksqldb
     http-check expect status 200
     server ksqldb-server ksqldb-server:8088 check
 
+# Debezium Connect (d-infra-debezium) ------------------------------------------
+# One backend, no authentication (Connect's REST API has none, and the raw
+# Kafka ports it depends on have none either - same trust model as ksqlDB's
+# own underlying cluster, just without ksqlDB's one login). The check mirrors
+# Connect's own container healthcheck: GET / answers 200 once it is actually
+# serving, not merely running - this image scans every bundled connector
+# plugin before it opens the REST port, which is measured to take minutes,
+# not seconds.
+
+listen debezium
+    bind :8083
+    option httpchk
+    http-check send meth GET uri /
+    http-check expect status 200
+    server debezium-connect debezium-connect:8083 check
+
 # ClickHouse (e-infra-clickhouse) ---------------------------------------------
 # All four nodes are equal here: any of them can answer any query, because a
 # Distributed table sends the work to the shard that owns the rows. So this is
