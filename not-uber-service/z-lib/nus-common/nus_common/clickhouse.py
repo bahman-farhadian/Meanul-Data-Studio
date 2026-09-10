@@ -20,12 +20,12 @@ _client: Client | None = None
 def client() -> Client:
     """The shared ClickHouse connection.
 
-    It points at lb-a, not at a single node, so queries and inserts are
+    It points at nus-lb-a, not at a single node, so queries and inserts are
     spread over whichever nodes are healthy.
     """
     global _client
     if _client is None:
-        host = config.optional("CH_HOST", "lb-a")
+        host = config.optional("CH_HOST", "nus-lb-a")
         port = config.integer("CH_HTTP_PORT", 8123)
         _client = clickhouse_connect.get_client(
             host=host,

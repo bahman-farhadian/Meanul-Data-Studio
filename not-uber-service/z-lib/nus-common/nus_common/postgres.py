@@ -4,7 +4,8 @@ Two rules the whole stack follows:
 
 1. **Never connect to a pg-* container by name.** The leader is elected and
    moves on failover; only the proxies know where it is. Writes go to
-   lb-a:5432 (the current leader) and reads to lb-a:5433 (the replicas).
+   nus-lb-a:5432 (the current leader) and reads to nus-lb-a:5433 (the
+   replicas).
 2. **Only the components that own data come here at all.** Everything else
    reads from Redis. See section 1 of the main README.
 
@@ -29,7 +30,7 @@ _read_pool: ConnectionPool | None = None
 
 
 def _connection_string(port: int) -> str:
-    host = config.optional("PG_HOST", "lb-a")
+    host = config.optional("PG_HOST", "nus-lb-a")
     database = config.optional("PG_DATABASE", "postgres")
     user = config.optional("PG_USER", "postgres")
     password = config.required("PG_PASSWORD")
