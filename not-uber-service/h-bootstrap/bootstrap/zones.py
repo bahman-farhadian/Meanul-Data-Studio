@@ -5,7 +5,7 @@ component and the six services all draw exactly the same city. This module
 only writes the result into PostgreSQL.
 """
 
-from nus_common import postgres
+from nus_common import postgres, routing
 from nus_common.citygrid import CityGrid
 from nus_common.logging import get_logger
 
@@ -70,5 +70,20 @@ def all_zone_ids(settings: Settings) -> list[str]:
 
 
 def random_point_in_zone(settings: Settings, zone_id: str, rng) -> tuple[float, float]:
-    """A random latitude and longitude inside one zone."""
+    """A random latitude and longitude inside one zone.
+
+    Raw rectangle arithmetic, no road awareness - use
+    random_road_point_in_zone for anything that becomes a pickup, dropoff,
+    or driver location.
+    """
     return grid_from(settings).random_point_in(zone_id, rng)
+
+
+def random_road_point_in_zone(
+    settings: Settings, zone_id: str, rng, attempts: int = 5,
+) -> tuple[float, float]:
+    """A random point inside one zone, snapped to the real, connected road
+    network. See nus_common.routing.random_road_point_in_zone - this is
+    just that, with bootstrap's own grid.
+    """
+    return routing.random_road_point_in_zone(grid_from(settings), zone_id, rng, attempts)

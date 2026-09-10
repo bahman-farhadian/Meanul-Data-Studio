@@ -10,9 +10,11 @@ A grid rather than real neighbourhoods, because every cell is then the same
 size, and "this zone is busier than that one" means what it says.
 """
 
+import math
 from dataclasses import dataclass
 
 from nus_common import config
+from nus_common.geo import distance_km
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,27 @@ class CityGrid:
         """A random point inside one zone."""
         south, west, north, east = self.bounds_of(zone_id)
         return rng.uniform(south, north), rng.uniform(west, east)
+
+    def distance_decay_weights(
+        self, from_zone_id: str, zone_ids: list[str], base_weights: list[float], decay_km: float = 5.0,
+    ) -> list[float]:
+        """Fold "how far from from_zone_id" into a set of zone popularity weights.
+
+        Real rideshare demand is mostly short hops with a long tail, not a
+        flat distribution across the whole city - picking a dropoff zone
+        from popularity alone, independent of the pickup zone, produces
+        trips of a near-identical average length regardless of where they
+        started. decay_km is roughly the falloff scale: a zone that far from
+        the pickup keeps about a third of its popularity weight, one twice as
+        far keeps about a tenth.
+        """
+        from_lat, from_lon = self.centre_of(from_zone_id)
+        weights = []
+        for zone_id, base in zip(zone_ids, base_weights):
+            lat, lon = self.centre_of(zone_id)
+            distance = distance_km(from_lat, from_lon, lat, lon)
+            weights.append(base * math.exp(-distance / decay_km))
+        return weights
 
     def zone_of(self, lat: float, lon: float) -> str:
         """Which zone a point falls in.

@@ -16,9 +16,8 @@
 # =============================================================================
 
 .PHONY: bootstrap
-bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet part)
-	$(call say,Bootstrap — schema, street map, people, a week of history)
-	@printf "  This takes a while: the OSM import is the slow step.\n"
+bootstrap: ## Run h-bootstrap and follow it (schema, people, a week of history)
+	$(call say,Bootstrap — schema, street graph restore, people, a week of history)
 	@$(MAKE) --no-print-directory pg-cpus-bootstrap
 	@if $(COMPOSE) run --rm bootstrap; then \
 		printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
@@ -29,12 +28,12 @@ bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet pa
 		printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; \
 	fi
 
-.PHONY: osm-fetch
-osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
-	$(call say,Fetching the street map on the host)
+.PHONY: lion-fetch
+lion-fetch: ## Download NYC's official LION street data on the HOST
+	$(call say,Fetching the LION street map on the host)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	url=$$(grep -E '^OSM_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	dest="$$root/nus-osm-data"; file="$$dest/region-latest.osm.pbf"; \
+	url=$$(grep -E '^LION_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dest="$$root/nus-lion-data"; file="$$dest/lion.zip"; \
 	mkdir -p "$$dest"; \
 	if [ -s "$$file" ]; then \
 		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
@@ -42,12 +41,32 @@ osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
 		printf "  from    %s\n  to      %s\n" "$$url" "$$file"; \
 		curl -fL --progress-bar -o "$$file.part" "$$url" || { rm -f "$$file.part"; \
 			printf "  $(R)FAIL$(X)    download failed. This runs on the HOST, so if it cannot reach\n"; \
-			printf "              Geofabrik either, neither will bootstrap.\n"; exit 1; }; \
+			printf "              NYC Open Data either, neither will lion-prepare.\n"; exit 1; }; \
 		mv "$$file.part" "$$file"; \
 		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
+	fi
+
+.PHONY: lion-prepare
+lion-prepare: ## Build the routable graph from LION, once (the slow step, cached after)
+	$(call say,Preparing the routable street graph)
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dir="$$root/nus-lion-data"; dump="$$dir/routable-graph.dump"; \
+	if [ -s "$$dump" ]; then \
+		printf "  $(G)ok$(X)      already built: %s (%s)\n" "$$dump" "$$(du -h "$$dump" | cut -f1)"; \
+	else \
+		printf "  This is the slow step - filtering, cost computation and topology-\n"; \
+		printf "  building over the whole LION dataset. It runs once; every bring-up\n"; \
+		printf "  after this one restores the cached result instead.\n\n"; \
+		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from lion-prepare; \
+		status=$$?; \
+		$(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v; \
+		if [ "$$status" -ne 0 ] || [ ! -s "$$dump" ]; then \
+			printf "  $(R)FAIL$(X)    lion-prepare did not produce %s\n" "$$dump"; exit 1; \
+		fi; \
+		printf "  $(G)ok$(X)      %s (%s)\n" "$$dump" "$$(du -h "$$dump" | cut -f1)"; \
 	fi; \
 	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true; \
-	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip the download\n"
+	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip straight to restoring it\n"
 
 .PHONY: verify-data
 verify-data: ## The marker, the seeded rows, the street graph, and the warehouse

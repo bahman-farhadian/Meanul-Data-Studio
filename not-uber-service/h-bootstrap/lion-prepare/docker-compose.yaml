@@ -1,0 +1,50 @@
+# A throwaway stack, entirely separate from not-uber-service's own compose
+# project - `make lion-prepare` brings this up on its own, before the real
+# stack even exists (it runs as part of `make prepare`), and tears it down
+# right after. Nothing here is ever part of a deployed nus-* container.
+#
+# The password below is not a real credential: this database exists for a
+# few minutes, on a private network only this compose project can see, and
+# is destroyed with `docker compose down -v` at the end of the same run.
+
+name: nus-lion-prepare
+
+services:
+  lion-pg:
+    build:
+      context: .
+      dockerfile: lion-pg.Dockerfile
+      args:
+        POSTGIS_IMAGE: ${LION_PG_IMAGE:-postgis/postgis:17-3.5}
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${LION_PG_PASSWORD:-throwaway-local-only}
+      POSTGRES_DB: lion
+    volumes:
+      - ./init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - lion-prepare
+
+  lion-prepare:
+    build:
+      context: ../..
+      dockerfile: h-bootstrap/lion-prepare/Dockerfile
+    depends_on:
+      lion-pg:
+        condition: service_healthy
+    environment:
+      LION_PG_HOST: lion-pg
+      LION_PG_PASSWORD: ${LION_PG_PASSWORD:-throwaway-local-only}
+    volumes:
+      - ${NUS_LION_DATA_DIR:?set it}:/data
+    networks:
+      - lion-prepare
+
+networks:
+  lion-prepare:
+    name: nus-lion-prepare

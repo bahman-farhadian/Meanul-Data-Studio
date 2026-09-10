@@ -12,7 +12,7 @@ is at this time of day. That is what makes the answer change between rush
 hour and three in the morning: the same two points, a different best path.
 """
 
-from nus_common import postgres
+from nus_common import config, postgres
 from nus_common.logging import get_logger
 
 log = get_logger(__name__)
@@ -43,11 +43,13 @@ EDGES_SQL_TEMPLATE = """
 ROUTE_SQL = """
     WITH start_vertex AS (
         SELECT id FROM ways_vertices_pgr
+         WHERE on_main_network
          ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(%(from_lon)s, %(from_lat)s), 4326)
          LIMIT 1
     ),
     end_vertex AS (
         SELECT id FROM ways_vertices_pgr
+         WHERE on_main_network
          ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(%(to_lon)s, %(to_lat)s), 4326)
          LIMIT 1
     )
@@ -104,3 +106,65 @@ def route(
         seconds = int(float(row["route_km"]) / 25.0 * 3600)
 
     return float(row["route_km"]), seconds, row["route_wkt"]
+
+
+NEAREST_ROAD_POINT_SQL = """
+    SELECT ST_Y(the_geom) AS lat, ST_X(the_geom) AS lon,
+           ST_Distance(the_geom::geography, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) AS distance_m
+      FROM ways_vertices_pgr
+     WHERE on_main_network
+     ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)
+     LIMIT 1
+"""
+
+
+def nearest_road_point(lat: float, lon: float, max_snap_km: float | None = None) -> tuple[float, float] | None:
+    """Snap to the nearest vertex on the verified, connected road network.
+
+    None means nothing routable was within max_snap_km of (lat, lon) - the
+    candidate point was in water, a park, or otherwise off the map. The
+    caller re-picks rather than using a point that was never really there.
+
+    Restricted to on_main_network (the dominant strongly-connected
+    component, marked once when the graph is built - see
+    h-bootstrap/lion-prepare/build-graph.sql), so this can never return a
+    point on a real but disconnected island (Governors, Liberty, Ellis -
+    none of them have a car bridge) or a boundary-clipping artifact.
+    """
+    limit_km = max_snap_km if max_snap_km is not None else config.number("MAX_SNAP_KM", 0.5)
+
+    with postgres.read_connection() as conn:
+        row = postgres.fetch_one(conn, NEAREST_ROAD_POINT_SQL, {"lat": lat, "lon": lon})
+
+    if not row or row["distance_m"] / 1000.0 > limit_km:
+        return None
+    return float(row["lat"]), float(row["lon"])
+
+
+def random_road_point_in_zone(grid, zone_id: str, rng, attempts: int = 5) -> tuple[float, float]:
+    """A random point inside one zone, snapped to the real, connected road
+    network - never open water, a park, or a real island with no car bridge.
+
+    grid is anything with random_point_in(zone_id, rng) and centre_of(zone_id)
+    - a nus_common.citygrid.CityGrid, from any caller (h-bootstrap,
+    driver-service, passenger-service all draw the same grid from it).
+
+    Retries with a fresh random point a few times before falling back to the
+    zone's own centre (far more likely to be near real infrastructure than
+    an arbitrary corner). If even that fails - a zone that is mostly water -
+    the raw, unsnapped point is returned rather than blocking forever; it is
+    a rare enough case not to be worth failing the whole run over.
+    """
+    for _ in range(attempts):
+        lat, lon = grid.random_point_in(zone_id, rng)
+        snapped = nearest_road_point(lat, lon)
+        if snapped is not None:
+            return snapped
+
+    lat, lon = grid.centre_of(zone_id)
+    snapped = nearest_road_point(lat, lon)
+    if snapped is not None:
+        return snapped
+
+    log.warning("no road point found near zone, using an unsnapped point", extra={"zone_id": zone_id})
+    return grid.random_point_in(zone_id, rng)

@@ -43,7 +43,7 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     for number in range(1, settings.driver_count + 1):
         make, model = rng.choice(CAR_MAKES)
         home = rng.choice(zone_ids)
-        lat, lon = zones.random_point_in_zone(settings, home, rng)
+        lat, lon = zones.random_road_point_in_zone(settings, home, rng)
         drivers.append(
             {
                 "driver_id": driver_id(number),

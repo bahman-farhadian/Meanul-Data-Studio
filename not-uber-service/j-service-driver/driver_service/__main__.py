@@ -19,7 +19,7 @@ import random
 import sys
 import time
 
-from nus_common import config, postgres, redis_client
+from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
 from nus_common.geo import day_period, to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
@@ -72,7 +72,7 @@ def load_roster(redis, grid: CityGrid, rng: random.Random) -> dict[str, Driver]:
         lat = row.get("last_lat")
         lon = row.get("last_lon")
         if lat is None or lon is None:
-            lat, lon = grid.random_point_in(home, rng)
+            lat, lon = routing.random_road_point_in_zone(grid, home, rng)
         drivers[driver_id] = Driver(
             driver_id=driver_id, lat=float(lat), lon=float(lon), home_zone_id=home
         )
@@ -230,7 +230,7 @@ def main() -> int:
     for driver in drivers.values():
         if rng.random() < online_share:
             driver.set_status(IDLE)
-            driver.head_towards(*grid.random_point_in(driver.home_zone_id, rng))
+            driver.head_towards(*routing.random_road_point_in_zone(grid, driver.home_zone_id, rng))
 
     producer = AvroTopicProducer(TOPIC)
     consumer = AvroTopicConsumer(
@@ -268,7 +268,7 @@ def main() -> int:
                 if rng.random() < shift_change_chance:
                     if driver.status == OFFLINE:
                         driver.set_status(IDLE)
-                        driver.head_towards(*grid.random_point_in(driver.home_zone_id, rng))
+                        driver.head_towards(*routing.random_road_point_in_zone(grid, driver.home_zone_id, rng))
                     elif driver.status == IDLE:
                         driver.set_status(OFFLINE)
 
@@ -280,7 +280,7 @@ def main() -> int:
                 # to, pulled towards whichever zone is busy right now.
                 if driver.status == IDLE and driver.arrived():
                     target_zone = pick_target_zone(zone_scores, zone_ids, rng)
-                    driver.head_towards(*grid.random_point_in(target_zone, rng))
+                    driver.head_towards(*routing.random_road_point_in_zone(grid, target_zone, rng))
 
                 driver.move(tick_seconds, speed_kmh, rng)
 

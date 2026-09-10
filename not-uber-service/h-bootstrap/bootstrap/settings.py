@@ -46,11 +46,11 @@ class Settings:
     per_minute: float
 
     # --- the map ---------------------------------------------------------
-    osm_url: str
-    osm_md5_url: str
-    osm_dir: str
-    osm2pgrouting_config: str
-    skip_osm: bool
+    # The routable graph itself is built once, on the host, by
+    # `make lion-prepare` (h-bootstrap/lion-prepare/) - this is just where
+    # the finished dump is mounted for import_map() to restore.
+    lion_dir: str
+    skip_map_import: bool
 
     # --- switches --------------------------------------------------------
     # Set to true to run bootstrap again on a database that already has data.
@@ -79,19 +79,8 @@ def load() -> Settings:
         per_km=config.number("FARE_PER_KM", 1.75),
         per_minute=config.number("FARE_PER_MINUTE", 0.45),
 
-        osm_url=config.optional(
-            "OSM_URL",
-            "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf",
-        ),
-        osm_md5_url=config.optional(
-            "OSM_MD5_URL",
-            "https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf.md5",
-        ),
-        osm_dir=config.optional("OSM_DIR", "/data/osm"),
-        osm2pgrouting_config=config.optional(
-            "OSM2PGROUTING_CONFIG", "/usr/share/osm2pgrouting/mapconfig_for_cars.xml"
-        ),
-        skip_osm=config.flag("SKIP_OSM_IMPORT", False),
+        lion_dir=config.optional("LION_DIR", "/data/lion"),
+        skip_map_import=config.flag("SKIP_MAP_IMPORT", False),
 
         force_reseed=config.flag("FORCE_RESEED", False),
     )
