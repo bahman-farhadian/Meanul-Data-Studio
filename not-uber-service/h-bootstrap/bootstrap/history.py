@@ -24,6 +24,7 @@ from datetime import datetime, timedelta, timezone
 
 from nus_common import postgres
 from nus_common.geo import day_period, distance_km
+from nus_common.ids import new_trip_id
 from nus_common.logging import get_logger
 
 from bootstrap import people, zones
@@ -141,7 +142,7 @@ def _one_trip(
     pickup_lat, pickup_lon = zones.random_point_in_zone(settings, pickup_zone, rng)
     dropoff_lat, dropoff_lon = zones.random_point_in_zone(settings, dropoff_zone, rng)
 
-    trip_id = f"trp-{requested_at.strftime('%Y%m%d')}-{rng.getrandbits(32):08x}"
+    trip_id = new_trip_id(requested_at, rng)
     rider = people.passenger_id(rng.randint(1, settings.passenger_count))
     outcome = rng.choices(
         list(OUTCOME_WEIGHTS), weights=list(OUTCOME_WEIGHTS.values()), k=1

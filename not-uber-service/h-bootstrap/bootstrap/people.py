@@ -14,6 +14,7 @@ import random
 from faker import Faker
 
 from nus_common import postgres
+from nus_common.ids import driver_id, passenger_id
 from nus_common.logging import get_logger
 
 from bootstrap import zones
@@ -28,14 +29,6 @@ CAR_MAKES = [
 ]
 CAR_COLOURS = ["black", "white", "silver", "grey", "blue", "red"]
 PHONE_MODELS = ["iPhone 15", "iPhone 13", "Pixel 8", "Galaxy S24", "Galaxy A54"]
-
-
-def driver_id(number: int) -> str:
-    return f"drv-{number:06d}"
-
-
-def passenger_id(number: int) -> str:
-    return f"psg-{number:06d}"
 
 
 def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
