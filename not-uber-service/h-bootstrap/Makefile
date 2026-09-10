@@ -19,10 +19,13 @@
 bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet part)
 	$(call say,Bootstrap — schema, street map, people, a week of history)
 	@printf "  This takes a while: the OSM import is the slow step.\n"
+	@$(MAKE) --no-print-directory pg-cpus-bootstrap
 	@if $(COMPOSE) run --rm bootstrap; then \
 		printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
+		$(MAKE) --no-print-directory pg-cpus-normal; \
 	else \
 		printf "\n  $(R)FAIL$(X)    bootstrap failed — the services stay in standby on purpose.\n"; \
+		printf "              PG_CPUS stays raised so a retry does not re-pay the ramp-up cost.\n"; \
 		printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; \
 	fi
 
