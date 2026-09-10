@@ -32,10 +32,11 @@ raise the worker count alone.
 1. creates or upgrades Superset's own tables;
 2. creates the admin user (skipped if it exists);
 3. loads the built-in roles and permissions;
-4. registers the ClickHouse connection, updating it if it is already there.
+4. registers the ClickHouse and PostgreSQL (read-only) connections, updating
+   them if they are already there.
 
 Run it after the first `up`, after a Superset version change, and whenever
-the ClickHouse password changes.
+either password changes.
 
 ## About `SUPERSET_SECRET_KEY`
 
@@ -47,40 +48,36 @@ alone.
 
 ## What ships in the box
 
-Superset comes up populated. `init/register_database.py` registers two
-connections and `assets/` holds the datasets, charts and dashboard, imported
-by the one-shot — the same "provisioned from files" contract Grafana has.
+At this stage, Superset itself and two database connections only —
+`init/register_database.py` registers both, updating them in place on every
+run so the credential stays current:
 
 | Connection | Points at | Why |
 | --- | --- | --- |
-| `ClickHouse (nus)` | `nus-lb-a:8123` | The warehouse every chart reads. |
+| `ClickHouse (nus)` | `nus-lb-a:8123` | The warehouse every chart would read. |
 | `PostgreSQL (nus, read-only)` | `nus-lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the **replica pool**, never the leader, and DML is refused — an exploratory query from a browser has no business on the database the platform writes to. |
 
-The dashboard **not-uber-service - analytics** is six sections over 20 charts
-and five datasets: the week in numbers, money, demand that went unserved,
-whether the routing held up, the city, and the fleet.
+**No datasets, charts or dashboard are imported right now.** A full bundle —
+20 charts, 5 datasets, one 6-section analytics dashboard — was designed and
+built earlier and is still in git history:
+`git log --diff-filter=D -- g-infra-superset/assets/`. It is not loaded on
+purpose: that content depends on tables and data-generation logic (pieces
+`h` onward) not yet verified correct, so building against it now would mean
+redoing the work later. Two things worth remembering for when that work
+resumes, since they are easy to get wrong from a chart-builder UI:
 
-Two things the datasets encode so a chart cannot get them wrong:
-
-- **`trip_stats_hourly` metrics sum before they divide.** It is a
+- **`trip_stats_hourly` metrics must sum before they divide.** It is a
   SummingMergeTree filled per node, so the same hour and zone exists on both
   shards. `avg_surge` is `sum(surge_sum) / sum(completed_trips)`, never an
-  average of averages — picking "AVG" off a menu would be wrong, so the metric
-  is defined for you.
-- **`trip_events` holds one row per status change**, not per trip, so `trips`
-  is `uniqExact(trip_id)` and each outcome is a `countIf`.
+  average of averages.
+- **`trip_events` holds one row per status change**, not per trip, so
+  `trips` is `uniqExact(trip_id)` and each outcome is a `countIf`.
 
-### Changing a chart
-
-Edit the YAML and run the one-shot again:
-
-```bash
-docker compose run --rm superset-init
-```
-
-`--overwrite` means the file wins. A chart edited in the browser is **not**
-written back to `assets/` — export it from Superset and commit the export, the
-same way the Grafana dashboards work.
+Once dashboard content is reinstated, the workflow is: edit the YAML in
+`assets/`, then `docker compose run --rm superset-init` re-imports it with
+`--overwrite`, the same "provisioned from files" contract Grafana has. A
+chart edited only in the browser is never written back to `assets/` —
+export it from Superset and commit the export.
 
 ## Files
 
