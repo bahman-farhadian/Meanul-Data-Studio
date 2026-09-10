@@ -568,8 +568,29 @@ errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck 
 	else \
 		printf "\n  An OOM kill or a restart loop means that component's limit or the\n"; \
 		printf "  pacing must come down. Full log for any of them: $(C)make logs SVC=<name>$(X)\n"; \
+		printf "  Confirmed everything above is a known, harmless startup race (verify-*\n"; \
+		printf "  clean, ps healthy)? $(C)make errors-ack$(X) clears it, so the next run only\n"; \
+		printf "  reports what actually happens after that point.\n"; \
 	fi
 	@printf "\n"
+
+.PHONY: errors-ack
+errors-ack: ## Clear every container's log AFTER confirming the stack is healthy - errors reports fresh from here
+	$(call say,Clearing log history)
+	@for c in $$($(COMPOSE) ps -aq); do \
+		name=$$(docker inspect -f '{{slice .Name 1}}' "$$c" 2>/dev/null); \
+		path=$$(docker inspect -f '{{.LogPath}}' "$$c" 2>/dev/null); \
+		if [ -z "$$path" ]; then \
+			printf "  $(Y)skip$(X)    %s (no LogPath - not the json-file log driver?)\n" "$$name"; \
+		elif [ -w "$$path" ] 2>/dev/null; then \
+			: > "$$path" && printf "  $(G)cleared$(X)  %s\n" "$$name"; \
+		else \
+			printf "  $(Y)skip$(X)    %s (no permission - run as root)\n" "$$name"; \
+		fi; \
+	done
+	@printf "\n  $(C)make errors$(X) now only reports what happens after this point - it is\n"
+	@printf "  not a substitute for fixing anything, only for not re-reading the same\n"
+	@printf "  known-good startup noise on every future check.\n\n"
 
 .PHONY: stats
 stats: ## Live memory and CPU against each container's limit
