@@ -17,7 +17,7 @@
     "publication.autocreate.mode": "filtered",
 
     "snapshot.mode": "initial",
-    "table.include.list": "public.drivers,public.passengers,public.trips,public.city_zones",
+    "table.include.list": "nus.drivers,nus.passengers,nus.trips,nus.city_zones",
     "tombstones.on.delete": "true",
     "heartbeat.interval.ms": "10000",
 
@@ -26,7 +26,7 @@
 
     "transforms": "route",
     "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
-    "transforms.route.regex": "nus\\.public\\.(.*)",
+    "transforms.route.regex": "nus\\.nus\\.(.*)",
     "transforms.route.replacement": "cdc.$1",
 
     "topic.creation.enable": "true",

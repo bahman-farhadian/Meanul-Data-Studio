@@ -99,7 +99,7 @@ gate nothing that isn't already open one layer down.
 | `tombstones.on.delete` | `true` | A delete leaves a null-valued message, which becomes a Redis `DEL` and lets Kafka compact the key away. |
 | `decimal.handling.mode` | `double` | Fares arrive as plain numbers instead of encoded decimals, so consumers need no special decoding. |
 | `time.precision.mode` | `connect` | Timestamps arrive as ordinary millisecond values. |
-| `transforms.route` | `nus.public.X` -> `cdc.X` | Debezium's default topic name carries the server and schema. The rename gives the short names used everywhere else in the stack. |
+| `transforms.route` | `nus.nus.X` -> `cdc.X` | Debezium's default topic name carries the server and schema — both happen to be named "nus" here. The rename gives the short names used everywhere else in the stack. |
 | `topic.creation.*` | 3 partitions, 3 copies, compacted | Broker-side auto-creation is off, so Connect must create its own topics with the right settings. |
 
 ## Files
@@ -121,7 +121,7 @@ gate nothing that isn't already open one layer down.
 | `AVRO_CONVERTER_VERSION` | `8.3.1` | Confluent Avro converter version; keep it in step with the Schema Registry. |
 | `PYTHON_IMAGE` | `python:3.13.15-slim` | Image used by the registration one-shot. |
 | `CDC_PG_HOST` / `CDC_PG_PORT` | `nus-lb-a` / `5432` | Where to read from — the write port, which always points at the current leader. |
-| `CDC_PG_DATABASE` / `CDC_PG_USER` | `postgres` / `postgres` | Database and login. The user must be allowed to read the WAL. |
+| `CDC_PG_DATABASE` / `CDC_PG_USER` | `nus` / `postgres` | Database and login. The user must be allowed to read the WAL. |
 | `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
 
 ## Known limitation: one hostname

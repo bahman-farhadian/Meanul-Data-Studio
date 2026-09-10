@@ -46,9 +46,9 @@ verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 
 .PHONY: psql psql-read patronictl
 psql: ## A psql shell on the current leader, through the proxy
-	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
+	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
 psql-read: ## A psql shell on the replica pool, through the proxy
-	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
+	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
 patronictl: ## patronictl, for switchover and friends:  make patronictl ARGS=list
 	@$(COMPOSE) exec pg-1 patronictl -c /etc/patroni/patroni.yml $(or $(ARGS),list)
 
