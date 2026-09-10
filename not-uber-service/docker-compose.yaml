@@ -141,6 +141,20 @@ services:
       - "${LB_A_CH_NATIVE_PORT:-9000}:9000"
       - "${LB_A_GRAFANA_PORT:-3000}:3000"
       - "${LB_A_SUPERSET_PORT:-8088}:8088"
+      - "${LB_A_KSQLDB_PORT:-8089}:8089"
+      # Fixed literals, not a `${VAR:-default}:CONTAINER` pair like every
+      # line above: a broker's advertised address is baked into its own
+      # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
+      # port a client is told to dial here has to be the exact port it can
+      # actually reach — remapping the host side would silently break that.
+      # lb-a only, matching haproxy.cfg.template's own reasoning: lb-b
+      # failover doesn't compose with an address fixed at broker startup.
+      - "9094:9094"
+      - "9095:9095"
+      - "9096:9096"
+      - "9097:9097"
+      - "9098:9098"
+      - "9099:9099"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s
@@ -172,6 +186,7 @@ services:
       - "${LB_B_CH_NATIVE_PORT:-19000}:9000"
       - "${LB_B_GRAFANA_PORT:-13000}:3000"
       - "${LB_B_SUPERSET_PORT:-18088}:8088"
+      - "${LB_B_KSQLDB_PORT:-18089}:8089"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s

@@ -1,6 +1,8 @@
 # c-infra-kafka — the streaming backbone: three Kafka brokers in KRaft mode
-# (each node is broker AND controller, so there is no ZooKeeper) plus the
-# Schema Registry that holds the Avro schema of every topic.
+# (each node is broker AND controller, so there is no ZooKeeper), the Schema
+# Registry that holds the Avro schema of every topic, and ksqlDB — the SQL
+# layer a client like DBeaver actually talks to (its Kafka support does not
+# speak the raw broker protocol).
 #
 # Every event on this cluster is binary Avro. A message carries only the id
 # of its schema; the reader asks the Schema Registry what that id means. That
@@ -197,6 +199,58 @@ services:
       # The registry runs its own preflight against every broker before it
       # listens, so give it room on a cold start.
       start_period: 60s
+    networks:
+      - backbone
+
+  # The SQL layer over the cluster. DBeaver's own Kafka support only speaks
+  # ksqlDB's REST API, not the raw broker protocol used by kafka-1/2/3 above
+  # — this is what makes a topic queryable from a SQL client at all.
+  # Verified locally before this shipped: CREATE STREAM over a real topic,
+  # then SELECT ... EMIT CHANGES returned a real row back.
+  ksqldb-server:
+    image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
+    container_name: ksqldb-server
+    hostname: ksqldb-server
+    restart: unless-stopped
+    cpus: 0.5
+    mem_limit: 1.5g
+    memswap_limit: 1.5g
+    depends_on:
+      kafka-1:
+        condition: service_healthy
+      kafka-2:
+        condition: service_healthy
+      kafka-3:
+        condition: service_healthy
+      schema-registry:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      KSQL_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KSQL_LISTENERS: http://0.0.0.0:8088
+      KSQL_KSQL_SERVICE_ID: nus_ksqldb_
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      # Same safety story as the rest of this cluster (see the "Safety
+      # settings" table in README.md): ksqlDB's own command topic and any
+      # persistent query's internal topics survive one broker dying, not
+      # just the topics it reads and writes.
+      KSQL_KSQL_INTERNAL_TOPIC_REPLICAS: "3"
+      KSQL_KSQL_INTERNAL_TOPIC_MIN_INSYNC_REPLICAS: "2"
+      KSQL_KSQL_STREAMS_REPLICATION_FACTOR: "3"
+      KSQL_KSQL_STREAMS_TOPIC_MIN_INSYNC_REPLICAS: "2"
+      KSQL_HEAP_OPTS: -Xmx1g -Xms1g
+    healthcheck:
+      # python3, not curl - same finding as schema-registry: this image has
+      # neither curl nor wget nor nc, so a curl healthcheck never passes.
+      test:
+        - CMD
+        - python3
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8088/info", timeout=3)
+      interval: 15s
+      timeout: 10s
+      retries: 6
+      start_period: 45s
     networks:
       - backbone
 
