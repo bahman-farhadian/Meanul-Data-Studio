@@ -48,6 +48,24 @@ def ensure_ready() -> None:
 
     wait_for(_can_reach_postgres, "PostgreSQL through nus-lb-a (postgres database)")
 
+    # A pg-* restart just before this (h-bootstrap's own PG_CPUS boost, or an
+    # operator-triggered one) means Patroni may still be electing a leader:
+    # a container reports healthy as soon as Patroni itself answers, which
+    # can be before HAProxy's write port has converged on the new leader.
+    # SELECT 1 above succeeds against a read-only replica too, so it is not
+    # proof the CREATE/ALTER calls below can actually run - wrap them in the
+    # same retry every other "wait for infrastructure" step uses instead of
+    # failing on that transient window.
+    wait_for(
+        lambda: _create_database_and_schema(database, user),
+        "a writable PostgreSQL leader for nus-lb-a",
+        attempts=12,
+        delay_seconds=5,
+    )
+    log.info("schema ready", extra={"database": database, "schema": database})
+
+
+def _create_database_and_schema(database: str, user: str) -> bool:
     with psycopg.connect(_admin_connection_string("postgres"), autocommit=True) as conn:
         exists = conn.execute(
             "SELECT 1 FROM pg_database WHERE datname = %s", (database,)
@@ -65,7 +83,7 @@ def ensure_ready() -> None:
         conn.execute(
             f'ALTER DATABASE "{database}" SET search_path = "{database}", public'
         )
-    log.info("schema ready", extra={"database": database, "schema": database})
+    return True
 
 
 def _can_reach_postgres() -> bool:
