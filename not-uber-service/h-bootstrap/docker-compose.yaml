@@ -70,9 +70,12 @@ services:
       PG_HOST: ${PG_HOST:-nus-lb-a}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
       PG_READ_PORT: ${PG_READ_PORT:-5433}
-      PG_DATABASE: ${PG_DATABASE:-postgres}
+      PG_DATABASE: ${PG_DATABASE:-nus}
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
+      # Raised above the code's own default (5): the threaded routing pass
+      # below checks out HISTORY_ROUTING_WORKERS connections at once.
+      PG_POOL_SIZE: ${PG_POOL_SIZE:-16}
 
       # Redis, through Sentinel.
       REDIS_SENTINELS: ${REDIS_SENTINELS:-nus-sentinel-1:26379,nus-sentinel-2:26379,nus-sentinel-3:26379}
@@ -100,6 +103,7 @@ services:
       HISTORY_DAYS: ${HISTORY_DAYS:-7}
       HISTORY_TRIPS_PER_DAY: ${HISTORY_TRIPS_PER_DAY:-2000}
       HISTORY_POSITIONS_PER_TRIP: ${HISTORY_POSITIONS_PER_TRIP:-8}
+      HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-8}
 
       # Prices, shared with dispatch-service so both quote the same way.
       FARE_BASE: ${FARE_BASE:-3.0}

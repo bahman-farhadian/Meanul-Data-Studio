@@ -23,7 +23,10 @@ support, not a step in the build order.
 | `redis_client.py` | Finds the current Redis primary through Sentinel, and builds the key names the stack agreed on. |
 | `kafka.py` | Avro producer and consumer, with schemas loaded from the files in `c-infra-kafka/schemas/`. |
 | `clickhouse.py` | Batched inserts through the entry tier. |
-| `geo.py` | Small geography helpers: distance between two points, and which part of the day a moment belongs to. |
+| `geo.py` | Small geography helpers: distance between two points, which part of the day a moment belongs to, and points spaced along a route line. |
+| `citygrid.py` | The city's zone grid, shared so every component draws the same zones from the same bounds. |
+| `ids.py` | Every entity id format (driver, passenger, trip) in one place, so the width and shape never drift between components. |
+| `routing.py` | The pgRouting query, with traffic-weighted costs — shared by dispatch-service (live) and h-bootstrap (seeded history). |
 
 ## How a component uses it
 

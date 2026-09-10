@@ -20,14 +20,14 @@ import sys
 import time
 from datetime import datetime
 
-from nus_common import config, postgres, redis_client
+from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
 from nus_common.geo import day_period, distance_km, to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
 
-from dispatch_service import pricing, routing
+from dispatch_service import pricing
 from dispatch_service.trips import ActiveTrip, first_change_at, next_status
 
 log = get_logger(__name__)

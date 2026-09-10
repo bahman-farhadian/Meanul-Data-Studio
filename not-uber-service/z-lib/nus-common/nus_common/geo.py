@@ -34,6 +34,63 @@ def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
+def points_along_linestring(wkt: str, count: int) -> list[tuple[float, float]]:
+    """N evenly-spaced (lat, lon) points along a route, start to end.
+
+    `wkt` is the ST_AsText() of the LINESTRING nus_common.routing.route()
+    returns - the real street path pgRouting found, not a straight line
+    between its two endpoints. Used to plot position history that follows
+    actual streets instead of cutting through whatever sits between pickup
+    and dropoff.
+
+    A LineMerge over a connected pgRouting path is normally a single
+    LINESTRING, but is not guaranteed to be, so a MULTILINESTRING is also
+    accepted: its parts are walked in the order pgRouting returned them,
+    which is the order they appear in the WKT.
+    """
+    coords = _linestring_coords(wkt)
+    if count <= 1 or len(coords) == 1:
+        lat, lon = coords[0]
+        return [(lat, lon)] * max(count, 1)
+
+    cumulative = [0.0]
+    for (lat1, lon1), (lat2, lon2) in zip(coords, coords[1:]):
+        cumulative.append(cumulative[-1] + distance_km(lat1, lon1, lat2, lon2))
+    total = cumulative[-1]
+
+    if total == 0:
+        lat, lon = coords[0]
+        return [(lat, lon)] * count
+
+    points = []
+    for step in range(count):
+        target = total * step / (count - 1)
+        i = 0
+        while i < len(cumulative) - 2 and cumulative[i + 1] < target:
+            i += 1
+        seg_start, seg_end = cumulative[i], cumulative[i + 1]
+        share = (target - seg_start) / (seg_end - seg_start) if seg_end > seg_start else 0.0
+        lat1, lon1 = coords[i]
+        lat2, lon2 = coords[i + 1]
+        points.append((lat1 + (lat2 - lat1) * share, lon1 + (lon2 - lon1) * share))
+    return points
+
+
+def _linestring_coords(wkt: str) -> list[tuple[float, float]]:
+    """Parse a WKT (MULTI)LINESTRING into a flat [(lat, lon), ...] list.
+
+    WKT coordinates are written "lon lat" (x y); this returns (lat, lon), the
+    order every other coordinate pair in this codebase uses.
+    """
+    body = wkt.strip()
+    body = body[body.index("(") + 1 : body.rindex(")")]
+    coords = []
+    for part in body.replace("(", "").replace(")", "").split(","):
+        lon_text, lat_text = part.strip().split()
+        coords.append((float(lat_text), float(lon_text)))
+    return coords
+
+
 def day_period(moment: datetime) -> str:
     """Which six-hour part of the day a moment belongs to.
 
