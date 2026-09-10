@@ -33,7 +33,7 @@ etcd-new: ## Put etcd back to 'new' (only before a fresh bootstrap from empty vo
 verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 	$(call say,PostgreSQL)
 	@$(COMPOSE) exec -T etcd-1 etcdctl \
-		--endpoints=https://etcd-1:2379,https://etcd-2:2379,https://etcd-3:2379 \
+		--endpoints=https://nus-etcd-1:2379,https://nus-etcd-2:2379,https://nus-etcd-3:2379 \
 		--cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
 		endpoint health || true
 	@echo
@@ -46,9 +46,9 @@ verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 
 .PHONY: psql psql-read patronictl
 psql: ## A psql shell on the current leader, through the proxy
-	@$(COMPOSE) exec pg-1 psql "host=lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
+	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
 psql-read: ## A psql shell on the replica pool, through the proxy
-	@$(COMPOSE) exec pg-1 psql "host=lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
+	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=postgres"
 patronictl: ## patronictl, for switchover and friends:  make patronictl ARGS=list
 	@$(COMPOSE) exec pg-1 patronictl -c /etc/patroni/patroni.yml $(or $(ARGS),list)
 

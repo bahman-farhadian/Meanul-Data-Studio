@@ -10,7 +10,7 @@
 # deliberate manual step, not something a script should do behind your back.
 set -eu
 
-BOOTSTRAP="${KAFKA_BOOTSTRAP:-kafka-1:9092}"
+BOOTSTRAP="${KAFKA_BOOTSTRAP:-nus-kafka-1:9092}"
 RETENTION_MS=$(( ${KAFKA_RETENTION_HOURS:-48} * 3600 * 1000 ))
 KAFKA_TOPICS=/opt/kafka/bin/kafka-topics.sh
 TAB=$(printf '\t')

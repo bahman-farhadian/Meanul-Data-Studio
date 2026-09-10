@@ -57,7 +57,7 @@ x-kafka-env: &kafka-env
   # then never changed - see .env.example.
   CLUSTER_ID: ${KAFKA_CLUSTER_ID:?set it in c-infra-kafka/.env}
   KAFKA_PROCESS_ROLES: broker,controller
-  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@nus-kafka-1:9093,2@nus-kafka-2:9093,3@nus-kafka-3:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXT_A:PLAINTEXT,EXT_B:PLAINTEXT
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
@@ -108,8 +108,8 @@ services:
 
   kafka-1:
     <<: *kafka-broker
-    container_name: kafka-1
-    hostname: kafka-1
+    container_name: nus-kafka-1
+    hostname: nus-kafka-1
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "1"
@@ -124,33 +124,33 @@ services:
       # to match haproxy.cfg's literal bind ports exactly. A variable here
       # that silently drifts from a hardcoded number there is worse than
       # both being plainly fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9094,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9097
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://nus-kafka-1:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9094,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9097
     volumes:
       - kafka-data-1:/var/lib/kafka/data
 
   kafka-2:
     <<: *kafka-broker
-    container_name: kafka-2
-    hostname: kafka-2
+    container_name: nus-kafka-2
+    hostname: nus-kafka-2
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "2"
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
       # See kafka-1 for what EXT_A/EXT_B are and why the ports are fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9095,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9098
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://nus-kafka-2:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9095,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9098
     volumes:
       - kafka-data-2:/var/lib/kafka/data
 
   kafka-3:
     <<: *kafka-broker
-    container_name: kafka-3
-    hostname: kafka-3
+    container_name: nus-kafka-3
+    hostname: nus-kafka-3
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "3"
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
       # See kafka-1 for what EXT_A/EXT_B are and why the ports are fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9096,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9099
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://nus-kafka-3:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9096,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9099
     volumes:
       - kafka-data-3:/var/lib/kafka/data
 
@@ -159,8 +159,8 @@ services:
   # holds no state of its own and can be restarted freely.
   schema-registry:
     image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
-    container_name: schema-registry
-    hostname: schema-registry
+    container_name: nus-schema-registry
+    hostname: nus-schema-registry
     restart: unless-stopped
     cpus: 0.2
     mem_limit: 1g
@@ -174,9 +174,9 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_HOST_NAME: nus-schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka-1:9092,PLAINTEXT://kafka-2:9092,PLAINTEXT://kafka-3:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://nus-kafka-1:9092,PLAINTEXT://nus-kafka-2:9092,PLAINTEXT://nus-kafka-3:9092
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "3"
       # BACKWARD: a new schema must still be readable by consumers written
       # against the previous one. Adding an optional field is fine; removing
@@ -245,8 +245,8 @@ services:
   # against this exact pinned image, not assumed.
   ksqldb-server:
     image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
-    container_name: ksqldb-server
-    hostname: ksqldb-server
+    container_name: nus-ksqldb-server
+    hostname: nus-ksqldb-server
     restart: unless-stopped
     cpus: 0.5
     mem_limit: 1.5g
@@ -262,10 +262,10 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      KSQL_BOOTSTRAP_SERVERS: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KSQL_BOOTSTRAP_SERVERS: nus-kafka-1:9092,nus-kafka-2:9092,nus-kafka-3:9092
       KSQL_LISTENERS: http://0.0.0.0:8088
       KSQL_KSQL_SERVICE_ID: nus_ksqldb_
-      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
       # Same safety story as the rest of this cluster (see the "Safety
       # settings" table in README.md): ksqlDB's own command topic and any
       # persistent query's internal topics survive one broker dying, not
@@ -311,7 +311,7 @@ services:
     entrypoint: ["/bin/sh", "/create-topics.sh"]
     environment:
       TZ: ${TZ:-UTC}
-      KAFKA_BOOTSTRAP: kafka-1:9092,kafka-2:9092,kafka-3:9092
+      KAFKA_BOOTSTRAP: nus-kafka-1:9092,nus-kafka-2:9092,nus-kafka-3:9092
       KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
     volumes:
       - ./topics/create-topics.sh:/create-topics.sh:ro

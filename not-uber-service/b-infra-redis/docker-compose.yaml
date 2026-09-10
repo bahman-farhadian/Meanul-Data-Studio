@@ -1,7 +1,8 @@
 # b-infra-redis — nus-cache: a Sentinel-managed Redis primary/replica set
-# (redis-1/2/3 + sentinel-1/2/3). The primary is ELECTED, exactly like the
-# Patroni leader in piece a, so all three data nodes carry identical limits
-# and identical config; redis-1 is only the seed primary of a cold start.
+# (nus-redis-1/2/3 + nus-sentinel-1/2/3). The primary is ELECTED, exactly
+# like the Patroni leader in piece a, so all three data nodes carry
+# identical limits and identical config; nus-redis-1 is only the seed
+# primary of a cold start.
 #
 # Redis is deliberately NOT behind the lb-a/lb-b HAProxy pair: clients
 # discover the current primary by asking Sentinel, and a TCP proxy in the
@@ -79,7 +80,7 @@ x-sentinel-node: &sentinel-node
 x-sentinel-env: &sentinel-env
   TZ: ${TZ:-UTC}
   REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
-  REDIS_MASTER_HOST: ${REDIS_MASTER_HOST:-redis-1}
+  REDIS_MASTER_HOST: ${REDIS_MASTER_HOST:-nus-redis-1}
   REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in b-infra-redis/.env}
   SENTINEL_QUORUM: ${SENTINEL_QUORUM:-2}
   SENTINEL_DOWN_AFTER_MS: ${SENTINEL_DOWN_AFTER_MS:-5000}
@@ -91,11 +92,11 @@ x-sentinel-template: &sentinel-template ./sentinel/sentinel.conf:/templates/sent
 services:
   redis-1:
     <<: *redis-node
-    container_name: redis-1
-    hostname: redis-1
+    container_name: nus-redis-1
+    hostname: nus-redis-1
     environment:
       <<: *redis-env
-      REDIS_NODE: redis-1
+      REDIS_NODE: nus-redis-1
     volumes:
       - *redis-entrypoint
       - *redis-template
@@ -106,12 +107,12 @@ services:
   # topology, and a promoted redis-2 stays primary across restarts.
   redis-2:
     <<: *redis-node
-    container_name: redis-2
-    hostname: redis-2
+    container_name: nus-redis-2
+    hostname: nus-redis-2
     environment:
       <<: *redis-env
-      REDIS_NODE: redis-2
-      REDIS_REPLICAOF: ${REDIS_MASTER_HOST:-redis-1} 6379
+      REDIS_NODE: nus-redis-2
+      REDIS_REPLICAOF: ${REDIS_MASTER_HOST:-nus-redis-1} 6379
     volumes:
       - *redis-entrypoint
       - *redis-template
@@ -119,12 +120,12 @@ services:
 
   redis-3:
     <<: *redis-node
-    container_name: redis-3
-    hostname: redis-3
+    container_name: nus-redis-3
+    hostname: nus-redis-3
     environment:
       <<: *redis-env
-      REDIS_NODE: redis-3
-      REDIS_REPLICAOF: ${REDIS_MASTER_HOST:-redis-1} 6379
+      REDIS_NODE: nus-redis-3
+      REDIS_REPLICAOF: ${REDIS_MASTER_HOST:-nus-redis-1} 6379
     volumes:
       - *redis-entrypoint
       - *redis-template
@@ -132,11 +133,11 @@ services:
 
   sentinel-1:
     <<: *sentinel-node
-    container_name: sentinel-1
-    hostname: sentinel-1
+    container_name: nus-sentinel-1
+    hostname: nus-sentinel-1
     environment:
       <<: *sentinel-env
-      SENTINEL_NODE: sentinel-1
+      SENTINEL_NODE: nus-sentinel-1
     volumes:
       - *sentinel-entrypoint
       - *sentinel-template
@@ -144,11 +145,11 @@ services:
 
   sentinel-2:
     <<: *sentinel-node
-    container_name: sentinel-2
-    hostname: sentinel-2
+    container_name: nus-sentinel-2
+    hostname: nus-sentinel-2
     environment:
       <<: *sentinel-env
-      SENTINEL_NODE: sentinel-2
+      SENTINEL_NODE: nus-sentinel-2
     volumes:
       - *sentinel-entrypoint
       - *sentinel-template
@@ -156,11 +157,11 @@ services:
 
   sentinel-3:
     <<: *sentinel-node
-    container_name: sentinel-3
-    hostname: sentinel-3
+    container_name: nus-sentinel-3
+    hostname: nus-sentinel-3
     environment:
       <<: *sentinel-env
-      SENTINEL_NODE: sentinel-3
+      SENTINEL_NODE: nus-sentinel-3
     volumes:
       - *sentinel-entrypoint
       - *sentinel-template

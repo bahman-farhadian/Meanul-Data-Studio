@@ -28,10 +28,10 @@ topics: ## Create the Kafka topics from topics.tsv (after the brokers are health
 verify-kafka: ## Brokers, the controller quorum, and every topic's replication
 	$(call say,Kafka)
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh \
-		--bootstrap-server kafka-1:9092 2>/dev/null | grep -E '^kafka-[0-9]' || true
+		--bootstrap-server nus-kafka-1:9092 2>/dev/null | grep -E '^nus-kafka-[0-9]' || true
 	@echo
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
+		--bootstrap-server nus-kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
 	@printf "\n  Every partition should list three replicas and three in-sync.\n"
 
 .PHONY: verify-ksqldb

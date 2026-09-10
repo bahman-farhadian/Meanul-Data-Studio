@@ -85,7 +85,7 @@ The exact procedure:
 ```bash
 # 1. confirm the cluster actually bootstrapped (all three healthy)
 docker compose exec etcd-1 etcdctl \
-  --endpoints=https://etcd-1:2379,https://etcd-2:2379,https://etcd-3:2379 \
+  --endpoints=https://nus-etcd-1:2379,https://nus-etcd-2:2379,https://nus-etcd-3:2379 \
   --cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
   endpoint health
 
@@ -166,7 +166,7 @@ Verify both clusters:
 ```bash
 # etcd: all three members healthy over TLS
 docker compose exec etcd-1 etcdctl \
-  --endpoints=https://etcd-1:2379,https://etcd-2:2379,https://etcd-3:2379 \
+  --endpoints=https://nus-etcd-1:2379,https://nus-etcd-2:2379,https://nus-etcd-3:2379 \
   --cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
   endpoint health
 
