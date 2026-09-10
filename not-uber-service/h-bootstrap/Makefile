@@ -21,7 +21,7 @@ bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet pa
 	@printf "  This takes a while: the OSM import is the slow step.\n"
 	@$(COMPOSE) up -d bootstrap
 	@$(COMPOSE) logs -f bootstrap & LOGS=$$!; \
-	code=$$(docker wait bootstrap 2>/dev/null || echo 1); \
+	code=$$(docker wait nus-bootstrap 2>/dev/null || echo 1); \
 	kill $$LOGS 2>/dev/null || true; wait $$LOGS 2>/dev/null || true; \
 	if [ "$$code" = 0 ]; then printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
 	else printf "\n  $(R)FAIL$(X)    bootstrap exited $$code — the services stay in standby on purpose.\n"; \

@@ -165,7 +165,7 @@ def import_map(settings: Settings) -> None:
         "osm2pgrouting",
         "--file", str(as_xml),
         "--conf", settings.osm2pgrouting_config,
-        "--host", _pg("PG_HOST", "lb-a"),
+        "--host", _pg("PG_HOST", "nus-lb-a"),
         "--port", _pg("PG_WRITE_PORT", "5432"),
         "--dbname", _pg("PG_DATABASE", "postgres"),
         "--username", _pg("PG_USER", "postgres"),

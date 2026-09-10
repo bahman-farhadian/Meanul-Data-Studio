@@ -115,7 +115,7 @@ cannot connect and the stack stays waiting.
 docker compose logs -f bootstrap
 
 # it exited - did it succeed?
-docker inspect --format '{{.State.ExitCode}}' bootstrap
+docker inspect --format '{{.State.ExitCode}}' nus-bootstrap
 ```
 
 Exit code 0 means the stack is prepared. Anything else means it is not, and

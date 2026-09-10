@@ -42,10 +42,10 @@ def main() -> int:
     log.info("bootstrap starting")
 
     # --- 1. wait for the infrastructure --------------------------------
-    wait_for(postgres.ping, "PostgreSQL through lb-a", attempts=60, delay_seconds=5)
+    wait_for(postgres.ping, "PostgreSQL through nus-lb-a", attempts=60, delay_seconds=5)
     redis = redis_client.primary()
     wait_for(lambda: redis.ping() is True, "Redis through Sentinel", attempts=60, delay_seconds=5)
-    wait_for(clickhouse.ping, "ClickHouse through lb-a", attempts=60, delay_seconds=5)
+    wait_for(clickhouse.ping, "ClickHouse through nus-lb-a", attempts=60, delay_seconds=5)
 
     if redis.exists(BOOTSTRAP_DONE_KEY) and not settings.force_reseed:
         log.info(

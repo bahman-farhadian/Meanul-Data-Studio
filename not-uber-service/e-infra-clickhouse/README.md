@@ -164,12 +164,12 @@ and is still catching up.
 
 ```bash
 # stop one replica of shard 1: queries still answer, using the other copy
-docker stop ch-s1r2
+docker stop nus-ch-s1r2
 docker compose exec ch-s1r1 clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT count() FROM nus.trip_events"
 
 # bring it back: it replays what it missed from its replica
-docker start ch-s1r2
+docker start nus-ch-s1r2
 ```
 
 Losing **both** replicas of one shard is different: that half of the data is

@@ -263,12 +263,12 @@ docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
 
 # stop a broker and look again: leadership has moved to the other two,
 # and the stopped broker has dropped out of Isr
-docker stop kafka-2
+docker stop nus-kafka-2
 docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server nus-kafka-1:9092 --describe --topic trip_lifecycle
 
 # bring it back: it catches up and rejoins Isr on its own
-docker start kafka-2
+docker start nus-kafka-2
 ```
 
 Producers and consumers are expected to ride through this without being
