@@ -6,9 +6,17 @@
 # of its schema; the reader asks the Schema Registry what that id means. That
 # keeps messages small and lets a schema change without breaking old readers.
 #
-# Kafka is NOT behind the lb-a/lb-b HAProxy pair. A Kafka client first asks
-# any broker for the cluster layout and then talks to the right broker for
-# each partition, so a TCP proxy in front would only get in the way.
+# Kafka is behind lb-a — but not the way Postgres/Redis are. A Kafka client
+# asks any broker for cluster metadata, which hands back the exact address
+# to dial for every partition after that; the address is baked into each
+# broker's own config, not something a proxy can redirect at request time.
+# So this is a dedicated TCP passthrough port per (broker, advertised
+# address) pair, not a shared write/read pair, and it stays on lb-a only —
+# lb-a/lb-b failover doesn't compose with an address fixed at broker
+# startup the way it does for a role-aware health check. The 3-broker
+# cluster's own bootstrap-list fallback is Kafka's actual redundancy story.
+# Verified locally before this shipped: a message produced through one
+# broker's proxy port was consumed back through a different broker's.
 #
 # Standalone test:
 #   docker network create nus-backbone     (once, shared by the whole stack)
@@ -49,7 +57,7 @@ x-kafka-env: &kafka-env
   KAFKA_PROCESS_ROLES: broker,controller
   KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-1:9093,2@kafka-2:9093,3@kafka-3:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXT_A:PLAINTEXT,EXT_B:PLAINTEXT
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
   KAFKA_LOG_DIRS: /var/lib/kafka/data
   # Safety settings for a three-broker cluster: every topic is written to all
@@ -103,10 +111,18 @@ services:
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "1"
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      # What clients are told to connect to. It must be the name other
-      # containers can resolve on nus-backbone, not localhost.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
+      # INTERNAL: what other containers are told to connect to — the name
+      # they resolve on nus-backbone, not localhost. EXT_A/EXT_B: what an
+      # external client is told, one port per address this broker answers
+      # on through lb-a (see the header comment for why there are two).
+      # The port numbers are not a separate .env knob: HAProxy cannot read
+      # ${VAR} from its own environment (confirmed, not assumed — the same
+      # finding that shaped how Redis's password reaches it), so these have
+      # to match haproxy.cfg's literal bind ports exactly. A variable here
+      # that silently drifts from a hardcoded number there is worse than
+      # both being plainly fixed.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-1:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9094,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9097
     volumes:
       - kafka-data-1:/var/lib/kafka/data
 
@@ -117,8 +133,9 @@ services:
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "2"
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
+      # See kafka-1 for what EXT_A/EXT_B are and why the ports are fixed.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-2:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9095,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9098
     volumes:
       - kafka-data-2:/var/lib/kafka/data
 
@@ -129,8 +146,9 @@ services:
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "3"
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
+      # See kafka-1 for what EXT_A/EXT_B are and why the ports are fixed.
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-3:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9096,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9099
     volumes:
       - kafka-data-3:/var/lib/kafka/data
 
