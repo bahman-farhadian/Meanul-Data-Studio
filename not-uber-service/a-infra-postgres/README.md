@@ -246,11 +246,11 @@ docker compose exec pg-1 psql -U postgres -c "select version();"
 docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml switchover
 
 # or kill the current leader (check `list` first; here assume pg-2 leads)
-docker stop pg-2 && sleep 15
+docker stop nus-pg-2 && sleep 15
 docker compose exec pg-1 patronictl -c /etc/patroni/patroni.yml list
 
 # the stopped node rejoins as a replica (pg_rewind enabled)
-docker start pg-2
+docker start nus-pg-2
 ```
 
 HAProxy follows the promotion automatically via the Patroni REST checks —

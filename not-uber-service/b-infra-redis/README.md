@@ -192,14 +192,14 @@ and `ckquorum` answering `OK`.
 docker compose exec sentinel-1 redis-cli -p 26379 sentinel failover nus-cache
 
 # or unplanned: kill the current primary
-docker stop redis-1
+docker stop nus-redis-1
 
 # after SENTINEL_DOWN_AFTER_MS + election, a replica has been promoted
 docker compose exec sentinel-2 redis-cli -p 26379 sentinel get-master-addr-by-name nus-cache
 
 # the stopped node rejoins as a replica of the new primary — Sentinel
 # reconfigures it on the way in
-docker start redis-1
+docker start nus-redis-1
 docker compose exec redis-1 redis-cli role
 ```
 
