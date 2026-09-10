@@ -29,6 +29,22 @@ etcd-new: ## Put etcd back to 'new' (only before a fresh bootstrap from empty vo
 	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=existing$$/ETCD_INITIAL_CLUSTER_STATE=new/' $(ETCD_ENV)
 	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
 
+.PHONY: pg-cpus-bootstrap
+pg-cpus-bootstrap: ## Raise PG_CPUS to PG_CPUS_BOOTSTRAP for the routing burst (recreates pg-1/2/3)
+	$(call say,Raising PG_CPUS for bootstrap's routing burst)
+	@sed -i "s/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_BOOTSTRAP,10)/" $(ENV_FILE)
+	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
+	$(call ok,pg-1/2/3 recreated with the higher ceiling)
+
+.PHONY: pg-cpus-normal
+pg-cpus-normal: ## Put PG_CPUS back to its steady-state value (recreates pg-1/2/3)
+	$(call say,Returning PG_CPUS to its steady-state value)
+	@sed -i 's/^PG_CPUS=.*/PG_CPUS=2/' $(ENV_FILE)
+	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
+	$(call ok,pg-1/2/3 recreated at the steady-state ceiling)
+
 .PHONY: verify-pg
 verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 	$(call say,PostgreSQL)
