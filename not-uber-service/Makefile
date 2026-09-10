@@ -528,6 +528,10 @@ health: ## One line per container: health, restarts, and whether it was OOM-kill
 		docker inspect -f '  {{printf "%-22s" (slice .Name 1)}} {{if .State.Health}}{{printf "%-12s" .State.Health.Status}}{{else}}{{printf "%-12s" .State.Status}}{{end}} {{printf "%-9d" .RestartCount}} {{.State.OOMKilled}}' "$$c" 2>/dev/null; \
 	done
 
+# A replica's WAL receiver can race the leader's own replication-slot
+# creation on first bootstrap - a known Patroni timing window, not a stuck
+# cluster, and it self-heals on Patroni's own retry. verify-pg (one Leader,
+# two Replicas, lag 0) is the real signal for whether it actually got stuck.
 .PHONY: errors
 errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck output, error logs
 	$(call say,Errors across the stack)
@@ -548,6 +552,7 @@ errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck 
 		logs=$$(docker logs --since $(ERRORS_WINDOW) "$$c" 2>&1 \
 			| grep -E '"level": ?"(ERROR|CRITICAL)"|level=error|<Error>|ERROR:|FATAL:|\[error\]|Traceback \(most recent|^[A-Za-z_.]*(Error|Exception):' \
 			| grep -Ev 'FATAL: +the database system is starting up' \
+			| grep -Ev 'replication slot "[^"]+" does not exist' \
 			| tail -6 || true); \
 		[ -z "$$bad" ] && [ -z "$$logs" ] && continue; \
 		found=1; \
