@@ -19,13 +19,12 @@
 bootstrap: ## Run h-bootstrap and follow it (the map import is the long quiet part)
 	$(call say,Bootstrap — schema, street map, people, a week of history)
 	@printf "  This takes a while: the OSM import is the slow step.\n"
-	@$(COMPOSE) up -d bootstrap
-	@$(COMPOSE) logs -f bootstrap & LOGS=$$!; \
-	code=$$(docker wait nus-bootstrap 2>/dev/null || echo 1); \
-	kill $$LOGS 2>/dev/null || true; wait $$LOGS 2>/dev/null || true; \
-	if [ "$$code" = 0 ]; then printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
-	else printf "\n  $(R)FAIL$(X)    bootstrap exited $$code — the services stay in standby on purpose.\n"; \
-	     printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; fi
+	@if $(COMPOSE) run --rm bootstrap; then \
+		printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
+	else \
+		printf "\n  $(R)FAIL$(X)    bootstrap failed — the services stay in standby on purpose.\n"; \
+		printf "              Read the log above, fix it, then: make bootstrap\n"; exit 1; \
+	fi
 
 .PHONY: osm-fetch
 osm-fetch: ## Download the street map on the HOST, so bootstrap does not have to
