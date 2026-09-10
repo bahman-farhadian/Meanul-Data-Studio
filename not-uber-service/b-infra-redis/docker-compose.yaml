@@ -25,9 +25,9 @@ x-redis-node: &redis-node
   # which we replace — so ask for it explicitly. A fresh named volume inherits
   # /data's redis:redis ownership from the image, so the data dir is writable.
   user: redis
-  cpus: 0.5
-  mem_limit: 4g
-  memswap_limit: 4g
+  cpus: ${REDIS_CPUS:-0.5}
+  mem_limit: ${REDIS_MEM:-4g}
+  memswap_limit: ${REDIS_MEM:-4g}
   entrypoint: ["/bin/sh", "/entrypoint.sh"]
   healthcheck:
     # redis-cli picks the password up from REDISCLI_AUTH; grep makes the exit
@@ -55,9 +55,9 @@ x-sentinel-node: &sentinel-node
   image: ${REDIS_IMAGE:-redis:8.2}
   restart: unless-stopped
   user: redis
-  cpus: 0.1
-  mem_limit: 192m
-  memswap_limit: 192m
+  cpus: ${SENTINEL_CPUS:-0.1}
+  mem_limit: ${SENTINEL_MEM:-192m}
+  memswap_limit: ${SENTINEL_MEM:-192m}
   entrypoint: ["/bin/sh", "/entrypoint.sh"]
   depends_on:
     redis-1:

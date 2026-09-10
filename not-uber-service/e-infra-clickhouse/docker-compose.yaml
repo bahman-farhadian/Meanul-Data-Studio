@@ -28,9 +28,9 @@ name: e-infra-clickhouse
 x-keeper-node: &keeper-node
   image: ${CH_KEEPER_IMAGE:-clickhouse/clickhouse-keeper:25.3}
   restart: unless-stopped
-  cpus: 0.1
-  mem_limit: 1g
-  memswap_limit: 1g
+  cpus: ${CH_KEEPER_CPUS:-0.1}
+  mem_limit: ${CH_KEEPER_MEM:-1g}
+  memswap_limit: ${CH_KEEPER_MEM:-1g}
   healthcheck:
     # Keeper answers the four-letter word "ruok" with "imok". bash is used on
     # purpose: /dev/tcp is a bash feature and there is no curl in the image.
@@ -52,9 +52,9 @@ x-keeper-node: &keeper-node
 x-ch-node: &ch-node
   image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:25.3}
   restart: unless-stopped
-  cpus: 1.3
-  mem_limit: 8g
-  memswap_limit: 8g
+  cpus: ${CH_CPUS:-1.3}
+  mem_limit: ${CH_MEM:-8g}
+  memswap_limit: ${CH_MEM:-8g}
   depends_on:
     ch-keeper-1:
       condition: service_healthy
@@ -209,9 +209,9 @@ services:
   ch-secrets-init:
     image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 64m
-    memswap_limit: 64m
+    cpus: ${CH_SECRETS_CPUS:-0.25}
+    mem_limit: ${CH_SECRETS_MEM:-64m}
+    memswap_limit: ${CH_SECRETS_MEM:-64m}
     environment:
       TZ: ${TZ:-UTC}
       CH_USER: ${CH_USER:-nus}
@@ -236,9 +236,9 @@ services:
   ch-ddl-init:
     image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:25.3}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 512m
-    memswap_limit: 512m
+    cpus: ${CH_DDL_CPUS:-0.25}
+    mem_limit: ${CH_DDL_MEM:-512m}
+    memswap_limit: ${CH_DDL_MEM:-512m}
     entrypoint: ["/bin/sh", "/apply-ddl.sh"]
     environment:
       TZ: ${TZ:-UTC}
