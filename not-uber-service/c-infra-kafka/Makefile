@@ -14,6 +14,11 @@ kafka-dirs: ## Hand the Kafka volumes to the user inside the image (covered by v
 	$(call say,Kafka data directory ownership)
 	@$(COMPOSE) run --rm kafka-dirs
 
+.PHONY: ksqldb-secrets
+ksqldb-secrets: ## Write ksqlDB's Basic-auth credentials (BEFORE ksqldb-server's first start)
+	$(call say,ksqlDB credentials)
+	@$(COMPOSE) run --rm ksqldb-secrets-init
+
 .PHONY: topics
 topics: ## Create the Kafka topics from topics.tsv (after the brokers are healthy)
 	$(call say,Kafka topics)
@@ -32,6 +37,6 @@ verify-kafka: ## Brokers, the controller quorum, and every topic's replication
 .PHONY: verify-ksqldb
 verify-ksqldb: ## ksqlDB's own status, and every stream/table it currently knows about
 	$(call say,ksqlDB)
-	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json; print(json.dumps(json.loads(urllib.request.urlopen('http://localhost:8088/info', timeout=5).read()), indent=2))"
+	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json,base64,os; req=urllib.request.Request('http://localhost:8088/info'); req.add_header('Authorization','Basic '+base64.b64encode(('%s:%s'%(os.environ['KSQLDB_ADMIN_USER'],os.environ['KSQLDB_ADMIN_PASSWORD'])).encode()).decode()); print(json.dumps(json.loads(urllib.request.urlopen(req, timeout=5).read()), indent=2))"
 	@echo
-	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json; req=urllib.request.Request('http://localhost:8088/ksql', data=json.dumps({'ksql':'SHOW STREAMS;'}).encode(), headers={'Content-Type':'application/vnd.ksql.v1+json'}); print(urllib.request.urlopen(req, timeout=5).read().decode())"
+	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json,base64,os; req=urllib.request.Request('http://localhost:8088/ksql', data=json.dumps({'ksql':'SHOW STREAMS;'}).encode(), headers={'Content-Type':'application/vnd.ksql.v1+json'}); req.add_header('Authorization','Basic '+base64.b64encode(('%s:%s'%(os.environ['KSQLDB_ADMIN_USER'],os.environ['KSQLDB_ADMIN_PASSWORD'])).encode()).decode()); print(urllib.request.urlopen(req, timeout=5).read().decode())"

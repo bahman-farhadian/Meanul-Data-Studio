@@ -61,9 +61,18 @@ understands **ksqlDB's** REST API, so point it there instead:
 
 One backend, one address each — unlike the six ports above, ksqlDB is a
 single stateless server with nothing per-broker to advertise, so it is
-proxied the same simple way as Grafana and Superset. Verified locally before
-this shipped: `CREATE STREAM ... WITH (KAFKA_TOPIC='...', VALUE_FORMAT=...)`
-followed by `SELECT * FROM ... EMIT CHANGES` returned a real row produced
+proxied the same simple way as Grafana and Superset.
+
+DBeaver's connection dialog requires a username and password — ksqlDB's REST
+API is behind HTTP Basic auth for exactly that reason. Use `KSQLDB_ADMIN_USER`
+/ `KSQLDB_ADMIN_PASSWORD` from `.env`. It gates only this REST API, not the
+underlying topics: Kafka itself has no authentication anywhere in this
+stack, so anyone who can already reach the six raw-broker ports above can
+read and write those topics directly, login or not. This is the one lock in
+the streaming layer, not a claim that the layer is otherwise secured.
+
+Verified locally before this shipped: `CREATE STREAM ... WITH (KAFKA_TOPIC='...',
+VALUE_FORMAT=...)` followed by `SELECT * FROM ... EMIT CHANGES` returned a real row produced
 onto the underlying topic.
 
 ## Why binary Avro
@@ -120,7 +129,7 @@ PostgreSQL table (see [`../d-infra-debezium`](../d-infra-debezium)).
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `kafka-1/2/3`, `schema-registry`, `ksqldb-server`, and the two one-shots (`kafka-dirs`, `kafka-topics-init`) behind the `init` profile. |
+| `docker-compose.yaml` | `kafka-1/2/3`, `schema-registry`, `ksqldb-server`, and the three one-shots (`kafka-dirs`, `kafka-topics-init`, `ksqldb-secrets-init`) behind the `init` profile. |
 | `topics/topics.tsv` | The topic list: name, partitions, message key, and what it is for. |
 | `topics/create-topics.sh` | Reads that file and creates anything missing. Safe to re-run. |
 | `schemas/*.avsc` | The Avro schema of each topic, in plain JSON with a `doc` note on every field. |
@@ -134,6 +143,8 @@ PostgreSQL table (see [`../d-infra-debezium`](../d-infra-debezium)).
 | `KAFKA_IMAGE` | `apache/kafka:4.3.1` | Broker image, also used by the one-shots. |
 | `SCHEMA_REGISTRY_IMAGE` | `confluentinc/cp-schema-registry:8.3.1` | Schema Registry image. |
 | `KSQLDB_IMAGE` | `confluentinc/cp-ksqldb-server:8.3.1` | ksqlDB image — same Confluent Platform line as the Schema Registry. |
+| `KSQLDB_ADMIN_USER` | `admin` | The login a client such as DBeaver uses against ksqlDB. |
+| `KSQLDB_ADMIN_PASSWORD` | (in `.env.example`) | The password half — a real secret, unlike the username. |
 | `BUSYBOX_IMAGE` | `busybox:1.38.0` | Tiny image used by the `kafka-dirs` one-shot. |
 | `KAFKA_CLUSTER_ID` | (in `.env.example`) | Identity of the cluster. Same on all brokers, never changed after the first format. |
 | `KAFKA_UID` / `KAFKA_GID` | `1000` / `1000` | The user inside the Kafka image; `kafka-dirs` hands the volumes to it. |
@@ -156,6 +167,9 @@ cp .env.example .env
 # one-shot BEFORE the first start: a new Docker volume belongs to root, and
 # the broker does not run as root, so hand the volumes over first
 docker compose run --rm kafka-dirs
+
+# one-shot BEFORE the first start: writes ksqlDB's Basic-auth credentials
+docker compose run --rm ksqldb-secrets-init
 
 docker compose up -d
 
@@ -196,8 +210,10 @@ docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
 docker compose exec schema-registry curl -s http://localhost:8081/subjects
 
 # ksqlDB answers, and knows about the Kafka cluster it attached to
+# (KSQLDB_ADMIN_USER/_PASSWORD are already in this container's own
+# environment, purely so this command and its healthcheck can log in)
 docker compose exec ksqldb-server python3 -c \
-  "import urllib.request; print(urllib.request.urlopen('http://localhost:8088/info', timeout=5).read().decode())"
+  "import urllib.request,base64,os; req=urllib.request.Request('http://localhost:8088/info'); req.add_header('Authorization','Basic '+base64.b64encode(('%s:%s'%(os.environ['KSQLDB_ADMIN_USER'],os.environ['KSQLDB_ADMIN_PASSWORD'])).encode()).decode()); print(urllib.request.urlopen(req, timeout=5).read().decode())"
 ```
 
 In a healthy `--describe` output every partition shows three replicas and

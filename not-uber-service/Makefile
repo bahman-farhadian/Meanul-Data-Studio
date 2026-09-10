@@ -266,7 +266,8 @@ preflight: ## Check the host, Docker and the settings before anything is started
 		else printf "  $(G)ok$(X)      no change-me placeholders left\n"; fi; \
 		missing=""; \
 		for v in PG_SUPERUSER_PASSWORD PG_REPLICATION_PASSWORD PATRONI_REST_PASSWORD REDIS_PASSWORD \
-		         CH_PASSWORD GRAFANA_ADMIN_PASSWORD SUPERSET_ADMIN_PASSWORD SUPERSET_SECRET_KEY KAFKA_CLUSTER_ID; do \
+		         CH_PASSWORD GRAFANA_ADMIN_PASSWORD SUPERSET_ADMIN_PASSWORD SUPERSET_SECRET_KEY \
+		         KAFKA_CLUSTER_ID KSQLDB_ADMIN_PASSWORD; do \
 			grep -qE "^$$v=.+" $(ENV_FILE) || missing="$$missing $$v"; done; \
 		[ -z "$$missing" ] && printf "  $(G)ok$(X)      every required setting has a value\n" \
 			|| { printf "  $(R)FAIL$(X)    missing or empty:%s\n" "$$missing"; fail=1; }; \
@@ -449,6 +450,7 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory lb-config
 	@$(MAKE) --no-print-directory certgen
 	@$(MAKE) --no-print-directory ch-secrets
+	@$(MAKE) --no-print-directory ksqldb-secrets
 	$(call say,Starting the infrastructure — pieces a to g)
 	@$(COMPOSE) up -d $(PIECE_D)
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
@@ -642,7 +644,8 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above — no extra proxy is needed. For Kafka, point\n"; \
 	printf "  DBeaver at the ksqlDB address instead: its Kafka support only speaks\n"; \
-	printf "  ksqlDB's REST API, not the raw broker protocol below.\n"; \
+	printf "  ksqlDB's REST API, not the raw broker protocol below. It asks for a\n"; \
+	printf "  login — $(C)KSQLDB_ADMIN_USER$(X)/$(C)_PASSWORD$(X) in $(ENV_FILE), Kafka itself has none.\n"; \
 	printf "  To publish on one interface only, set the LB_* ports in $(ENV_FILE)\n"; \
 	printf "  to a bound form such as $(C)192.168.8.3:5432$(X).\n\n"; \
 	printf "  The six ports below are different: a raw Kafka client (kcat, a\n"; \
