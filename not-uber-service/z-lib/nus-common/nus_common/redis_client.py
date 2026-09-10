@@ -83,7 +83,8 @@ HOTSPOT_TTL_SECONDS = 6 * 60 * 60
 def _sentinel() -> Sentinel:
     """Build the Sentinel connection from the environment."""
     hosts = config.optional(
-        "REDIS_SENTINELS", "sentinel-1:26379,sentinel-2:26379,sentinel-3:26379"
+        "REDIS_SENTINELS",
+        "nus-sentinel-1:26379,nus-sentinel-2:26379,nus-sentinel-3:26379",
     )
     pairs = []
     for entry in hosts.split(","):
