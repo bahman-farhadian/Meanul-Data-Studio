@@ -21,7 +21,7 @@ steps only work once an earlier one has happened.
 git clone <this repo> && cd Meanul-Data-Studio/not-uber-service
 make init                  # .env, the nus-backbone network, the data directories
 $EDITOR .env               # section 1: the eight passwords. Nothing else is required.
-make prepare               # pull every image, build the eleven, fetch the street map
+make prepare               # pull every image, build the eleven, prepare the LION street graph
                            # THE ONLY STEP THAT REACHES OUTSIDE THIS HOST
 
 # --- the deployment (needs no internet) -----------------------------------
@@ -43,21 +43,27 @@ make stats                 # live usage against each limit
 # --- stopping and removing ------------------------------------------------
 make stop                  # stop the containers, keep everything
 make down                  # remove the containers, keep the data
-make destroy               # remove the data too, but KEEP the street map
-make clean                 # leave no trace: images, network, .env, map and all
+make destroy               # remove the data too, but KEEP the routable graph
+make clean                 # leave no trace: images, network, .env, graph and all
 ```
 
 Two of those deserve a note.
 
-**`make osm-fetch`** is needed only if the container that downloads the street
-map cannot reach the internet while the host can. It fetches the ~470 MB
-extract on the host, to the exact path and name `h-bootstrap` looks for, so
-bootstrap skips the download. `make preflight` tells you when you need it.
+**`make lion-fetch` and `make lion-prepare`** build the routable street graph
+on the host, entirely outside the stack — `lion-fetch` downloads NYC's
+official LION street data (DCP), `lion-prepare` filters it to real drivable
+streets, computes real costs from its DOT-verified posted speed limits and
+one-way directions, and builds the routing topology, all in a throwaway
+container that never touches the deployed stack. Both are part of
+`make prepare` and skip themselves once already done — `lion-prepare` is the
+slow one on a first run (filtering and topology-building the whole dataset);
+every run after that restores its cached result in seconds. `make preflight`
+tells you when either is missing.
 
-**`make destroy` keeps the street map** on purpose — it is the one piece of
-data that is slow and awkward to obtain again, and nothing else depends on
-its being fresh. `make clean` and `make nuke` remove it along with everything
-else.
+**`make destroy` keeps the prepared graph** on purpose — it is the one piece
+of data that is slow and awkward to rebuild, and nothing else depends on its
+being fresh (NYC's street network does not change between two test runs).
+`make clean` and `make nuke` remove it along with everything else.
 
 Every step of `make up` is also a target of its own, and every one is
 idempotent, so a failed run is resumed by fixing the cause and running that
@@ -66,10 +72,10 @@ step again rather than starting over.
 ## Deploying without outside network
 
 `make prepare` is the only step that reaches the internet: it pulls the
-pinned images, builds the eleven this repository defines, and fetches the
-street map. Everything after it is local — the containers talk to each other
-on `nus-backbone`, and the map, the stack's single runtime download, is
-already on disk.
+pinned images, builds the eleven this repository defines, and downloads and
+prepares the LION routable graph. Everything after it is local — the
+containers talk to each other on `nus-backbone`, and the graph, the stack's
+single runtime download, is already on disk, ready to restore.
 
 That separation matters wherever network access is restricted, intermittent,
 or only available from the host itself. Run `make prepare` where the host can
@@ -121,7 +127,7 @@ stack.
 
 The 26 named volumes are bind-mounted to a directory tree under
 `NUS_VOLUME_ROOT`, set in `.env`. That puts the databases, the topics, the
-warehouse and the downloaded street map on whichever disk you choose,
+warehouse and the prepared street graph on whichever disk you choose,
 **without touching the Docker daemon's configuration**.
 
 Images are the exception, and there is no way around it: images, container
@@ -174,7 +180,7 @@ happened, which is the whole reason this is a Makefile and not one
 | 6 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
 | 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
 | 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
-| 9 | `make bootstrap` | Migrations, the street map, the people, a week of history, then the `system:bootstrap:done` marker. |
+| 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, a week of history, then the `system:bootstrap:done` marker. |
 | 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. |
 | 11 | `up` pieces i–n | The six services, which were waiting on the marker. |
 
@@ -383,5 +389,5 @@ Afterwards the host is as it was, with one exception it will not touch for
 you: Docker's shared build cache, which is not this project's alone. Clear
 that yourself with `docker builder prune` if you want the disk back.
 
-Both destroy the downloaded street map, so the next bootstrap downloads it
-again.
+Both destroy the prepared street graph, so the next `make prepare` downloads
+and builds it again.

@@ -209,7 +209,7 @@ init: ## Create .env from the template and the shared nus-backbone network
 	@$(MAKE) --no-print-directory _mk-data-tree
 	@printf "\n  Now edit $(B)$(ENV_FILE)$(X) — section 1 holds every password.\n"
 	@printf "  Then, in order:\n"
-	@printf "    $(C)make prepare$(X)    pull, build and fetch the map (needs the internet)\n"
+	@printf "    $(C)make prepare$(X)    pull, build and prepare the map (needs the internet)\n"
 	@printf "    $(C)make up$(X)         the bring-up (needs no internet at all)\n\n"
 
 # Create exactly the directories the compose model mounts. Both `init` and
@@ -217,16 +217,17 @@ init: ## Create .env from the template and the shared nus-backbone network
 # `make init` in between would be a trap — the error would arrive from
 # preflight, several steps away from the cause.
 .PHONY: prepare
-prepare: ## Pull, build and fetch the map — the only step needing network access
+prepare: ## Pull, build and prepare the street map — the only step needing network access
 	$(call say,Fetching everything the stack needs)
 	@printf "  This is the only step that reaches outside this host. After it the\n"
 	@printf "  stack is self-contained: the containers talk to each other on %s,\n" "$(NETWORK)"
-	@printf "  and the one runtime download — the street map — is done here.\n\n"
+	@printf "  and the one runtime download - the LION street map - is done here.\n\n"
 	@$(MAKE) --no-print-directory pull
 	@$(MAKE) --no-print-directory build
-	@$(MAKE) --no-print-directory osm-fetch
+	@$(MAKE) --no-print-directory lion-fetch
+	@$(MAKE) --no-print-directory lion-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
-	@printf "  Every image is built and the map is on disk.\n\n"
+	@printf "  Every image is built and the routable graph is on disk, ready to restore.\n\n"
 
 .PHONY: preflight
 preflight: ## Check the host, Docker and the settings before anything is started
@@ -307,19 +308,19 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	missingimg=""; nimg=0; \
 	for i in $$($(COMPOSE) --profile init config --images 2>/dev/null | sort -u || true); do \
 		nimg=$$((nimg+1)); docker image inspect "$$i" >/dev/null 2>&1 || missingimg="$$missingimg $$i"; done; \
-	osm=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-osm-data/region-latest.osm.pbf; \
-	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$osm" ]; then \
-		printf "  $(G)ok$(X)      all %s images built and the street map is on disk\n" "$$nimg"; \
+	graph=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-lion-data/routable-graph.dump; \
+	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$graph" ]; then \
+		printf "  $(G)ok$(X)      all %s images built and the routable graph is on disk\n" "$$nimg"; \
 		printf "  $(G)ok$(X)      nothing left to do needs the internet\n"; \
 	else \
 		if [ -n "$$missingimg" ]; then \
 			printf "  $(R)FAIL$(X)    %s image(s) not built or pulled yet:\n" "$$(echo $$missingimg | wc -w)"; \
 			for m in $$missingimg; do printf "                %s\n" "$$m"; done; \
-			printf "              Run $(C)make prepare$(X) — it pulls, builds and fetches the map.\n"; \
+			printf "              Run $(C)make prepare$(X) — it pulls, builds and prepares the map.\n"; \
 			printf "              That is the only step that needs the internet.\n"; \
 			fail=1; \
 		fi; \
-		[ -s "$$osm" ] || printf "  $(Y)warn$(X)    the street map is not on disk yet — $(C)make osm-fetch$(X)\n"; \
+		[ -s "$$graph" ] || printf "  $(Y)warn$(X)    the routable graph is not built yet — $(C)make lion-fetch && make lion-prepare$(X)\n"; \
 		probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 		probe=$${probe:-busybox:1.38.0}; \
 		docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
@@ -330,11 +331,9 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			printf "  $(G)ok$(X)      containers can resolve DNS and reach the internet\n"; \
 			elif [ "$$(grep -E '^BUILD_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)" = host ]; then \
 			printf "  $(Y)warn$(X)    containers cannot reach the internet, but BUILD_NETWORK=host is set,\n"; \
-			printf "              so the image builds will use the host's network and succeed.\n"; \
-			printf "              $(Y)One runtime fetch is still not covered:$(X) h-bootstrap downloads the\n"; \
-			printf "              street map from download.geofabrik.de, in a container. Fetch it on\n"; \
-			printf "              the host first and bootstrap will skip the download:\n"; \
-			printf "                $(C)make osm-fetch$(X)\n"; \
+			printf "              so the image builds will use the host's network and succeed. Nothing\n"; \
+			printf "              else needs container-side internet - lion-fetch/lion-prepare both run\n"; \
+			printf "              on the host, and bootstrap only ever restores what they built.\n"; \
 			else \
 			printf "  $(R)FAIL$(X)    containers resolve DNS but cannot reach the internet.\n"; \
 			printf "              Image pulls still work (the daemon fetches those over the host's\n"; \
@@ -710,7 +709,7 @@ destroy: ## Remove the containers AND DESTROY every data volume
 .PHONY: nuke
 nuke: ## destroy EVERYTHING including the street map, and the shared network
 	@$(MAKE) --no-print-directory destroy
-	@$(MAKE) --no-print-directory _rm-data-tree RM_OSM=1
+	@$(MAKE) --no-print-directory _rm-data-tree RM_MAP=1
 	@docker network rm $(NETWORK) 2>/dev/null || true
 	@printf "  Network $(NETWORK) removed, and the street map with it.\n"
 
@@ -726,7 +725,7 @@ _rm-data-tree:
 	else \
 		case "$$root" in /|/root|/home|/usr|/etc|/var|/boot|/data-root) \
 			printf "  $(R)REFUSED$(X) NUS_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
-		if [ "$(RM_OSM)" = 1 ]; then keep=""; else keep="nus-osm-data"; fi; \
+		if [ "$(RM_MAP)" = 1 ]; then keep=""; else keep="nus-lion-data"; fi; \
 		before=0; after=0; \
 		for d in $$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null); do \
 			[ -n "$$keep" ] && [ "$$(basename "$$d")" = "$$keep" ] && continue; \

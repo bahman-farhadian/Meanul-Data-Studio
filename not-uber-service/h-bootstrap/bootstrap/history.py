@@ -26,7 +26,7 @@ device reports every few seconds; a week of that would be tens of millions
 of rows nobody reads closely. A handful of points per trip, spaced along the
 real route, keeps the shape of the data without the weight.
 
-If the street map was not imported (SKIP_OSM_IMPORT=true, for fast local
+If the street map was not imported (SKIP_MAP_IMPORT=true, for fast local
 iteration), there is nothing to route against - trips fall back to the old
 straight-line-times-a-road-factor estimate instead, clearly degraded and
 logged as such.
@@ -230,9 +230,14 @@ def _next_spec(
     )
 
     pickup_zone = rng.choices(zone_ids, weights=weights, k=1)[0]
-    dropoff_zone = rng.choices(zone_ids, weights=weights, k=1)[0]
-    pickup_lat, pickup_lon = zones.random_point_in_zone(settings, pickup_zone, rng)
-    dropoff_lat, dropoff_lon = zones.random_point_in_zone(settings, dropoff_zone, rng)
+    # The dropoff is not picked independently of the pickup - most real trips
+    # are short hops, with a long tail of longer ones, not a flat
+    # distribution across the whole city.
+    grid = zones.grid_from(settings)
+    dropoff_weights = grid.distance_decay_weights(pickup_zone, zone_ids, weights)
+    dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
+    pickup_lat, pickup_lon = zones.random_road_point_in_zone(settings, pickup_zone, rng)
+    dropoff_lat, dropoff_lon = zones.random_road_point_in_zone(settings, dropoff_zone, rng)
 
     trip_id = new_trip_id(requested_at, rng)
     rider = people.passenger_id(rng.randint(1, settings.passenger_count))

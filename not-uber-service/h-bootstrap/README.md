@@ -1,20 +1,21 @@
 # h-bootstrap — prepares the stack, once
 
 The last container to start and the only one meant to stop. It turns an
-empty stack into one with a city, people, a street map and a week of
+empty stack into one with a city, people, a street graph and a week of
 history, then sets a marker in Redis that releases the six services.
 
 ## What it does, in order
 
 | Step | What happens | Safe to repeat because |
 | --- | --- | --- |
+| 0 | Create the `nus` database and schema, if not already there | idempotent checks before each `CREATE` |
 | 1 | Wait for PostgreSQL, Redis and ClickHouse to answer | it only waits |
 | 2 | Apply the SQL files in `migrations/` | applied files are recorded in `schema_migrations` |
-| 3 | Download and import the New York street map | a valid download and an imported graph are both detected and skipped |
+| 3 | Restore the routable street graph, already prepared by `make lion-prepare` | a populated `ways` table is detected and skipped |
 | 4 | Create the city zones | `ON CONFLICT DO NOTHING` |
 | 5 | Create the drivers and passengers | `ON CONFLICT DO NOTHING` |
-| 6 | Invent a week of trips and store them | `ON CONFLICT DO NOTHING` |
-| 7 | Give road segments a starting congestion factor | `ON CONFLICT DO NOTHING` |
+| 6 | Give road segments a starting congestion factor | `ON CONFLICT DO NOTHING` |
+| 7 | Invent a week of trips, routed for real, and store them | `ON CONFLICT DO NOTHING` |
 | 8 | Load that week into ClickHouse | skipped when `trip_events` already holds rows |
 | 9 | Set `system:bootstrap:done` in Redis | setting it twice is the same as once |
 
@@ -29,24 +30,23 @@ them. That is also the proof the change-capture loop works.
 
 ## The street map
 
-The slow step, and the one worth understanding.
+Built from NYC's own official street data (LION, from the Department of City
+Planning) instead of OpenStreetMap — real, DOT-verified one-way directions
+and posted speed limits, filtered to real drivable streets before anything
+else touches it (no paper streets, no railroads, no shoreline). Real islands
+with no car bridge (Governors, Liberty, Ellis) correctly stay unreachable;
+the graph is built to make that the *only* way a generated trip can fail to
+route, not an accident of picking a point nobody checked was on a road.
 
-1. **Download** the OpenStreetMap extract from Geofabrik, and check it
-   against the `.md5` file published next to it. A half-finished download
-   would produce a broken map, which is worse than none.
-2. **Cut it to the city.** The published file covers New York *state*; the
-   simulation only needs the box in `CITY_MIN_LAT` … `CITY_MAX_LON`. Cutting
-   first makes everything after it faster and much lighter on memory.
-3. **Convert** it to the XML form `osm2pgrouting` reads.
-4. **Import**, which creates the `ways` and `ways_vertices_pgr` tables.
-   Those are what pgRouting uses to answer "what is the best path from here
-   to there".
-
-The files live on the `nus-osm-data` volume, so a rebuilt container does not
-download half a gigabyte again.
+None of that happens inside this container, or inside `make up` at all — see
+`lion-prepare/` for the full explanation of where it happens and why. This
+step is just the fast part: restore the graph `make lion-prepare` already
+built, from `NUS_VOLUME_ROOT/nus-lion-data/routable-graph.dump`, into the
+`ways` and `ways_vertices_pgr` tables pgRouting uses to answer "what is the
+best path from here to there" - skipped entirely if they already hold data.
 
 To work on something else without waiting for all this, set
-`SKIP_OSM_IMPORT=true` — but routing will not work, so `dispatch-service`
+`SKIP_MAP_IMPORT=true` — but routing will not work, so `dispatch-service`
 cannot assign trips.
 
 ## The invented week
@@ -75,18 +75,20 @@ week. A run that can be repeated is a run that can be debugged.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | The `bootstrap` service, gated on the infrastructure being healthy. |
-| `Dockerfile` | Two stages; the runtime image carries the map tools and the virtual environment. |
+| `Dockerfile` | Two stages; the runtime image carries `pg_restore` and the virtual environment. |
 | `pyproject.toml` / `uv.lock` | Dependencies, pinned. |
 | `migrations/*.sql` | The database schema, in name order. |
 | `bootstrap/settings.py` | Every setting, read from the environment. |
+| `bootstrap/database.py` | Creates the `nus` database and schema, if not already there. |
 | `bootstrap/migrate.py` | Runs the migrations that have not run yet. |
-| `bootstrap/osm.py` | Download, cut, convert, import the map. |
-| `bootstrap/zones.py` | The city grid. |
+| `bootstrap/osm.py` | Restores the routable graph `make lion-prepare` already built. |
+| `bootstrap/zones.py` | The city grid, and snapping a random point to a real road. |
 | `bootstrap/people.py` | Drivers and passengers. |
-| `bootstrap/history.py` | The invented week, and the traffic baseline. |
+| `bootstrap/history.py` | The invented week, routed for real, and the traffic baseline. |
 | `bootstrap/warehouse.py` | Loading that week into ClickHouse. |
-| `bootstrap/__main__.py` | The nine steps, in order. |
+| `bootstrap/__main__.py` | The ten steps, in order. |
 | `.env.example` | Template for the untracked `.env`. |
+| `lion-prepare/` | The throwaway stack that builds the routable graph, once, outside this container. |
 
 ## Environment variables (`.env`)
 
@@ -102,9 +104,10 @@ cannot connect and the stack stays waiting.
 | `SEED_DRIVERS` / `SEED_PASSENGERS` | `800` / `5000` | How many people exist. |
 | `HISTORY_DAYS` / `HISTORY_TRIPS_PER_DAY` | `7` / `2000` | How much history to invent. |
 | `HISTORY_POSITIONS_PER_TRIP` | `8` | Position reports kept per historical trip. |
+| `HISTORY_ROUTING_WORKERS` | `8` | Concurrent pgRouting calls while inventing the week. |
 | `FARE_*` | `3.0` / `1.75` / `0.45` | Base fare, price per km, price per minute. Shared with `dispatch-service`. |
-| `OSM_URL` / `OSM_MD5_URL` | Geofabrik New York | Where the map comes from. |
-| `SKIP_OSM_IMPORT` | `false` | Skip the map entirely. Routing stops working. |
+| `LION_DIR` | `/data/lion` | Where the prepared graph dump is mounted for restoring. |
+| `SKIP_MAP_IMPORT` | `false` | Skip restoring the graph entirely. Routing stops working. |
 | `FORCE_RESEED` | `false` | Run the steps again on a prepared stack. |
 | `LOG_LEVEL` | `INFO` | Set to `DEBUG` to see every step in detail. |
 

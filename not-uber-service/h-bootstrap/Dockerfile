@@ -74,14 +74,12 @@ LABEL org.opencontainers.image.title="nus/bootstrap" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="${PYTHON_IMAGE}"
 
-# The map tools:
-#   osmium-tool     cuts the extract down to the city and converts it
-#   osm2pgrouting   turns the map into the routable graph pgRouting uses
-#   ca-certificates lets the download verify the site it is talking to
+# postgresql-client: pg_restore, to load the routable graph h-bootstrap/
+# lion-prepare/ already built on the host - this container never builds the
+# graph itself, only restores it.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        osmium-tool \
-        osm2pgrouting \
+        postgresql-client \
         ca-certificates \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/*
@@ -92,13 +90,13 @@ COPY --from=build /app /app
 
 # Run as a normal user, like the six services do. Nothing here needs root.
 #
-# /data/osm is created HERE, owned by that user, because it is a mount point
-# for a named volume: Docker seeds an empty named volume from the image's
-# directory at that path, ownership included. Without this the volume would
-# be created root-owned and the very first thing bootstrap does — write the
-# downloaded map — would fail with a permission error.
+# /data/lion is created HERE, owned by that user, because it is a mount
+# point for a named volume: Docker seeds an empty named volume from the
+# image's directory at that path, ownership included. Without this the
+# volume would be created root-owned and reading the precomputed graph
+# dump would fail with a permission error.
 RUN useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
- && mkdir -p /data/osm \
+ && mkdir -p /data/lion \
  && chown -R nus:nus /app /data
 
 WORKDIR /app/h-bootstrap
@@ -108,13 +106,11 @@ ENV PATH="/app/h-bootstrap/.venv/bin:${PATH}" \
 
 USER nus
 
-# Fail the build rather than ship an image that cannot do its job. Both of
-# these have been wrong before: the migrations were missing entirely, and the
-# routing config comes from an apt package whose layout can change.
+# Fail the build rather than ship an image that cannot do its job. The
+# migrations have been missing entirely before.
 RUN python -c "import bootstrap, nus_common" \
  && test "$(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l)" -gt 0 \
- && test -f /usr/share/osm2pgrouting/mapconfig_for_cars.xml \
- && echo "bootstrap: $(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l) migrations, routing config present"
+ && echo "bootstrap: $(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l) migrations present"
 
 # Runs once and exits. A non-zero exit means the stack is not prepared, and
 # the services keep waiting rather than working with half-made data.

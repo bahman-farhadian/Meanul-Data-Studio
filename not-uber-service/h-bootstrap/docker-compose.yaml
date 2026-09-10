@@ -43,9 +43,10 @@ services:
     # mean re-running the whole preparation on every container restart.
     restart: "no"
     cpus: ${BOOTSTRAP_CPUS:-1.25}
-    # osm2pgrouting holds the whole street graph in memory while it builds the
-    # topology, and it is the peak of the entire stack. Too small a limit does
-    # not slow it down — the kernel kills it, and the run dies with signal 9.
+    # The routable graph is now a pg_restore of an already-built dump, not a
+    # from-scratch topology build (h-bootstrap/lion-prepare/ does that part,
+    # outside this container, once). Kept generous anyway - too small a
+    # limit does not slow a step down, the kernel kills it outright.
     mem_limit: ${BOOTSTRAP_MEM:-24g}
     memswap_limit: ${BOOTSTRAP_MEM:-24g}
     # Nothing may be prepared before the things being prepared are up.
@@ -110,27 +111,27 @@ services:
       FARE_PER_KM: ${FARE_PER_KM:-1.75}
       FARE_PER_MINUTE: ${FARE_PER_MINUTE:-0.45}
 
-      # The map.
-      OSM_URL: ${OSM_URL:-https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf}
-      OSM_MD5_URL: ${OSM_MD5_URL:-https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf.md5}
-      OSM_DIR: /data/osm
-      SKIP_OSM_IMPORT: ${SKIP_OSM_IMPORT:-false}
+      # The map. The routable graph itself is built by `make lion-prepare`
+      # on the host, ahead of time - this only points at where the finished
+      # dump is mounted.
+      LION_DIR: /data/lion
+      SKIP_MAP_IMPORT: ${SKIP_MAP_IMPORT:-false}
       FORCE_RESEED: ${FORCE_RESEED:-false}
     volumes:
-      # The downloaded map lives here, so a rebuilt container does not
-      # download half a gigabyte again.
-      - osm-data:/data/osm
+      # The downloaded LION data and the graph built from it both live here,
+      # so a rebuilt container does not redo either step.
+      - lion-data:/data/lion
     networks:
       - backbone
 
 volumes:
-  osm-data:
-    name: nus-osm-data
+  lion-data:
+    name: nus-lion-data
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-osm-data
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-lion-data
 
 networks:
   backbone:

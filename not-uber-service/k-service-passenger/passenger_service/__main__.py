@@ -18,9 +18,10 @@ import random
 import sys
 import time
 
-from nus_common import config, postgres, redis_client
+from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
 from nus_common.geo import to_millis, utc_now
+from nus_common.ids import new_trip_id
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
@@ -129,10 +130,13 @@ def main() -> int:
             for _ in range(count):
                 rider_id = rng.choice(rider_ids)
                 pickup_zone = rng.choices(zone_ids, weights=zone_weights, k=1)[0]
-                dropoff_zone = rng.choices(zone_ids, weights=zone_weights, k=1)[0]
-                pickup_lat, pickup_lon = grid.random_point_in(pickup_zone, rng)
-                dropoff_lat, dropoff_lon = grid.random_point_in(dropoff_zone, rng)
-                trip_id = f"trp-{now.strftime('%Y%m%d')}-{rng.getrandbits(32):08x}"
+                # Not independent of the pickup - most real trips are short
+                # hops, with a long tail of longer ones.
+                dropoff_weights = grid.distance_decay_weights(pickup_zone, zone_ids, zone_weights)
+                dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
+                pickup_lat, pickup_lon = routing.random_road_point_in_zone(grid, pickup_zone, rng)
+                dropoff_lat, dropoff_lon = routing.random_road_point_in_zone(grid, dropoff_zone, rng)
+                trip_id = new_trip_id(now, rng)
 
                 new_trips.append(
                     {

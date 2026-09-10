@@ -87,7 +87,7 @@ services:
         own 472:0 nus-grafana-data
         own 1000:1000 nus-superset-home
         # h-bootstrap and the six services all run as the 'nus' user, 10001.
-        own 10001:10001 nus-osm-data
+        own 10001:10001 nus-lion-data
         # ClickHouse, Keeper and etcd start as root and drop privileges
         # themselves, so their directories stay root-owned.
         echo "done"
