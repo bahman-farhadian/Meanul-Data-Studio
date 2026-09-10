@@ -320,9 +320,9 @@ make etcd-existing
 Connect a SQL client through `lb-a` (never a `pg-*` container directly —
 see [Connecting as a DBA](a-infra-postgres/README.md#connecting-as-a-dba)):
 host = this server, port `5432` (writes) or `5433` (reads), database
-`postgres`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. Expect an
-empty database — `h-bootstrap` is what creates the application schema, and
-it runs several pieces later.
+`postgres`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. Expect the
+`nus` database not to exist yet — `h-bootstrap` is what creates it (and its
+own `nus` schema), and it runs several pieces later.
 
 Skip `make preflight` and `make prepare` for this: both check readiness of
 all 14 components and will fail on the 13 you have not touched yet. They
