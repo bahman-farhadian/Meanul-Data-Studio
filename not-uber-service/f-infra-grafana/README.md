@@ -10,23 +10,32 @@ Reached through the entry tier on **port 3000** (`lb-a`) or **13000**
 
 ## Everything is provisioned from files
 
-The ClickHouse connection and the dashboards are created from the files in
-this directory every time Grafana starts. Nothing has to be clicked
-together after a rebuild, and a fresh container is identical to the one it
-replaced.
+The ClickHouse connection is created from the file in this directory every
+time Grafana starts. Nothing has to be clicked together after a rebuild,
+and a fresh container is identical to the one it replaced.
 
-Two consequences worth knowing:
+The data source is **read-only in the browser** — the file is the truth. The
+ClickHouse password is read from the environment at start (`$CH_PASSWORD`
+in the data source file), so no password is written into any file in this
+repository.
 
-- the data source is **read-only in the browser** — the file is the truth;
-- a dashboard edited in the browser is **not** written back to
-  `dashboards/`. To keep a change: export the dashboard as JSON from
-  Grafana's share menu, save it over the file here, and commit it. The
-  provider reloads files every 30 seconds, so the change appears without a
-  restart.
+**Dashboards are deliberately not provisioned at this stage.** `dashboards/`
+is empty on purpose — this piece currently ships the container and the
+ClickHouse connection only. Panel content depends on tables, materialized
+views and data-generation logic (pieces `h` onward) that have not been
+verified correct yet, so building dashboards against them now would mean
+redoing that work later. A real dashboard *was* designed and built earlier
+(two dashboards, described below for when that work resumes) and is still in
+git history — `git log --diff-filter=D -- f-infra-grafana/dashboards/` — not
+lost, just not currently loaded. `provisioning/dashboards/dashboards.yaml`
+is still here and harmless: it loads whatever `dashboards/` contains, which
+right now is nothing.
 
-The ClickHouse password is read from the environment at start
-(`$CH_PASSWORD` in the data source file), so no password is written into any
-file in this repository.
+If a dashboard is added back later: export it as JSON from Grafana's share
+menu (or restore the old file from git history), save it into `dashboards/`,
+and commit it. The provider reloads files every 30 seconds, so it appears
+without a restart. A dashboard edited only in the browser is never written
+back to this directory — that export step is what makes it durable.
 
 ## The plugin is baked into the image
 
@@ -40,18 +49,21 @@ outside calls at all.
 `/var/lib/grafana`, which is that volume, and an existing volume hides the
 newer copy in the rebuilt image.
 
-## The shipped dashboard
+## The two dashboards (designed, not currently provisioned)
 
-`dashboards/nus-live.json` — four numbers across the top (completed trips,
-revenue, share of trips slower than predicted, average surge), position
-events per minute, and the busiest zones right now.
+Not active right now — see the note above. Kept here as the design record
+for when this work resumes.
+
+`nus-live.json` was four numbers across the top (completed trips, revenue,
+share of trips slower than predicted, average surge), position events per
+minute, and the busiest zones right now.
 
 All panels read the **Distributed** tables (`nus.trip_stats_hourly`,
 `nus.driver_positions`, ...), so they see both shards. The summary panels
 aggregate with `sum()` because the hourly summary is filled per node — see
 [`../e-infra-clickhouse/README.md`](../e-infra-clickhouse/README.md#reading-the-hourly-summary-correctly).
-
-## The two dashboards
+That constraint still applies to any panel written against these tables in
+the future.
 
 | Dashboard | Answers |
 | --- | --- |
@@ -82,8 +94,8 @@ online driver has.
 | `docker-compose.yaml` | The `grafana` service. |
 | `Dockerfile` | Grafana with the ClickHouse plugin baked in. |
 | `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `nus-lb-a`. |
-| `provisioning/dashboards/dashboards.yaml` | Tells Grafana to load every dashboard file. |
-| `dashboards/nus-live.json` | The live dashboard. |
+| `provisioning/dashboards/dashboards.yaml` | Tells Grafana to load every dashboard file — currently loads nothing, see above. |
+| `dashboards/` | Empty for now on purpose. The removed dashboards are in git history. |
 | `.env.example` | Template for the untracked `.env` (image pins, logins). |
 
 ## Environment variables (`.env`)
@@ -119,32 +131,24 @@ docker compose exec grafana wget -qO- \
   --header="Content-Type: application/json" \
   --http-user="${GRAFANA_ADMIN_USER}" --http-password="${GRAFANA_ADMIN_PASSWORD}" \
   http://localhost:3000/api/datasources
-
-# the dashboard was loaded
-docker compose exec grafana wget -qO- \
-  --http-user="${GRAFANA_ADMIN_USER}" --http-password="${GRAFANA_ADMIN_PASSWORD}" \
-  "http://localhost:3000/api/search?query=not-uber-service"
 ```
 
 In the browser, open <http://localhost:3000>, go to
 **Connections → Data sources → ClickHouse** and press **Save & test**. It
-should report success. Until the app services run, the panels will be empty
-but must not show errors — an empty panel means "no data yet", an error
-means the connection or a query is wrong.
+should report success. There is no dashboard to check yet — see the note
+above.
 
-## When a panel shows an error
-
-Panel queries are plain SQL against the Distributed tables, so the fastest
-way to tell a Grafana problem from a data problem is to run the same query
-directly:
+Once a dashboard is provisioned again, the fastest way to tell a Grafana
+problem from a data problem is to run a panel's query directly against
+ClickHouse and compare:
 
 ```bash
 docker compose exec ch-s1r1 clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT sum(completed_trips) FROM nus.trip_stats_hourly WHERE hour >= now() - INTERVAL 1 HOUR"
 ```
 
-If that works and the panel does not, the problem is in the panel; fix it in
-the browser, export the dashboard, and commit the file.
+If that works and the panel does not, the problem is in the panel, not the
+connection.
 
 ## Teardown
 

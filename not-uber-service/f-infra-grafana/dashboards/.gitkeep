@@ -1,0 +1,5 @@
+Deliberately empty for now: this stage only provisions Grafana itself (the
+container and its ClickHouse datasource), not dashboard content. The
+previous dashboards (nus-live, nus-fleet) are still in git history -
+`git log --diff-filter=D -- f-infra-grafana/dashboards/` - and come back
+once data generation (piece h onward) is verified correct.
