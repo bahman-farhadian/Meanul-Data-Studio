@@ -35,9 +35,9 @@ name: c-infra-kafka
 x-kafka-broker: &kafka-broker
   image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
   restart: unless-stopped
-  cpus: 1.2
-  mem_limit: 5.5g
-  memswap_limit: 5.5g
+  cpus: ${KAFKA_CPUS:-1.2}
+  mem_limit: ${KAFKA_MEM:-5.5g}
+  memswap_limit: ${KAFKA_MEM:-5.5g}
   healthcheck:
     # Asking the broker for its API versions proves it is not merely running
     # but actually answering on the client port.
@@ -92,9 +92,9 @@ services:
   kafka-dirs:
     image: ${BUSYBOX_IMAGE:-busybox:1.37.0}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 64m
-    memswap_limit: 64m
+    cpus: ${KAFKA_DIRS_CPUS:-0.25}
+    mem_limit: ${KAFKA_DIRS_MEM:-64m}
+    memswap_limit: ${KAFKA_DIRS_MEM:-64m}
     command:
       - sh
       - -c
@@ -162,9 +162,9 @@ services:
     container_name: nus-schema-registry
     hostname: nus-schema-registry
     restart: unless-stopped
-    cpus: 0.2
-    mem_limit: 1g
-    memswap_limit: 1g
+    cpus: ${SCHEMA_REGISTRY_CPUS:-0.2}
+    mem_limit: ${SCHEMA_REGISTRY_MEM:-1g}
+    memswap_limit: ${SCHEMA_REGISTRY_MEM:-1g}
     depends_on:
       kafka-1:
         condition: service_healthy
@@ -210,9 +210,9 @@ services:
   ksqldb-secrets-init:
     image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 64m
-    memswap_limit: 64m
+    cpus: ${KSQLDB_SECRETS_CPUS:-0.25}
+    mem_limit: ${KSQLDB_SECRETS_MEM:-64m}
+    memswap_limit: ${KSQLDB_SECRETS_MEM:-64m}
     environment:
       TZ: ${TZ:-UTC}
       KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
@@ -248,9 +248,9 @@ services:
     container_name: nus-ksqldb-server
     hostname: nus-ksqldb-server
     restart: unless-stopped
-    cpus: 0.5
-    mem_limit: 1.5g
-    memswap_limit: 1.5g
+    cpus: ${KSQLDB_CPUS:-0.5}
+    mem_limit: ${KSQLDB_MEM:-1.5g}
+    memswap_limit: ${KSQLDB_MEM:-1.5g}
     depends_on:
       kafka-1:
         condition: service_healthy
@@ -305,9 +305,9 @@ services:
   kafka-topics-init:
     image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 512m
-    memswap_limit: 512m
+    cpus: ${KAFKA_TOPICS_CPUS:-0.25}
+    mem_limit: ${KAFKA_TOPICS_MEM:-512m}
+    memswap_limit: ${KAFKA_TOPICS_MEM:-512m}
     entrypoint: ["/bin/sh", "/create-topics.sh"]
     environment:
       TZ: ${TZ:-UTC}

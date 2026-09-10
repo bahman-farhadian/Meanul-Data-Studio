@@ -40,9 +40,9 @@ services:
     container_name: nus-debezium-connect
     hostname: nus-debezium-connect
     restart: unless-stopped
-    cpus: 0.4
-    mem_limit: 2g
-    memswap_limit: 2g
+    cpus: ${DEBEZIUM_CPUS:-0.4}
+    mem_limit: ${DEBEZIUM_MEM:-2g}
+    memswap_limit: ${DEBEZIUM_MEM:-2g}
     environment:
       TZ: ${TZ:-UTC}
       BOOTSTRAP_SERVERS: nus-kafka-1:9092,nus-kafka-2:9092,nus-kafka-3:9092
@@ -85,9 +85,9 @@ services:
   connector-register:
     image: ${PYTHON_IMAGE:-python:3.13.15-slim}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 256m
-    memswap_limit: 256m
+    cpus: ${CONNECTOR_REGISTER_CPUS:-0.25}
+    mem_limit: ${CONNECTOR_REGISTER_MEM:-256m}
+    memswap_limit: ${CONNECTOR_REGISTER_MEM:-256m}
     entrypoint: ["python", "/register.py"]
     environment:
       TZ: ${TZ:-UTC}
@@ -95,7 +95,7 @@ services:
       CONNECTOR_FILE: /nus-pg.json
       PG_HOST: ${CDC_PG_HOST:-nus-lb-a}
       PG_PORT: ${CDC_PG_PORT:-5432}
-      PG_DATABASE: ${CDC_PG_DATABASE:-postgres}
+      PG_DATABASE: ${CDC_PG_DATABASE:-nus}
       PG_USER: ${CDC_PG_USER:-postgres}
       PG_PASSWORD: ${CDC_PG_PASSWORD:?set it in d-infra-debezium/.env}
     volumes:

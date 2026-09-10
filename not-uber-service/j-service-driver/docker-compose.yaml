@@ -32,9 +32,9 @@ services:
     image: nus/driver-service:${NUS_VERSION:-0.1.0}
     container_name: driver-service
     restart: unless-stopped
-    cpus: 0.15
-    mem_limit: 768m
-    memswap_limit: 768m
+    cpus: ${DRIVER_SERVICE_CPUS:-0.15}
+    mem_limit: ${DRIVER_SERVICE_MEM:-768m}
+    memswap_limit: ${DRIVER_SERVICE_MEM:-768m}
     depends_on:
       kafka-1:
         condition: service_healthy
@@ -61,7 +61,7 @@ services:
       PG_HOST: ${PG_HOST:-lb-a}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
       PG_READ_PORT: ${PG_READ_PORT:-5433}
-      PG_DATABASE: ${PG_DATABASE:-postgres}
+      PG_DATABASE: ${PG_DATABASE:-nus}
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
 

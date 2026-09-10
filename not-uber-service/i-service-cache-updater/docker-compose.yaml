@@ -31,9 +31,9 @@ services:
     image: nus/cache-updater:${NUS_VERSION:-0.1.0}
     container_name: cache-updater
     restart: unless-stopped
-    cpus: 0.15
-    mem_limit: 768m
-    memswap_limit: 768m
+    cpus: ${CACHE_UPDATER_CPUS:-0.15}
+    mem_limit: ${CACHE_UPDATER_MEM:-768m}
+    memswap_limit: ${CACHE_UPDATER_MEM:-768m}
     depends_on:
       kafka-1:
         condition: service_healthy

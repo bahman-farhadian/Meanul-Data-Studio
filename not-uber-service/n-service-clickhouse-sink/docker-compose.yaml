@@ -30,9 +30,9 @@ services:
     image: nus/clickhouse-sink:${NUS_VERSION:-0.1.0}
     container_name: clickhouse-sink
     restart: unless-stopped
-    cpus: 0.15
-    mem_limit: 768m
-    memswap_limit: 768m
+    cpus: ${CLICKHOUSE_SINK_CPUS:-0.15}
+    mem_limit: ${CLICKHOUSE_SINK_MEM:-768m}
+    memswap_limit: ${CLICKHOUSE_SINK_MEM:-768m}
     depends_on:
       kafka-1:
         condition: service_healthy

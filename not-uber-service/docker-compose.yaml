@@ -64,9 +64,9 @@ services:
   volume-perms:
     image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 64m
-    memswap_limit: 64m
+    cpus: ${VOLUME_PERMS_CPUS:-0.25}
+    mem_limit: ${VOLUME_PERMS_MEM:-64m}
+    memswap_limit: ${VOLUME_PERMS_MEM:-64m}
     user: "0:0"
     environment:
       TZ: ${TZ:-UTC}
@@ -106,9 +106,9 @@ services:
   haproxy-config-render:
     image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
     profiles: ["init"]
-    cpus: 0.25
-    mem_limit: 64m
-    memswap_limit: 64m
+    cpus: ${HAPROXY_RENDER_CPUS:-0.25}
+    mem_limit: ${HAPROXY_RENDER_MEM:-64m}
+    memswap_limit: ${HAPROXY_RENDER_MEM:-64m}
     environment:
       TZ: ${TZ:-UTC}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in .env}
@@ -127,9 +127,9 @@ services:
     container_name: nus-lb-a
     hostname: nus-lb-a
     restart: unless-stopped
-    cpus: 0.1
-    mem_limit: 128m
-    memswap_limit: 128m
+    cpus: ${LB_CPUS:-0.1}
+    mem_limit: ${LB_MEM:-128m}
+    memswap_limit: ${LB_MEM:-128m}
     environment:
       TZ: ${TZ:-UTC}
     volumes:
@@ -174,9 +174,9 @@ services:
     container_name: nus-lb-b
     hostname: nus-lb-b
     restart: unless-stopped
-    cpus: 0.1
-    mem_limit: 128m
-    memswap_limit: 128m
+    cpus: ${LB_CPUS:-0.1}
+    mem_limit: ${LB_MEM:-128m}
+    memswap_limit: ${LB_MEM:-128m}
     environment:
       TZ: ${TZ:-UTC}
     volumes:

@@ -52,7 +52,7 @@ x-superset-env: &superset-env
   # to even if Superset's own allow_dml guard were lifted.
   PG_HOST: ${PG_HOST:-nus-lb-a}
   PG_READ_PORT: ${PG_READ_PORT:-5433}
-  PG_DATABASE: ${PG_DATABASE:-postgres}
+  PG_DATABASE: ${PG_DATABASE:-nus}
   PG_USER: ${PG_USER:-postgres}
   PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
 
@@ -63,9 +63,9 @@ services:
     container_name: nus-superset
     hostname: nus-superset
     restart: unless-stopped
-    cpus: 0.6
-    mem_limit: 3g
-    memswap_limit: 3g
+    cpus: ${SUPERSET_CPUS:-0.6}
+    mem_limit: ${SUPERSET_MEM:-3g}
+    memswap_limit: ${SUPERSET_MEM:-3g}
     environment: *superset-env
     # The web server is started explicitly rather than left to the image
     # default, so the worker count stays visible right here next to the
@@ -102,9 +102,9 @@ services:
     build: *superset-build
     image: nus/superset:${NUS_VERSION:-0.1.0}
     profiles: ["init"]
-    cpus: 0.5
-    mem_limit: 2g
-    memswap_limit: 2g
+    cpus: ${SUPERSET_INIT_CPUS:-0.5}
+    mem_limit: ${SUPERSET_INIT_MEM:-2g}
+    memswap_limit: ${SUPERSET_INIT_MEM:-2g}
     entrypoint: ["/bin/bash", "/init/init-superset.sh"]
     environment: *superset-env
     volumes:
