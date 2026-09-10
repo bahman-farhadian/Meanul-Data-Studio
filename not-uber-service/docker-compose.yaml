@@ -112,6 +112,8 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in .env}
+      KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
+      KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
     entrypoint: ["/bin/sh", "/render-config.sh"]
     volumes:
       - ./z-config/haproxy/haproxy.cfg.template:/template/haproxy.cfg.template:ro

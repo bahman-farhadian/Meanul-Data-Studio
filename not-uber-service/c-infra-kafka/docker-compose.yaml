@@ -202,11 +202,47 @@ services:
     networks:
       - backbone
 
+  # One-shot: write ksqlDB's HTTP Basic-auth credentials (a JAAS config plus
+  # the property file it points at). Neither file format substitutes ${VAR}
+  # on its own - same reason haproxy-config-render exists for Redis's
+  # password - so this writes them from KSQLDB_ADMIN_USER/_PASSWORD in .env.
+  # Run it BEFORE ksqldb-server's first start.
+  ksqldb-secrets-init:
+    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
+    profiles: ["init"]
+    cpus: 0.25
+    mem_limit: 64m
+    memswap_limit: 64m
+    environment:
+      TZ: ${TZ:-UTC}
+      KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
+      KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        printf 'KsqlServerAuth {\n  org.eclipse.jetty.security.jaas.spi.PropertyFileLoginModule required\n  file="/etc/ksqldb-secrets/password.properties"\n  debug="false";\n};\n' > /secrets/jaas_config.file
+        printf '%s: %s,ksql-user\n' "$$KSQLDB_ADMIN_USER" "$$KSQLDB_ADMIN_PASSWORD" > /secrets/password.properties
+        chmod 0444 /secrets/jaas_config.file /secrets/password.properties
+        echo "ksqlDB Basic-auth credentials written for user $$KSQLDB_ADMIN_USER"
+    volumes:
+      - ksqldb-secrets:/secrets
+    networks:
+      - backbone
+
   # The SQL layer over the cluster. DBeaver's own Kafka support only speaks
   # ksqlDB's REST API, not the raw broker protocol used by kafka-1/2/3 above
   # — this is what makes a topic queryable from a SQL client at all.
   # Verified locally before this shipped: CREATE STREAM over a real topic,
   # then SELECT ... EMIT CHANGES returned a real row back.
+  #
+  # HTTP Basic auth is on: Kafka itself has none, and DBeaver's ksqlDB driver
+  # requires a login regardless, so this is the one place in the cluster that
+  # actually gates access. The package for the JAAS login module moved in
+  # Jetty 12 from org.eclipse.jetty.jaas.spi to org.eclipse.jetty.security.jaas.spi
+  # - Confluent's own docs still show the old one; confirmed by testing
+  # against this exact pinned image, not assumed.
   ksqldb-server:
     image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
     container_name: ksqldb-server
@@ -239,14 +275,23 @@ services:
       KSQL_KSQL_STREAMS_REPLICATION_FACTOR: "3"
       KSQL_KSQL_STREAMS_TOPIC_MIN_INSYNC_REPLICAS: "2"
       KSQL_HEAP_OPTS: -Xmx1g -Xms1g
+      KSQL_OPTS: -Djava.security.auth.login.config=/etc/ksqldb-secrets/jaas_config.file
+      KSQL_AUTHENTICATION_METHOD: BASIC
+      KSQL_AUTHENTICATION_REALM: KsqlServerAuth
+      KSQL_AUTHENTICATION_ROLES: ksql-user
+      # Only so the healthcheck below can log in as the same user; never sent
+      # anywhere outside this container.
+      KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
+      KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
+    volumes:
+      - ksqldb-secrets:/etc/ksqldb-secrets:ro
     healthcheck:
       # python3, not curl - same finding as schema-registry: this image has
       # neither curl nor wget nor nc, so a curl healthcheck never passes.
+      # Sends the same Basic auth header a real client must send now.
       test:
-        - CMD
-        - python3
-        - -c
-        - import urllib.request; urllib.request.urlopen("http://localhost:8088/info", timeout=3)
+        - CMD-SHELL
+        - python3 -c "import urllib.request,base64,os; req=urllib.request.Request('http://localhost:8088/info'); req.add_header('Authorization','Basic '+base64.b64encode(('%s:%s'%(os.environ['KSQLDB_ADMIN_USER'],os.environ['KSQLDB_ADMIN_PASSWORD'])).encode()).decode()); urllib.request.urlopen(req, timeout=3)"
       interval: 15s
       timeout: 10s
       retries: 6
@@ -296,6 +341,13 @@ volumes:
       type: none
       o: bind
       device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-3
+  ksqldb-secrets:
+    name: nus-ksqldb-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ksqldb-secrets
 
 networks:
   backbone:

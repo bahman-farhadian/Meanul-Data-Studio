@@ -176,11 +176,19 @@ listen kafka-3-b
 # use. One backend, so this is the same single-entry-point pattern as
 # Grafana/Superset below, not the per-broker passthrough above it — ksqlDB
 # is one stateless server, not something with a per-node advertised address.
+#
+# ksqlDB requires HTTP Basic auth (Kafka itself has none, and DBeaver's
+# ksqlDB driver requires a login regardless), so the healthcheck below must
+# authenticate too or every probe gets 401 and the backend never comes up.
+# __KSQLDB_BASIC_AUTH__ is base64(user:pass), filled in by the same render
+# step as __REDIS_PASSWORD__ above — see render-config.sh. A real client's
+# own Authorization header passes straight through this proxy unchanged;
+# this header is only for HAProxy's own probe.
 
 listen ksqldb
     bind :8089
     option httpchk
-    http-check send meth GET uri /info
+    http-check send meth GET uri /info hdr Authorization "Basic __KSQLDB_BASIC_AUTH__"
     http-check expect status 200
     server ksqldb-server ksqldb-server:8088 check
 
