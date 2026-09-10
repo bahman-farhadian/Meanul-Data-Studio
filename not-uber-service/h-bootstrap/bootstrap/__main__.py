@@ -2,13 +2,14 @@
 
 Order matters, and every step is safe to run again:
 
+  0. create the application database and schema, if they are not there yet
   1. wait for PostgreSQL, Redis and ClickHouse to answer
   2. apply the SQL migrations that have not run yet
   3. import the street map, unless it is already imported
   4. create the city zones
   5. create the drivers and passengers
-  6. invent a week of history and store it in PostgreSQL
-  7. give the road segments a starting congestion factor
+  6. give the road segments a starting congestion factor
+  7. invent a week of history, routed for real, and store it in PostgreSQL
   8. load that week into ClickHouse, unless it is already there
   9. set system:bootstrap:done in Redis, which releases the services
 
@@ -28,7 +29,8 @@ from nus_common import clickhouse, postgres, redis_client
 from nus_common.lifecycle import BOOTSTRAP_DONE_KEY, wait_for
 from nus_common.logging import get_logger, setup_logging
 
-from bootstrap import history, migrate, osm, people, settings as settings_module
+from bootstrap import database, history, migrate, osm, people
+from bootstrap import settings as settings_module
 from bootstrap import warehouse, zones
 
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
@@ -40,6 +42,9 @@ def main() -> int:
     setup_logging("bootstrap")
     settings = settings_module.load()
     log.info("bootstrap starting")
+
+    # --- 0. the application database and schema -------------------------
+    database.ensure_ready()
 
     # --- 1. wait for the infrastructure --------------------------------
     wait_for(postgres.ping, "PostgreSQL through nus-lb-a", attempts=60, delay_seconds=5)
@@ -64,10 +69,13 @@ def main() -> int:
     zones.seed(settings)
     people.seed(settings)
 
-    # --- 6 and 7. a week of history -------------------------------------
+    # --- 6. a starting congestion factor, so the routing this step's ------
+    # ---    history relies on has a traffic model from its first query ----
+    history.seed_segment_traffic()
+
+    # --- 7. a week of history, routed for real ---------------------------
     week = history.generate(settings)
     history.store_trips(week.trip_rows)
-    history.seed_segment_traffic()
 
     # --- 8. the same week in the warehouse ------------------------------
     if warehouse.already_loaded():

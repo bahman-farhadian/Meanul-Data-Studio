@@ -34,6 +34,11 @@ class Settings:
     # report every few seconds; storing that for a whole week would be tens
     # of millions of rows for data nobody looks at closely.
     positions_per_trip: int
+    # Historical trips are routed for real, through the same pgRouting query
+    # dispatch-service uses live - one Postgres round trip per trip, roughly
+    # 50-150ms each. This many run at once, each on its own pooled
+    # connection, so routing 14,000 trips does not run one at a time.
+    history_routing_workers: int
 
     # --- prices ----------------------------------------------------------
     base_fare: float
@@ -68,6 +73,7 @@ def load() -> Settings:
         history_days=config.integer("HISTORY_DAYS", 7),
         trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 2000),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
+        history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 8),
 
         base_fare=config.number("FARE_BASE", 3.0),
         per_km=config.number("FARE_PER_KM", 1.75),

@@ -68,7 +68,6 @@ database. That one is the record; this one is the live state.
 | --- | --- |
 | `docker-compose.yaml` | The `dispatch-service` service. |
 | `Dockerfile` | Two stages; runs as a normal user. |
-| `dispatch_service/routing.py` | The pgRouting query, with traffic-weighted costs. |
 | `dispatch_service/pricing.py` | Surge lookup and the fare formula. |
 | `dispatch_service/trips.py` | When a trip changes status. No Kafka, Redis or SQL in it. |
 | `dispatch_service/__main__.py` | The loop: match, route, price, announce, advance. |

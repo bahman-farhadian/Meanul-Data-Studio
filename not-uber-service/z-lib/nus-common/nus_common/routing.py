@@ -1,8 +1,11 @@
 """Finding the best path over the real street network.
 
-This is the one place in the stack that asks pgRouting a question, and the
-most expensive step anywhere in the pipeline - roughly 50 to 150 milliseconds
-per trip. Everything else in dispatch is arithmetic.
+This is the one place in the stack that asks pgRouting a question, and it is
+the most expensive query anywhere in the pipeline - roughly 50 to 150
+milliseconds per call. It is shared: dispatch-service calls it once per live
+trip, and h-bootstrap calls it once per historical trip while inventing a
+seeded week, so a pickup and dropoff picked at random are never priced
+without first checking they are actually connected by a real road.
 
 The cost of a road segment is its travel time multiplied by how congested it
 is at this time of day. That is what makes the answer change between rush

@@ -5,25 +5,42 @@ running for a day, and the traffic factors that routing depends on would
 have nothing to start from. So bootstrap invents a believable week that ends
 right now.
 
-Two honest simplifications, both deliberate:
+Historical trips are routed for real, through nus_common.routing.route() -
+the same pgRouting query dispatch-service uses for live trips. A pickup and
+dropoff picked at random are never priced until the router has confirmed
+they are actually connected by a real road; when they are not (a point in
+open water, a road not in the imported area), the trip is recorded as
+no_driver_found instead of priced across nothing. Position reports then
+follow that real route rather than a straight line between the two ends.
 
-1. **History does not use pgRouting.** Routing 14,000 trips would take
-   longer than the rest of bootstrap put together. Historical trips use the
-   straight-line distance multiplied by a road factor, which is close enough
-   for a chart. Live trips, from `dispatch-service` onwards, are routed for
-   real.
-2. **Position reports are thinned out.** A real device reports every few
-   seconds; a week of that would be tens of millions of rows nobody reads
-   closely. A handful of points per trip keeps the shape of the data without
-   the weight.
+Routing is a Postgres round trip - the most expensive step in the pipeline,
+per nus_common.routing's own docstring - so it runs on a small pool of
+worker threads (HISTORY_ROUTING_WORKERS) instead of one trip at a time.
+Everything that has to stay reproducible for a given seed (which zones, which
+ids, which outcome, how much jitter) is decided sequentially, before the
+threaded pass starts; only the network call itself runs concurrently, and
+results are matched back up with their trip in the original order.
+
+One honest simplification remains: position reports are thinned out. A real
+device reports every few seconds; a week of that would be tens of millions
+of rows nobody reads closely. A handful of points per trip, spaced along the
+real route, keeps the shape of the data without the weight.
+
+If the street map was not imported (SKIP_OSM_IMPORT=true, for fast local
+iteration), there is nothing to route against - trips fall back to the old
+straight-line-times-a-road-factor estimate instead, clearly degraded and
+logged as such.
 """
 
 import random
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from nus_common import postgres
-from nus_common.geo import day_period, distance_km
+import psycopg
+
+from nus_common import postgres, routing
+from nus_common.geo import day_period, distance_km, points_along_linestring
 from nus_common.ids import new_trip_id
 from nus_common.logging import get_logger
 
@@ -41,8 +58,12 @@ HOUR_WEIGHTS = [
     1.7, 1.2, 1.0, 0.9, 0.8, 0.5,     # 18-23 evening
 ]
 
-# How trips end. Roughly seven in ten finish; the rest fall away for the
-# three reasons the platform knows about (main README, section 2.1).
+# How trips end, before routing gets a say. Roughly seven in ten finish; the
+# rest fall away for the three reasons the platform knows about (main
+# README, section 2.1). A "completed" or "cancelled" draw that turns out to
+# have no real route between its two points still ends up no_driver_found -
+# the real dispatch-service can't quote, match, or cancel a trip it never
+# managed to route in the first place, so neither does this.
 OUTCOME_WEIGHTS = {
     "completed": 0.70,
     "cancelled_by_passenger": 0.12,
@@ -50,10 +71,12 @@ OUTCOME_WEIGHTS = {
     "no_driver_found": 0.08,
 }
 
-# A straight line is shorter than a drive. Roads bend, and one-way streets
-# and rivers make it worse in a city like this one.
+# Only used when the street map was not imported. A straight line is shorter
+# than a drive; roads bend, and one-way streets and rivers make it worse in a
+# city like this one.
 ROAD_FACTOR = 1.4
 # Average city speed in kilometres per hour, before congestion is applied.
+# Also fallback-only.
 FREE_FLOW_KMH = 26.0
 
 
@@ -66,6 +89,26 @@ class GeneratedWeek:
     driver_positions: list[list] = field(default_factory=list)
     rider_positions: list[list] = field(default_factory=list)
     hotspots: list[list] = field(default_factory=list)
+
+
+@dataclass
+class _TripSpec:
+    """Everything about one trip decided before routing - reproducible for a
+    given seed, independent of whether pgRouting finds a path."""
+
+    trip_id: str
+    rider: str
+    driver: str | None
+    outcome: str
+    hour: int
+    period: str
+    pickup_zone: str
+    dropoff_zone: str
+    pickup_lat: float
+    pickup_lon: float
+    dropoff_lat: float
+    dropoff_lon: float
+    requested_at: datetime
 
 
 def _pick_hour(rng: random.Random) -> int:
@@ -93,6 +136,17 @@ def _surge_from_score(score: float) -> float:
     return round(min(1.0 + (score - 0.6) * 1.6, 2.5), 2)
 
 
+def _map_available() -> bool:
+    """True when the street map has been imported and pgRouting can be used."""
+    try:
+        with postgres.read_connection() as conn:
+            row = postgres.fetch_one(conn, "SELECT count(*) AS n FROM ways")
+        return bool(row and row["n"])
+    except psycopg.Error as err:
+        log.debug("map not queryable yet", extra={"error": str(err)})
+        return False
+
+
 def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     """Invent the whole week and return it, ready to be written."""
     rng = random.Random(seed_value)
@@ -103,10 +157,49 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     now = datetime.now(tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
     week = GeneratedWeek()
 
+    map_available = _map_available()
+    if not map_available:
+        log.warning(
+            "street map not available - historical trips will use the "
+            "straight-line fallback, not real routing"
+        )
+
+    to_route: list[_TripSpec] = []
     for day_offset in range(settings.history_days, 0, -1):
         day_start = now - timedelta(days=day_offset)
         for _ in range(settings.trips_per_day):
-            _one_trip(settings, rng, zone_ids, weights, day_start, week)
+            spec = _next_spec(settings, rng, zone_ids, weights, day_start)
+            if spec.outcome == "no_driver_found":
+                _finish_no_driver(spec, week)
+            else:
+                to_route.append(spec)
+
+    if map_available:
+        with ThreadPoolExecutor(max_workers=settings.history_routing_workers) as pool:
+            routed = list(
+                pool.map(
+                    lambda s: routing.route(
+                        s.pickup_lat, s.pickup_lon, s.dropoff_lat, s.dropoff_lon, s.period
+                    ),
+                    to_route,
+                )
+            )
+    else:
+        routed = [None] * len(to_route)
+
+    for spec, computed in zip(to_route, routed):
+        if computed is not None:
+            route_km, predicted_s, route_wkt = computed
+        elif map_available:
+            # Routed for real, but the two points are not connected in the
+            # imported map - the same outcome dispatch-service gives a trip
+            # it cannot route live.
+            _finish_no_driver(spec, week)
+            continue
+        else:
+            route_km, predicted_s, route_wkt = _fallback_route(spec)
+
+        _finish_trip(spec, route_km, predicted_s, route_wkt, rng, settings, week)
 
     _hotspot_history(settings, rng, zone_ids, pull, now, week)
 
@@ -123,15 +216,14 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     return week
 
 
-def _one_trip(
+def _next_spec(
     settings: Settings,
     rng: random.Random,
     zone_ids: list[str],
     weights: list[float],
     day_start: datetime,
-    week: GeneratedWeek,
-) -> None:
-    """Invent one trip and add everything it produced to the week."""
+) -> _TripSpec:
+    """Decide everything about one trip that does not depend on routing."""
     hour = _pick_hour(rng)
     requested_at = day_start + timedelta(
         hours=hour, minutes=rng.randint(0, 59), seconds=rng.randint(0, 59)
@@ -147,65 +239,93 @@ def _one_trip(
     outcome = rng.choices(
         list(OUTCOME_WEIGHTS), weights=list(OUTCOME_WEIGHTS.values()), k=1
     )[0]
+    driver = (
+        None if outcome == "no_driver_found"
+        else people.driver_id(rng.randint(1, settings.driver_count))
+    )
 
-    # Nobody was found, so there is no driver, no route and no fare. The trip
-    # is still recorded: "we could not serve this" is a number worth having.
-    if outcome == "no_driver_found":
-        week.trip_rows.append(
-            _trip_row(
-                trip_id=trip_id, rider=rider, driver=None, status=outcome,
-                pickup=(pickup_lat, pickup_lon), dropoff=(dropoff_lat, dropoff_lon),
-                pickup_zone=pickup_zone, dropoff_zone=dropoff_zone,
-                route_km=None, predicted_s=None, actual_s=None,
-                surge=None, estimate=None, final=None,
-                requested_at=requested_at, ended_at=requested_at + timedelta(minutes=3),
-            )
-        )
-        week.trip_events.append(
-            _event_row(trip_id, rider, None, outcome, pickup_zone, None, None, None,
-                       None, None, None, requested_at + timedelta(minutes=3))
-        )
-        return
+    return _TripSpec(
+        trip_id=trip_id, rider=rider, driver=driver, outcome=outcome,
+        hour=hour, period=day_period(requested_at),
+        pickup_zone=pickup_zone, dropoff_zone=dropoff_zone,
+        pickup_lat=pickup_lat, pickup_lon=pickup_lon,
+        dropoff_lat=dropoff_lat, dropoff_lon=dropoff_lon,
+        requested_at=requested_at,
+    )
 
-    driver = people.driver_id(rng.randint(1, settings.driver_count))
-    straight_km = distance_km(pickup_lat, pickup_lon, dropoff_lat, dropoff_lon)
+
+def _fallback_route(spec: _TripSpec) -> tuple[float, int, None]:
+    """The pre-pgRouting estimate, used only when the map is not available."""
+    straight_km = distance_km(
+        spec.pickup_lat, spec.pickup_lon, spec.dropoff_lat, spec.dropoff_lon
+    )
     route_km = round(straight_km * ROAD_FACTOR, 3)
-
-    # Busy hours are slower hours. This is the same idea the live traffic
-    # factors carry, applied to a whole hour at once.
-    congestion = 1.0 + (HOUR_WEIGHTS[hour] - 1.0) * 0.35
+    congestion = 1.0 + (HOUR_WEIGHTS[spec.hour] - 1.0) * 0.35
     predicted_s = max(int(route_km / FREE_FLOW_KMH * 3600 * congestion), 120)
-    surge = _surge_from_score(min(HOUR_WEIGHTS[hour] / 2.0, 1.2))
+    return route_km, predicted_s, None
+
+
+def _finish_no_driver(spec: _TripSpec, week: GeneratedWeek) -> None:
+    """No route, no driver, no fare. The trip is still recorded - "we could
+    not serve this" is a number worth having."""
+    ended_at = spec.requested_at + timedelta(minutes=3)
+    week.trip_rows.append(
+        _trip_row(
+            trip_id=spec.trip_id, rider=spec.rider, driver=None, status="no_driver_found",
+            pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
+            pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
+            route_km=None, predicted_s=None, actual_s=None,
+            surge=None, estimate=None, final=None,
+            requested_at=spec.requested_at, ended_at=ended_at,
+        )
+    )
+    week.trip_events.append(
+        _event_row(spec.trip_id, spec.rider, None, "no_driver_found", spec.pickup_zone,
+                   None, None, None, None, None, None, ended_at)
+    )
+
+
+def _finish_trip(
+    spec: _TripSpec,
+    route_km: float,
+    predicted_s: int,
+    route_wkt: str | None,
+    rng: random.Random,
+    settings: Settings,
+    week: GeneratedWeek,
+) -> None:
+    """Turn a routed trip spec into trip/event/position rows."""
+    surge = _surge_from_score(min(HOUR_WEIGHTS[spec.hour] / 2.0, 1.2))
     estimate = round(
         (settings.base_fare + settings.per_km * route_km
          + settings.per_minute * predicted_s / 60) * surge,
         2,
     )
 
-    if outcome != "completed":
+    if spec.outcome != "completed":
         # Cancelled after matching: there is a driver and a quote, but no
         # journey and no charge.
-        ended = requested_at + timedelta(minutes=rng.randint(1, 6))
+        ended = spec.requested_at + timedelta(minutes=rng.randint(1, 6))
         week.trip_rows.append(
             _trip_row(
-                trip_id=trip_id, rider=rider, driver=driver, status=outcome,
-                pickup=(pickup_lat, pickup_lon), dropoff=(dropoff_lat, dropoff_lon),
-                pickup_zone=pickup_zone, dropoff_zone=dropoff_zone,
+                trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status=spec.outcome,
+                pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
+                pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
                 route_km=route_km, predicted_s=predicted_s, actual_s=None,
                 surge=surge, estimate=estimate, final=None,
-                requested_at=requested_at, ended_at=ended,
+                requested_at=spec.requested_at, ended_at=ended,
             )
         )
         week.trip_events.append(
-            _event_row(trip_id, rider, driver, outcome, pickup_zone, route_km,
-                       predicted_s, None, surge, estimate, None, ended)
+            _event_row(spec.trip_id, spec.rider, spec.driver, spec.outcome, spec.pickup_zone,
+                       route_km, predicted_s, None, surge, estimate, None, ended)
         )
         return
 
     # A completed trip. The real duration drifts from the prediction, which is
     # the whole point of storing both.
     actual_s = max(int(predicted_s * rng.triangular(0.75, 1.6, 1.05)), 120)
-    started_at = requested_at + timedelta(minutes=rng.randint(2, 8))
+    started_at = spec.requested_at + timedelta(minutes=rng.randint(2, 8))
     ended_at = started_at + timedelta(seconds=actual_s)
     final = round(
         (settings.base_fare + settings.per_km * route_km
@@ -215,35 +335,46 @@ def _one_trip(
 
     week.trip_rows.append(
         _trip_row(
-            trip_id=trip_id, rider=rider, driver=driver, status="completed",
-            pickup=(pickup_lat, pickup_lon), dropoff=(dropoff_lat, dropoff_lon),
-            pickup_zone=pickup_zone, dropoff_zone=dropoff_zone,
+            trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status="completed",
+            pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
+            pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
             route_km=route_km, predicted_s=predicted_s, actual_s=actual_s,
             surge=surge, estimate=estimate, final=final,
-            requested_at=requested_at, ended_at=ended_at, started_at=started_at,
+            requested_at=spec.requested_at, ended_at=ended_at, started_at=started_at,
         )
     )
     week.trip_events.append(
-        _event_row(trip_id, rider, driver, "completed", pickup_zone, route_km,
-                   predicted_s, actual_s, surge, estimate, final, ended_at)
+        _event_row(spec.trip_id, spec.rider, spec.driver, "completed", spec.pickup_zone,
+                   route_km, predicted_s, actual_s, surge, estimate, final, ended_at)
     )
 
-    # A few positions along the way, spread evenly between the two ends.
+    # A few positions along the way. When a real route exists they follow its
+    # streets; otherwise (the map-unavailable fallback) they fall back to a
+    # straight line between the two ends.
     steps = settings.positions_per_trip
-    for step in range(steps):
+    if route_wkt:
+        path = points_along_linestring(route_wkt, steps)
+    else:
+        path = [
+            (
+                spec.pickup_lat + (spec.dropoff_lat - spec.pickup_lat) * step / max(steps - 1, 1),
+                spec.pickup_lon + (spec.dropoff_lon - spec.pickup_lon) * step / max(steps - 1, 1),
+            )
+            for step in range(steps)
+        ]
+
+    for step, (lat, lon) in enumerate(path):
         share = step / max(steps - 1, 1)
-        lat = pickup_lat + (dropoff_lat - pickup_lat) * share
-        lon = pickup_lon + (dropoff_lon - pickup_lon) * share
         moment = started_at + timedelta(seconds=int(actual_s * share))
         week.driver_positions.append(
-            [driver, trip_id, "on_trip", lat, lon,
+            [spec.driver, spec.trip_id, "on_trip", lat, lon,
              float(rng.uniform(0, 360)), float(route_km / (actual_s / 3600) if actual_s else 0),
-             pickup_zone, moment]
+             spec.pickup_zone, moment]
         )
         # The rider's phone reports less often and less precisely.
         if step % 2 == 0:
             week.rider_positions.append(
-                [rider, trip_id, lat, lon, float(rng.uniform(4, 40)), pickup_zone, moment]
+                [spec.rider, spec.trip_id, lat, lon, float(rng.uniform(4, 40)), spec.pickup_zone, moment]
             )
 
 
@@ -350,10 +481,12 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
 def seed_segment_traffic(sample_size: int = 20000, seed_value: int = 20250824) -> int:
     """Give every sampled road segment a starting congestion factor.
 
-    Routing needs a number here from the very first trip, and city-service
-    only starts refining it once live traffic exists. Segments are sampled
-    rather than filled in completely: the map has hundreds of thousands of
-    them, most of which will never carry a simulated trip.
+    Routing needs a number here from the very first trip - including the
+    historical week's own trips, which is why this runs before generate()
+    - and city-service only starts refining it once live traffic exists.
+    Segments are sampled rather than filled in completely: the map has
+    hundreds of thousands of them, most of which will never carry a
+    simulated trip.
     """
     rng = random.Random(seed_value)
     periods = ("night", "morning", "afternoon", "evening")
