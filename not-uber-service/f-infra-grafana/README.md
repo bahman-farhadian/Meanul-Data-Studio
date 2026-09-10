@@ -81,7 +81,7 @@ online driver has.
 | --- | --- |
 | `docker-compose.yaml` | The `grafana` service. |
 | `Dockerfile` | Grafana with the ClickHouse plugin baked in. |
-| `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `lb-a`. |
+| `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `nus-lb-a`. |
 | `provisioning/dashboards/dashboards.yaml` | Tells Grafana to load every dashboard file. |
 | `dashboards/nus-live.json` | The live dashboard. |
 | `.env.example` | Template for the untracked `.env` (image pins, logins). |

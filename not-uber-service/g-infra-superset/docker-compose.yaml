@@ -41,7 +41,7 @@ x-superset-env: &superset-env
   SUPERSET_ADMIN_PASSWORD: ${SUPERSET_ADMIN_PASSWORD:?set it in g-infra-superset/.env}
   SUPERSET_ADMIN_EMAIL: ${SUPERSET_ADMIN_EMAIL:-admin@example.invalid}
   # How Superset logs in to ClickHouse, through the entry tier.
-  CH_HOST: ${CH_HOST:-lb-a}
+  CH_HOST: ${CH_HOST:-nus-lb-a}
   CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
   CH_DATABASE: ${CH_DATABASE:-nus}
   CH_USER: ${CH_USER:-nus}
@@ -50,7 +50,7 @@ x-superset-env: &superset-env
   # replica pool: a standby refuses every write at the server, whatever the
   # credential, so this connection cannot touch the node the platform writes
   # to even if Superset's own allow_dml guard were lifted.
-  PG_HOST: ${PG_HOST:-lb-a}
+  PG_HOST: ${PG_HOST:-nus-lb-a}
   PG_READ_PORT: ${PG_READ_PORT:-5433}
   PG_DATABASE: ${PG_DATABASE:-postgres}
   PG_USER: ${PG_USER:-postgres}
@@ -60,8 +60,8 @@ services:
   superset:
     build: *superset-build
     image: nus/superset:${NUS_VERSION:-0.1.0}
-    container_name: superset
-    hostname: superset
+    container_name: nus-superset
+    hostname: nus-superset
     restart: unless-stopped
     cpus: 0.6
     mem_limit: 3g

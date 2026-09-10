@@ -17,9 +17,9 @@ datasources:
     isDefault: true
     editable: false
     jsonData:
-      # Through the entry tier, not straight to a node: lb-a spreads queries
-      # over whichever ClickHouse nodes are healthy.
-      host: lb-a
+      # Through the entry tier, not straight to a node: nus-lb-a spreads
+      # queries over whichever ClickHouse nodes are healthy.
+      host: nus-lb-a
       port: 9000
       protocol: native
       secure: false

@@ -57,7 +57,7 @@ def clickhouse_uri() -> str:
     """
     user = os.environ.get("CH_USER", "nus")
     password = os.environ["CH_PASSWORD"]
-    host = os.environ.get("CH_HOST", "lb-a")
+    host = os.environ.get("CH_HOST", "nus-lb-a")
     port = os.environ.get("CH_HTTP_PORT", "8123")
     database = os.environ.get("CH_DATABASE", "nus")
     return f"clickhousedb://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{database}"
@@ -72,7 +72,7 @@ def postgres_uri() -> str:
     """
     user = os.environ.get("PG_USER", "postgres")
     password = os.environ["PG_PASSWORD"]
-    host = os.environ.get("PG_HOST", "lb-a")
+    host = os.environ.get("PG_HOST", "nus-lb-a")
     port = os.environ.get("PG_READ_PORT", "5433")
     database = os.environ.get("PG_DATABASE", "postgres")
     return f"postgresql+psycopg2://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{database}"
