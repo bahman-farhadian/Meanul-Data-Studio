@@ -47,13 +47,28 @@ while IFS="$TAB" read -r name partitions key purpose; do
     fi
 
     echo "+ creating ${name} (${partitions} partitions, keyed by ${key}) - ${purpose}"
-    "$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" \
+    # kafka-topics.sh's '.'/'_' JMX metric-name warning lands on STDOUT, not
+    # stderr (confirmed against this exact image - not the split you'd
+    # guess). It fires for ANY topic using either character, regardless of
+    # whether a real collision exists. Every topic here uses '_'
+    # consistently and none uses '.', so there is nothing to actually
+    # collide. Both streams are captured together so the filter applies
+    # regardless of which one a given line lands on; a genuine failure
+    # still shows everything, unfiltered, and still fails the run.
+    out=$(mktemp)
+    if "$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" \
         --create --if-not-exists \
         --topic "$name" \
         --partitions "$partitions" \
         --replication-factor 3 \
         --config min.insync.replicas=2 \
-        --config retention.ms="$RETENTION_MS"
+        --config retention.ms="$RETENTION_MS" \
+        >"$out" 2>&1; then
+        grep -v "WARNING: Due to limitations in metric names" "$out" || true
+        rm -f "$out"
+    else
+        cat "$out" >&2; rm -f "$out"; exit 1
+    fi
 done < /topics.tsv
 
 echo
