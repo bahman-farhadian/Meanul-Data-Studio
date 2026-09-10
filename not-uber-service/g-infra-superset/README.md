@@ -1,9 +1,10 @@
 # g-infra-superset — the analytical view
 
-Superset is where questions are **explored**: write SQL in SQL Lab, turn the
-result into a chart, put charts on a dashboard. Grafana (piece `f`) answers
-what is happening right now; Superset answers what has been happening.
-Both read the same ClickHouse cluster.
+Superset is meant to be where questions are **explored**: write SQL in SQL
+Lab, turn the result into a chart, put charts on a dashboard. Grafana
+(piece `f`) is the live view; Superset is the slower, analytical one. Both
+read the same ClickHouse cluster. At this stage this piece only brings the
+tool up and connects it — see below.
 
 Reached through the entry tier on **port 8088** (`lb-a`) or **18088**
 (`lb-b`). Superset itself publishes no host port.
@@ -57,27 +58,14 @@ run so the credential stays current:
 | `ClickHouse (nus)` | `nus-lb-a:8123` | The warehouse every chart would read. |
 | `PostgreSQL (nus, read-only)` | `nus-lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the **replica pool**, never the leader, and DML is refused — an exploratory query from a browser has no business on the database the platform writes to. |
 
-**No datasets, charts or dashboard are imported right now.** A full bundle —
-20 charts, 5 datasets, one 6-section analytics dashboard — was designed and
-built earlier and is still in git history:
-`git log --diff-filter=D -- g-infra-superset/assets/`. It is not loaded on
-purpose: that content depends on tables and data-generation logic (pieces
-`h` onward) not yet verified correct, so building against it now would mean
-redoing the work later. Two things worth remembering for when that work
-resumes, since they are easy to get wrong from a chart-builder UI:
-
-- **`trip_stats_hourly` metrics must sum before they divide.** It is a
-  SummingMergeTree filled per node, so the same hour and zone exists on both
-  shards. `avg_surge` is `sum(surge_sum) / sum(completed_trips)`, never an
-  average of averages.
-- **`trip_events` holds one row per status change**, not per trip, so
-  `trips` is `uniqExact(trip_id)` and each outcome is a `countIf`.
-
-Once dashboard content is reinstated, the workflow is: edit the YAML in
-`assets/`, then `docker compose run --rm superset-init` re-imports it with
-`--overwrite`, the same "provisioned from files" contract Grafana has. A
-chart edited only in the browser is never written back to `assets/` —
-export it from Superset and commit the export.
+**Dataset, chart and dashboard provisioning is not part of this piece.** A
+full bundle — 20 charts, 5 datasets, one 6-section analytics dashboard —
+was designed and built earlier and is still findable in git history:
+`git log --diff-filter=D -- g-infra-superset/`. It is not coming back into
+this directory: that content depends on tables and data-generation logic
+(pieces `h` onward) not yet verified correct, so it becomes its own
+separate piece once that is done, not something bolted back onto
+infrastructure.
 
 ## Files
 

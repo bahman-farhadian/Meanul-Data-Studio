@@ -4,10 +4,10 @@
 # events arriving, where demand is. Superset (piece g) is the slower,
 # analytical view. Both read the same ClickHouse cluster.
 #
-# The connection and the dashboards are provisioned from files in this
-# directory, so a rebuilt container comes back exactly the same. Dashboards
-# edited in the browser are NOT written back to those files - export and
-# commit them to keep a change.
+# The ClickHouse connection is provisioned from files in this directory, so
+# a rebuilt container comes back exactly the same. This piece only brings
+# the service up and connects it - no dashboard content lives here;
+# dashboard provisioning is a separate, later piece of its own.
 #
 # Standalone test:
 #   docker network create nus-backbone
@@ -56,7 +56,6 @@ services:
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
-      - ./dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
