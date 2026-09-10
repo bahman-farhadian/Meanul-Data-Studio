@@ -640,12 +640,12 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "  %-18s %-26s %s\n" "PostgreSQL reads"  "<host>:$(call getenv,LB_A_PG_READ_PORT,5433)"  "<host>:$(call getenv,LB_B_PG_READ_PORT,15433)"; \
 	printf "  %-18s %-26s %s\n" "Redis writes"      "<host>:$(call getenv,LB_A_REDIS_WRITE_PORT,6379)" "<host>:$(call getenv,LB_B_REDIS_WRITE_PORT,16379)"; \
 	printf "  %-18s %-26s %s\n" "Redis reads"       "<host>:$(call getenv,LB_A_REDIS_READ_PORT,6380)"  "<host>:$(call getenv,LB_B_REDIS_READ_PORT,16380)"; \
+	printf "  %-18s %-26s %s\n" "ksqlDB"            "http://<host>:$(call getenv,LB_A_KSQLDB_PORT,8089)" "http://<host>:$(call getenv,LB_B_KSQLDB_PORT,18089)"; \
+	printf "  %-18s %-26s %s\n" "Debezium Connect"  "http://<host>:$(call getenv,LB_A_DEBEZIUM_PORT,8083)" "http://<host>:$(call getenv,LB_B_DEBEZIUM_PORT,18083)"; \
 	printf "  %-18s %-26s %s\n" "ClickHouse HTTP"   "<host>:$(call getenv,LB_A_CH_HTTP_PORT,8123)"  "<host>:$(call getenv,LB_B_CH_HTTP_PORT,18123)"; \
 	printf "  %-18s %-26s %s\n" "ClickHouse native" "<host>:$(call getenv,LB_A_CH_NATIVE_PORT,9000)" "<host>:$(call getenv,LB_B_CH_NATIVE_PORT,19000)"; \
 	printf "  %-18s %-26s %s\n" "Grafana"           "http://<host>:$(call getenv,LB_A_GRAFANA_PORT,3000)"  "http://<host>:$(call getenv,LB_B_GRAFANA_PORT,13000)"; \
 	printf "  %-18s %-26s %s\n" "Superset"          "http://<host>:$(call getenv,LB_A_SUPERSET_PORT,8088)" "http://<host>:$(call getenv,LB_B_SUPERSET_PORT,18088)"; \
-	printf "  %-18s %-26s %s\n" "ksqlDB"            "http://<host>:$(call getenv,LB_A_KSQLDB_PORT,8089)" "http://<host>:$(call getenv,LB_B_KSQLDB_PORT,18089)"; \
-	printf "  %-18s %-26s %s\n" "Debezium Connect"  "http://<host>:$(call getenv,LB_A_DEBEZIUM_PORT,8083)" "http://<host>:$(call getenv,LB_B_DEBEZIUM_PORT,18083)"; \
 	printf "  %-18s %-26s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,LB_A_STATS_PORT,8404)/stats" "http://<host>:$(call getenv,LB_B_STATS_PORT,18404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above — no extra proxy is needed. For Kafka, point\n"; \
