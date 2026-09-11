@@ -69,8 +69,19 @@ lion-prepare: ## Build the routable graph from LION, once (the slow step, cached
 	$(call say,Preparing the routable street graph)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	dir="$$root/nus-lion-data"; dump="$$dir/routable-graph.dump"; \
+	lion_pg_image=$$(grep -E '^LION_PG_IMAGE=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	lion_pg_image=$${lion_pg_image:-postgis/postgis:17-3.5}; \
 	NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v --remove-orphans >/dev/null 2>&1 || true; \
-	if [ -s "$$dump" ]; then \
+	dump_has_zones=false; \
+	if [ -s "$$dump" ] && docker run --rm -v "$$dump:/data/dump:ro" "$$lion_pg_image" \
+		pg_restore -l /data/dump 2>/dev/null | grep -q "TABLE public city_zones_source"; then \
+		dump_has_zones=true; \
+	fi; \
+	if [ -s "$$dump" ] && [ "$$dump_has_zones" = false ]; then \
+		printf "  $(Y)warn$(X)    cached dump exists but predates the TLC-zones step (no\n"; \
+		printf "              city_zones_source) - rebuilding rather than trusting a stale cache\n"; \
+	fi; \
+	if [ "$$dump_has_zones" = true ]; then \
 		printf "  $(G)ok$(X)      already built: %s (%s)\n" "$$dump" "$$(du -h "$$dump" | cut -f1)"; \
 	else \
 		printf "  This is the slow step - filtering, cost computation and topology-\n"; \
