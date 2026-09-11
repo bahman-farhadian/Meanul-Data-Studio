@@ -35,6 +35,31 @@ def _load_csv(path: Path) -> list[dict]:
         return list(csv.DictReader(f))
 
 
+def _zone_row(row: dict) -> dict:
+    return {
+        "zone_id": row["zone_id"],
+        "hour_of_day": int(row["hour_of_day"]),
+        "day_of_week": int(row["day_of_week"]),
+        "weight": float(row["weight"]),
+    }
+
+
+def _od_row(row: dict) -> dict:
+    # csv.DictReader hands back plain strings, never psycopg's own typed
+    # values - avg_duration_s is integer in Postgres but a mean is not
+    # naturally whole ("218.0"), which Postgres's own text-to-integer
+    # parser rejects outright rather than truncating. round()+int() here
+    # is the actual fix; prepare.py rounds it before writing the CSV too,
+    # but a CSV already on disk from before that change still needs this.
+    return {
+        "pickup_zone_id": row["pickup_zone_id"],
+        "dropoff_zone_id": row["dropoff_zone_id"],
+        "trip_share": float(row["trip_share"]),
+        "avg_fare": float(row["avg_fare"]) if row["avg_fare"] else None,
+        "avg_duration_s": round(float(row["avg_duration_s"])) if row["avg_duration_s"] else None,
+    }
+
+
 def seed(data_dir: str) -> tuple[int, int]:
     """Load the calibration CSVs zone-demand-prepare built, if they exist.
 
@@ -64,11 +89,8 @@ def seed(data_dir: str) -> tuple[int, int]:
 
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
-            cur.executemany(INSERT_ZONE_DEMAND, zone_rows)
-            cur.executemany(INSERT_OD_PAIR, [
-                {**row, "avg_fare": row["avg_fare"] or None, "avg_duration_s": row["avg_duration_s"] or None}
-                for row in od_rows
-            ])
+            cur.executemany(INSERT_ZONE_DEMAND, [_zone_row(row) for row in zone_rows])
+            cur.executemany(INSERT_OD_PAIR, [_od_row(row) for row in od_rows])
         conn.commit()
 
     log.info("demand calibration loaded", extra={"zone_hours": len(zone_rows), "od_pairs": len(od_rows)})
