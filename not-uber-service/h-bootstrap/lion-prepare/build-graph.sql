@@ -46,7 +46,9 @@ WHERE featuretyp IN ('0', '6', 'A')
 
 -- 2. Cost in seconds, from real length and the real posted speed limit -
 -- not an assumed per-road-class speed. NYC's citywide default (25 mph)
--- covers the handful of segments with a blank POSTED_SPEED.
+-- covers the segments with a blank POSTED_SPEED - some genuinely empty,
+-- some whitespace-only (verified directly against a real LION import:
+-- NULLIF alone does not catch "  ", TRIM is needed first).
 ALTER TABLE lion_filtered ADD COLUMN length_m double precision;
 UPDATE lion_filtered SET length_m = ST_Length(geom::geography);
 
@@ -59,11 +61,11 @@ ALTER TABLE lion_filtered ADD COLUMN reverse_cost_s double precision;
 UPDATE lion_filtered SET
     cost_s = CASE
         WHEN traf_dir = 'A' THEN -1
-        ELSE length_m / (GREATEST(COALESCE(NULLIF(posted_speed, '')::numeric, 25), 5) * 1609.34 / 3600.0)
+        ELSE length_m / (GREATEST(COALESCE(NULLIF(TRIM(posted_speed), '')::numeric, 25), 5) * 1609.34 / 3600.0)
     END,
     reverse_cost_s = CASE
         WHEN traf_dir = 'W' THEN -1
-        ELSE length_m / (GREATEST(COALESCE(NULLIF(posted_speed, '')::numeric, 25), 5) * 1609.34 / 3600.0)
+        ELSE length_m / (GREATEST(COALESCE(NULLIF(TRIM(posted_speed), '')::numeric, 25), 5) * 1609.34 / 3600.0)
     END;
 
 -- 3. The table shape pgr_createTopology expects, matching the column names
