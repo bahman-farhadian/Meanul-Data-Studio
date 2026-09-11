@@ -113,6 +113,11 @@ def main() -> int:
     )
     pickup_totals = od_counts.groupby("PULocationID")["trips"].transform("sum")
     od_counts["trip_share"] = od_counts["trips"] / pickup_totals
+    # od_pair_calibration.avg_duration_s is integer (whole seconds is all
+    # the precision a duration estimate needs) but a mean is not naturally
+    # whole - round it here rather than writing "218.4" for Postgres to
+    # reject.
+    od_counts["avg_duration_s"] = od_counts["avg_duration_s"].round().astype("Int64")
     od_counts = od_counts.rename(
         columns={"PULocationID": "pickup_zone_id", "DOLocationID": "dropoff_zone_id"}
     )
