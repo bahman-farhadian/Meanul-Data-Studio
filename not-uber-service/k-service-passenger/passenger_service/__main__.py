@@ -85,7 +85,7 @@ def main() -> int:
     grid = CityGrid.load()
 
     tick_seconds = config.number("PASSENGER_TICK_SECONDS", 5.0)
-    base_per_minute = config.number("TRIP_REQUESTS_PER_MINUTE", 45.0)
+    base_per_minute = config.number("TRIP_REQUESTS_PER_MINUTE", 455.0)
 
     # Two connections: passenger:* is this service's own domain (DB_PASSENGER);
     # reporting a travelling rider's live position needs the trip's current
