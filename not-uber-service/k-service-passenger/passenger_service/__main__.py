@@ -87,20 +87,24 @@ def main() -> int:
     tick_seconds = config.number("PASSENGER_TICK_SECONDS", 5.0)
     base_per_minute = config.number("TRIP_REQUESTS_PER_MINUTE", 40.0)
 
-    redis = redis_client.primary()
-    wait_for_bootstrap(redis, shutdown)
+    # Two connections: passenger:* is this service's own domain (DB_PASSENGER);
+    # reporting a travelling rider's live position needs the trip's current
+    # state too (DB_TRIP), which dispatch-service - not this one - owns.
+    redis_passenger = redis_client.primary(redis_client.DB_PASSENGER)
+    redis_trip = redis_client.primary(redis_client.DB_TRIP)
+    wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     # Same as driver-service: the profiles reach Redis through cache-updater
     # once Debezium has replayed the seeded rows, so an empty cache right
     # after a bootstrap means "not yet", not "broken".
     wait_for(
-        lambda: bool(next(redis.scan_iter(match="passenger:*", count=1), None)),
+        lambda: bool(next(redis_passenger.scan_iter(match="passenger:*", count=1), None)),
         description="cache-updater to fill the passenger profiles (Redis passenger:*)",
         attempts=120,
         delay_seconds=5.0,
         shutdown=shutdown,
     )
-    rider_ids = load_rider_ids(redis)
+    rider_ids = load_rider_ids(redis_passenger)
     if not rider_ids:
         log.error("passenger keys appeared but none could be read")
         return 1
@@ -208,7 +212,7 @@ def main() -> int:
 
             # --- 3. rider positions ------------------------------------
             for trip_id, rider_id in list(travelling.items()):
-                raw = redis.get(redis_client.trip_active_key(trip_id))
+                raw = redis_trip.get(redis_client.trip_active_key(trip_id))
                 if not raw:
                     # Dispatch has cleared the trip; nothing more to report.
                     travelling.pop(trip_id, None)
