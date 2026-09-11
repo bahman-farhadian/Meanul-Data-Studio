@@ -5,6 +5,17 @@
 -- ways and ways_vertices_pgr, dumped to a file and thrown away with the
 -- container that built them.
 
+-- 0. Idempotent: a retry after a previous failed or interrupted run can
+-- find lion-pg's container (and its volume) still around - its image was
+-- unchanged, so `docker compose up` does not recreate it - with these
+-- tables already sitting there from that attempt. Drop them first so a
+-- retry always builds from lion_raw fresh instead of erroring on "already
+-- exists". Nothing here changes what gets filtered or how costs are
+-- computed - it only clears stale output from a run that did not finish.
+DROP TABLE IF EXISTS lion_filtered CASCADE;
+DROP TABLE IF EXISTS ways CASCADE;
+DROP TABLE IF EXISTS ways_vertices_pgr CASCADE;
+
 -- 1. Keep only real, drivable street geometry.
 --
 -- FeatureTyp: 0 = real street, 6 = private street, A = alley - all three are
