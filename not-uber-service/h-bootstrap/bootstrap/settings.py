@@ -66,7 +66,7 @@ def load() -> Settings:
         base_fare=config.number("FARE_BASE", 3.0),
         per_km=config.number("FARE_PER_KM", 1.75),
         per_minute=config.number("FARE_PER_MINUTE", 0.45),
-        platform_commission_pct=config.number("PLATFORM_COMMISSION_PCT", 0.20),
+        platform_commission_pct=config.number("PLATFORM_COMMISSION_PCT", 0.23),
 
         lion_dir=config.optional("LION_DIR", "/data/lion"),
         skip_map_import=config.flag("SKIP_MAP_IMPORT", False),
