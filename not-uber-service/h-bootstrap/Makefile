@@ -74,8 +74,11 @@ tlc-trips-fetch: ## Download one real month of TLC trip records on the HOST
 	url_template=$${url_template:-https://d37ci6vzurychx.cloudfront.net/trip-data/fhvhv_tripdata_{month}.parquet}; \
 	url=$$(printf '%s' "$$url_template" | sed "s/{month}/$$month/"); \
 	dest="$$root/nus-lion-data"; file="$$dest/tlc-trips-$$month.parquet"; \
+	zone_out="$$dest/zone_demand_calibration.csv"; od_out="$$dest/od_pair_calibration.csv"; \
 	mkdir -p "$$dest"; \
-	if [ -s "$$file" ]; then \
+	if [ -s "$$zone_out" ] && [ -s "$$od_out" ]; then \
+		printf "  $(G)ok$(X)      zone-demand-prepare's own output already exists, nothing to fetch\n"; \
+	elif [ -s "$$file" ]; then \
 		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
 	else \
 		printf "  from    %s\n  to      %s\n" "$$url" "$$file"; \
