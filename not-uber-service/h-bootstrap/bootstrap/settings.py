@@ -53,15 +53,17 @@ class Settings:
 
 def load() -> Settings:
     return Settings(
-        # 1/10 of real NYC HVFHS scale (NYC TLC 2024 Annual Report: ~106,000
-        # licensed vehicles, ~655,000 trips/day) - the development-scale
-        # default. Dionysus's own .env carries the full-scale values.
-        driver_count=config.integer("SEED_DRIVERS", 10_000),
-        passenger_count=config.integer("SEED_PASSENGERS", 150_000),
+        # Real NYC HVFHS scale (NYC TLC 2024 Annual Report: ~106,000
+        # licensed vehicles, ~655,000 trips/day) - this project's actual
+        # deployment target is Dionysus, not a laptop, so this is the
+        # project's own default, matching .env.example. Override down in
+        # your own .env for a smaller dev machine.
+        driver_count=config.integer("SEED_DRIVERS", 106_000),
+        passenger_count=config.integer("SEED_PASSENGERS", 1_500_000),
         history_days=config.integer("HISTORY_DAYS", 7),
-        trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 65_000),
+        trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 655_000),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
-        history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 16),
+        history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 18),
 
         base_fare=config.number("FARE_BASE", 3.0),
         per_km=config.number("FARE_PER_KM", 1.75),
