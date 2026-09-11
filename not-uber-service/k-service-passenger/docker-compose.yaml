@@ -34,9 +34,9 @@ services:
     image: nus/passenger-service:${NUS_VERSION:-0.1.0}
     container_name: passenger-service
     restart: unless-stopped
-    cpus: ${PASSENGER_SERVICE_CPUS:-0.15}
-    mem_limit: ${PASSENGER_SERVICE_MEM:-768m}
-    memswap_limit: ${PASSENGER_SERVICE_MEM:-768m}
+    cpus: ${PASSENGER_SERVICE_CPUS:-1.5}
+    mem_limit: ${PASSENGER_SERVICE_MEM:-1536m}
+    memswap_limit: ${PASSENGER_SERVICE_MEM:-1536m}
     depends_on:
       kafka-1:
         condition: service_healthy

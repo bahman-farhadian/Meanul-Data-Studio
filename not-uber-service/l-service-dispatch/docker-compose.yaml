@@ -34,9 +34,9 @@ services:
     image: nus/dispatch-service:${NUS_VERSION:-0.1.0}
     container_name: dispatch-service
     restart: unless-stopped
-    cpus: ${DISPATCH_SERVICE_CPUS:-0.15}
-    mem_limit: ${DISPATCH_SERVICE_MEM:-768m}
-    memswap_limit: ${DISPATCH_SERVICE_MEM:-768m}
+    cpus: ${DISPATCH_SERVICE_CPUS:-1.5}
+    mem_limit: ${DISPATCH_SERVICE_MEM:-1024m}
+    memswap_limit: ${DISPATCH_SERVICE_MEM:-1024m}
     depends_on:
       kafka-1:
         condition: service_healthy
