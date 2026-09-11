@@ -49,7 +49,10 @@ def main() -> int:
 
     # --- 1. wait for the infrastructure --------------------------------
     wait_for(postgres.ping, "PostgreSQL through nus-lb-a", attempts=60, delay_seconds=5)
-    redis = redis_client.primary()
+    # The bootstrap marker is the one thing every service checks before it
+    # starts - it lives in DB_SYSTEM, the same db every other service's own
+    # wait_for_bootstrap() call now reads explicitly.
+    redis = redis_client.primary(redis_client.DB_SYSTEM)
     wait_for(lambda: redis.ping() is True, "Redis through Sentinel", attempts=60, delay_seconds=5)
     wait_for(clickhouse.ping, "ClickHouse through nus-lb-a", attempts=60, delay_seconds=5)
 

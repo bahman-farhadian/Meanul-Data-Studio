@@ -88,8 +88,10 @@ def main() -> int:
     )
     hotspot_threshold = config.number("HOTSPOT_SCORE_THRESHOLD", 0.6)
 
-    redis = redis_client.primary()
-    wait_for_bootstrap(redis, shutdown)
+    # This service's only Redis read is hotspot scores, to decide whether a
+    # trip counts as a hotspot trip - its whole domain is DB_DEMAND.
+    redis = redis_client.primary(redis_client.DB_DEMAND)
+    wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     hotspots = HotspotCache(redis, config.number("SINK_HOTSPOT_REFRESH_SECONDS", 30.0))
     consumer = AvroTopicConsumer(

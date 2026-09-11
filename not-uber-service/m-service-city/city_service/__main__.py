@@ -71,8 +71,10 @@ def main() -> int:
     hotspot_ttl = config.integer("HOTSPOT_TTL_SECONDS", redis_client.HOTSPOT_TTL_SECONDS)
     hotspot_threshold = config.number("HOTSPOT_SCORE_THRESHOLD", 0.6)
 
-    redis = redis_client.primary()
-    wait_for_bootstrap(redis, shutdown)
+    # This service only ever writes hotspot scores - its whole domain is
+    # DB_DEMAND.
+    redis = redis_client.primary(redis_client.DB_DEMAND)
+    wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     producer = AvroTopicProducer(HOTSPOT_TOPIC)
     consumer = AvroTopicConsumer(
