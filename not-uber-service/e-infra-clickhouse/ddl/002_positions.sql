@@ -26,13 +26,15 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
     lon           Float64,
     heading_deg   Nullable(Float32),
     speed_kmh     Nullable(Float32),
-    -- Still LowCardinality, not Enum: the 263 NYC TLC taxi zones are real
-    -- external data (city_zones, restored from TLC's own dataset - see
-    -- h-bootstrap/lion-prepare/taxi-zones.sql), not a closed set fixed at
-    -- schema time. The dictionary encoding is what buys the compression
-    -- here; FixedString underneath makes the dictionary's own entries
-    -- fixed-width too.
-    zone_id       LowCardinality(FixedString(7)),
+    -- LowCardinality(String), not FixedString: the 263 NYC TLC taxi zones
+    -- are real external data (city_zones, restored from TLC's own dataset -
+    -- see h-bootstrap/lion-prepare/taxi-zones.sql), and TLC's own
+    -- LocationID is a variable-width 1-3 digit id ("1".."263"), not a
+    -- fixed-width format this codebase controls the way driver_id/trip_id
+    -- are (see nus_common/ids.py) - String is the honest type for an id
+    -- minted by someone else. LowCardinality still buys the same dictionary
+    -- compression a config-sized set like this wants.
+    zone_id       LowCardinality(String),
     event_time    DateTime64(3, 'UTC'),
     -- Computed on write and used for partitioning, so queries by day never
     -- have to look at months of data.
@@ -60,7 +62,8 @@ CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
     lat           Float64,
     lon           Float64,
     accuracy_m    Nullable(Float32),
-    zone_id       LowCardinality(FixedString(7)),
+    -- LowCardinality(String), not FixedString - see driver_positions above.
+    zone_id       LowCardinality(String),
     event_time    DateTime64(3, 'UTC'),
     event_date    Date MATERIALIZED toDate(event_time)
 )
