@@ -12,6 +12,7 @@
     {"name": "dropoff_lon", "type": "double"},
     {"name": "pickup_zone_id", "type": "string", "doc": "City zone of the pickup point. Dispatch uses it to look up the surge multiplier."},
     {"name": "passenger_count", "type": "int", "default": 1, "doc": "How many people will travel."},
+    {"name": "requested_vehicle_type", "type": "string", "default": "economy", "doc": "economy, xl or premium. dispatch-service matches within this tier only."},
     {"name": "requested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the request was made. Always UTC."}
   ]
 }

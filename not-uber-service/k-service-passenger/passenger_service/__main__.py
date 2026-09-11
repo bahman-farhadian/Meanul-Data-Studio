@@ -45,17 +45,22 @@ INSERT_TRIP = """
     INSERT INTO trips (
         trip_id, rider_id, status,
         pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
-        requested_at
+        requested_vehicle_type, requested_at
     )
     VALUES (
         %(trip_id)s, %(rider_id)s, 'requested',
         ST_SetSRID(ST_MakePoint(%(pickup_lon)s, %(pickup_lat)s), 4326),
         ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
         %(pickup_zone_id)s, %(dropoff_zone_id)s,
-        %(requested_at)s
+        %(requested_vehicle_type)s, %(requested_at)s
     )
     ON CONFLICT (trip_id) DO NOTHING
 """
+
+# Most riders take whatever shows up; a minority pay for more room or more
+# comfort. Independent of passenger_count: today's max party size (4) fits
+# in any tier, so this is a preference, not a capacity constraint.
+VEHICLE_TYPE_WEIGHTS = [70, 20, 10]
 
 
 def load_rider_ids(redis) -> list[str]:
@@ -139,6 +144,7 @@ def main() -> int:
                 pickup_lat, pickup_lon = routing.random_road_point_in_zone(grid, pickup_zone, rng)
                 dropoff_lat, dropoff_lon = routing.random_road_point_in_zone(grid, dropoff_zone, rng)
                 trip_id = new_trip_id(now, rng)
+                vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
 
                 new_trips.append(
                     {
@@ -148,6 +154,7 @@ def main() -> int:
                         "dropoff_lat": dropoff_lat, "dropoff_lon": dropoff_lon,
                         "pickup_zone_id": pickup_zone,
                         "dropoff_zone_id": dropoff_zone,
+                        "requested_vehicle_type": vehicle_type,
                         "requested_at": now,
                     }
                 )
@@ -175,6 +182,7 @@ def main() -> int:
                             "dropoff_lon": trip["dropoff_lon"],
                             "pickup_zone_id": trip["pickup_zone_id"],
                             "passenger_count": rng.choices([1, 2, 3, 4], [70, 20, 7, 3])[0],
+                            "requested_vehicle_type": trip["requested_vehicle_type"],
                             "requested_at": event_time,
                         },
                     )

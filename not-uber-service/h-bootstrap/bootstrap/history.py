@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg
 
-from nus_common import postgres, routing
+from nus_common import postgres, redis_client, routing
 from nus_common.geo import day_period, distance_km, points_along_linestring
 from nus_common.ids import new_trip_id
 from nus_common.logging import get_logger
@@ -70,6 +70,11 @@ OUTCOME_WEIGHTS = {
     "cancelled_by_driver": 0.10,
     "no_driver_found": 0.08,
 }
+
+# Same distribution passenger-service draws requests from at runtime
+# (k-service-passenger/passenger_service/__main__.py's VEHICLE_TYPE_WEIGHTS)
+# - the historical week and live traffic should look like the same city.
+VEHICLE_TYPE_WEIGHTS = [70, 20, 10]
 
 # Only used when the street map was not imported. A straight line is shorter
 # than a drive; roads bend, and one-way streets and rivers make it worse in a
@@ -108,6 +113,7 @@ class _TripSpec:
     pickup_lon: float
     dropoff_lat: float
     dropoff_lon: float
+    requested_vehicle_type: str
     requested_at: datetime
 
 
@@ -240,6 +246,7 @@ def _next_spec(
     dropoff_lat, dropoff_lon = zones.random_road_point_in_zone(dropoff_zone, rng)
 
     trip_id = new_trip_id(requested_at, rng)
+    vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
     rider = people.passenger_id(rng.randint(1, settings.passenger_count))
     outcome = rng.choices(
         list(OUTCOME_WEIGHTS), weights=list(OUTCOME_WEIGHTS.values()), k=1
@@ -255,6 +262,7 @@ def _next_spec(
         pickup_zone=pickup_zone, dropoff_zone=dropoff_zone,
         pickup_lat=pickup_lat, pickup_lon=pickup_lon,
         dropoff_lat=dropoff_lat, dropoff_lon=dropoff_lon,
+        requested_vehicle_type=vehicle_type,
         requested_at=requested_at,
     )
 
@@ -279,6 +287,7 @@ def _finish_no_driver(spec: _TripSpec, week: GeneratedWeek) -> None:
             trip_id=spec.trip_id, rider=spec.rider, driver=None, status="no_driver_found",
             pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
             pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
+            requested_vehicle_type=spec.requested_vehicle_type,
             route_km=None, predicted_s=None, actual_s=None,
             surge=None, estimate=None, final=None,
             requested_at=spec.requested_at, ended_at=ended_at,
@@ -316,6 +325,7 @@ def _finish_trip(
                 trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status=spec.outcome,
                 pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
                 pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
+            requested_vehicle_type=spec.requested_vehicle_type,
                 route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=None,
                 surge=surge, estimate=estimate, final=None,
                 requested_at=spec.requested_at, ended_at=ended,
@@ -343,6 +353,7 @@ def _finish_trip(
             trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status="completed",
             pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
             pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
+            requested_vehicle_type=spec.requested_vehicle_type,
             route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=actual_s,
             surge=surge, estimate=estimate, final=final,
             requested_at=spec.requested_at, ended_at=ended_at, started_at=started_at,
@@ -419,6 +430,7 @@ def _trip_row(**kwargs) -> dict:
         "dropoff_lat": dropoff_lat, "dropoff_lon": dropoff_lon,
         "pickup_zone_id": kwargs["pickup_zone"],
         "dropoff_zone_id": kwargs["dropoff_zone"],
+        "requested_vehicle_type": kwargs["requested_vehicle_type"],
         "route_km": kwargs["route_km"],
         "route_wkt": kwargs.get("route_wkt"),
         "predicted_duration_s": kwargs["predicted_s"],
@@ -458,6 +470,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
         INSERT INTO trips (
             trip_id, rider_id, driver_id, status,
             pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
+            requested_vehicle_type,
             route, route_km, predicted_duration_s, actual_duration_s,
             surge_multiplier, fare_estimate, fare_final,
             requested_at, started_at, ended_at
@@ -467,6 +480,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             ST_SetSRID(ST_MakePoint(%(pickup_lon)s, %(pickup_lat)s), 4326),
             ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
             %(pickup_zone_id)s, %(dropoff_zone_id)s,
+            %(requested_vehicle_type)s,
             -- NULL for no_driver_found, and for the straight-line fallback
             -- when the map was not available - ST_GeomFromText(NULL, ...)
             -- is itself NULL, no CASE needed.
