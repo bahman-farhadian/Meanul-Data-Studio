@@ -11,7 +11,7 @@ ARG PYTHON_IMAGE=python:3.13-slim
 
 FROM ${PYTHON_IMAGE}
 
-RUN pip install --no-cache-dir pandas pyarrow fsspec aiohttp
+RUN pip install --no-cache-dir pandas pyarrow
 
 COPY h-bootstrap/zone-demand-prepare/prepare.py /prepare.py
 

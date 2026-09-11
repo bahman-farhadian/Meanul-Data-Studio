@@ -64,6 +64,31 @@ tlc-zones-fetch: ## Download NYC TLC's real taxi zones on the HOST
 		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
 	fi
 
+.PHONY: tlc-trips-fetch
+tlc-trips-fetch: ## Download one real month of TLC trip records on the HOST
+	$(call say,Fetching TLC's real trip records on the host)
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	month=$$(grep -E '^TLC_TRIP_DATA_MONTH=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	month=$${month:-2025-01}; \
+	url_template=$$(grep -E '^TLC_TRIP_DATA_URL_TEMPLATE=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	url_template=$${url_template:-https://d37ci6vzurychx.cloudfront.net/trip-data/fhvhv_tripdata_{month}.parquet}; \
+	url=$$(printf '%s' "$$url_template" | sed "s/{month}/$$month/"); \
+	dest="$$root/nus-lion-data"; file="$$dest/tlc-trips-$$month.parquet"; \
+	mkdir -p "$$dest"; \
+	if [ -s "$$file" ]; then \
+		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
+	else \
+		printf "  from    %s\n  to      %s\n" "$$url" "$$file"; \
+		printf "  A few hundred MB, real billed traffic - fetched once here and reused\n"; \
+		printf "  by every zone-demand-prepare run after this one, the same as lion.zip\n"; \
+		printf "  and taxi-zones.geojson above.\n\n"; \
+		curl -fL --progress-bar -o "$$file.part" "$$url" || { rm -f "$$file.part"; \
+			printf "  $(R)FAIL$(X)    download failed. This runs on the HOST, so if it cannot reach\n"; \
+			printf "              CloudFront either, neither will zone-demand-prepare.\n"; exit 1; }; \
+		mv "$$file.part" "$$file"; \
+		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
+	fi
+
 .PHONY: lion-prepare
 lion-prepare: ## Build the routable graph from LION, once (the slow step, cached after)
 	$(call say,Preparing the routable street graph)
@@ -108,9 +133,9 @@ zone-demand-prepare: ## Build real TLC-trip-record demand calibration, once (cac
 	if [ -s "$$zone_out" ] && [ -s "$$od_out" ]; then \
 		printf "  $(G)ok$(X)      already built: %s, %s\n" "$$zone_out" "$$od_out"; \
 	else \
-		printf "  Streams one real month of TLC's High-Volume For-Hire Vehicle trip\n"; \
-		printf "  records (a few hundred MB, never written whole to disk) and reduces it\n"; \
-		printf "  to two small calibration tables. Takes several minutes; runs once.\n\n"; \
+		printf "  Reads the trip records tlc-trips-fetch already downloaded to the\n"; \
+		printf "  host, column-projected, and reduces them to two small calibration\n"; \
+		printf "  tables. Takes several minutes; runs once.\n\n"; \
 		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from zone-demand-prepare; \
 		status=$$?; \
 		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down; \
