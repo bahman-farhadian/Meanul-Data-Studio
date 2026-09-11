@@ -54,6 +54,11 @@ psql -v ON_ERROR_STOP=1 -f /build-graph.sql
 echo "counting the result"
 psql -v ON_ERROR_STOP=1 -c "SELECT count(*) AS ways FROM ways;"
 psql -v ON_ERROR_STOP=1 -c "SELECT count(*) AS vertices, count(*) FILTER (WHERE on_main_network) AS on_main_network FROM ways_vertices_pgr;"
+psql -v ON_ERROR_STOP=1 -c "
+    SELECT count(*) AS total_segments,
+           count(*) FILTER (WHERE NULLIF(TRIM(posted_speed), '') IS NULL) AS default_speed_segments
+      FROM lion_filtered;
+"
 
 echo "dumping ways and ways_vertices_pgr to $OUTPUT_DUMP"
 pg_dump -Fc -t ways -t ways_vertices_pgr -f "$OUTPUT_DUMP"
