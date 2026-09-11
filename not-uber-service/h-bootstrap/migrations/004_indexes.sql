@@ -19,9 +19,10 @@ CREATE INDEX IF NOT EXISTS trips_driver_idx         ON trips (driver_id, request
 CREATE INDEX IF NOT EXISTS trips_rider_idx          ON trips (rider_id, requested_at DESC);
 CREATE INDEX IF NOT EXISTS trips_pickup_zone_idx    ON trips (pickup_zone_id, requested_at DESC);
 
--- Looking inside the jsonb columns. A GIN index makes "every driver whose
--- vehicle is electric" a real query rather than a full scan.
-CREATE INDEX IF NOT EXISTS drivers_vehicle_gin_idx    ON drivers    USING gin (vehicle);
+-- Looking inside the jsonb columns. A GIN index makes "every passenger who
+-- wants a quiet ride" a real query rather than a full scan. drivers has no
+-- jsonb column left to index here - vehicle moved to its own table in
+-- 005_vehicles.sql.
 CREATE INDEX IF NOT EXISTS passengers_prefs_gin_idx   ON passengers USING gin (preferences);
 CREATE INDEX IF NOT EXISTS trips_attributes_gin_idx   ON trips      USING gin (attributes);
 

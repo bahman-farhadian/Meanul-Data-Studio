@@ -13,7 +13,7 @@ import random
 
 from faker import Faker
 
-from nus_common import postgres, routing
+from nus_common import postgres, redis_client, routing
 from nus_common.ids import driver_id, passenger_id
 from nus_common.logging import get_logger
 
@@ -22,11 +22,30 @@ from bootstrap.settings import Settings
 
 log = get_logger(__name__)
 
-CAR_MAKES = [
-    ("Toyota", "Prius"), ("Toyota", "Camry"), ("Honda", "Accord"),
-    ("Ford", "Escape"), ("Hyundai", "Sonata"), ("Nissan", "Altima"),
-    ("Tesla", "Model 3"), ("Chevrolet", "Malibu"),
-]
+# One make/model list and a seat count per tier - an XL car is a real
+# bigger vehicle, not the same sedan with a different label.
+VEHICLE_MAKES = {
+    "economy": (
+        [("Toyota", "Prius"), ("Toyota", "Camry"), ("Honda", "Accord"),
+         ("Ford", "Escape"), ("Hyundai", "Sonata"), ("Nissan", "Altima"),
+         ("Tesla", "Model 3"), ("Chevrolet", "Malibu")],
+        4,
+    ),
+    "xl": (
+        [("Toyota", "Sienna"), ("Honda", "Odyssey"),
+         ("Chevrolet", "Suburban"), ("Ford", "Explorer")],
+        6,
+    ),
+    "premium": (
+        [("BMW", "5 Series"), ("Mercedes-Benz", "E-Class"),
+         ("Audi", "A6"), ("Tesla", "Model S")],
+        4,
+    ),
+}
+# Same fleet-composition weights passenger-service draws requests from
+# (k-service-passenger/passenger_service/__main__.py's VEHICLE_TYPE_WEIGHTS)
+# - a fleet shaped like demand is what makes the tier actually matchable.
+VEHICLE_TYPE_WEIGHTS = [70, 20, 10]
 CAR_COLOURS = ["black", "white", "silver", "grey", "blue", "red"]
 PHONE_MODELS = ["iPhone 15", "iPhone 13", "Pixel 8", "Galaxy S24", "Galaxy A54"]
 
@@ -43,13 +62,17 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     zone_ids = routing.servicable_zone_ids()
 
     drivers = []
+    vehicles = []
     for number in range(1, settings.driver_count + 1):
-        make, model = rng.choice(CAR_MAKES)
+        this_driver_id = driver_id(number)
+        vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
+        makes, seats = VEHICLE_MAKES[vehicle_type]
+        make, model = rng.choice(makes)
         home = rng.choice(zone_ids)
         lat, lon = zones.random_road_point_in_zone(home, rng)
         drivers.append(
             {
-                "driver_id": driver_id(number),
+                "driver_id": this_driver_id,
                 "full_name": faker.name(),
                 "phone": faker.msisdn(),
                 # Most drivers are good; a few are not. A flat 5.0 for
@@ -58,19 +81,23 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
                 "home_zone_id": home,
                 "last_lat": lat,
                 "last_lon": lon,
-                "vehicle": {
-                    "make": make,
-                    "model": model,
-                    "year": rng.randint(2015, 2024),
-                    "colour": rng.choice(CAR_COLOURS),
-                    "plate": faker.license_plate(),
-                    "seats": 4,
-                    "electric": make == "Tesla",
-                },
                 "device": {
                     "model": rng.choice(PHONE_MODELS),
                     "app_version": f"4.{rng.randint(0, 9)}.{rng.randint(0, 9)}",
                 },
+            }
+        )
+        vehicles.append(
+            {
+                "vehicle_id": f"veh-{number:06d}",
+                "driver_id": this_driver_id,
+                "vehicle_type": vehicle_type,
+                "seats": seats,
+                "make": make,
+                "model": model,
+                "year": rng.randint(2015, 2024),
+                "colour": rng.choice(CAR_COLOURS),
+                "plate": faker.license_plate(),
             }
         )
 
@@ -102,16 +129,30 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
                 INSERT INTO drivers (
                     driver_id, full_name, phone, rating, status,
                     home_zone_id, last_lat, last_lon, last_seen_at,
-                    vehicle, device
+                    device
                 )
                 VALUES (
                     %(driver_id)s, %(full_name)s, %(phone)s, %(rating)s, 'offline',
                     %(home_zone_id)s, %(last_lat)s, %(last_lon)s, now(),
-                    %(vehicle)s, %(device)s
+                    %(device)s
                 )
                 ON CONFLICT (driver_id) DO NOTHING
                 """,
-                [_as_json(row, "vehicle", "device") for row in drivers],
+                [_as_json(row, "device") for row in drivers],
+            )
+            cur.executemany(
+                """
+                INSERT INTO vehicles (
+                    vehicle_id, driver_id, vehicle_type, seats,
+                    make, model, year, plate, colour
+                )
+                VALUES (
+                    %(vehicle_id)s, %(driver_id)s, %(vehicle_type)s, %(seats)s,
+                    %(make)s, %(model)s, %(year)s, %(plate)s, %(colour)s
+                )
+                ON CONFLICT (vehicle_id) DO NOTHING
+                """,
+                vehicles,
             )
             cur.executemany(
                 """
