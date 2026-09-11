@@ -51,6 +51,7 @@ lion-prepare: ## Build the routable graph from LION, once (the slow step, cached
 	$(call say,Preparing the routable street graph)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	dir="$$root/nus-lion-data"; dump="$$dir/routable-graph.dump"; \
+	NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	if [ -s "$$dump" ]; then \
 		printf "  $(G)ok$(X)      already built: %s (%s)\n" "$$dump" "$$(du -h "$$dump" | cut -f1)"; \
 	else \
