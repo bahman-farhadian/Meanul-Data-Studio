@@ -13,7 +13,7 @@ import random
 
 from faker import Faker
 
-from nus_common import postgres
+from nus_common import postgres, routing
 from nus_common.ids import driver_id, passenger_id
 from nus_common.logging import get_logger
 
@@ -37,7 +37,10 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     Faker.seed(seed_value)
     rng = random.Random(seed_value)
 
-    zone_ids = zones.all_zone_ids(settings)
+    # Not zones.all_zone_ids(): a driver or passenger homed in a zone whose
+    # own centroid cannot reach a real road would keep re-hitting the
+    # unsnapped-point fallback for as long as it exists.
+    zone_ids = routing.servicable_zone_ids()
 
     drivers = []
     for number in range(1, settings.driver_count + 1):
