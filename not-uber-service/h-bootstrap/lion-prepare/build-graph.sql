@@ -82,10 +82,20 @@ UPDATE lion_filtered SET
 -- 3. The table shape pgr_createTopology expects, matching the column names
 -- nus_common/routing.py already queries (the_geom, cost_s, reverse_cost_s,
 -- length_m, source, target).
+--
+-- geom::geometry(LineString, 4326), not a bare geom AS the_geom: ST_Dump's
+-- own composite-type signature returns .geom as a generic, untyped
+-- geometry (no SRID/subtype in its typmod), and that genericness survives
+-- straight through this CTAS otherwise - confirmed directly against a real
+-- import (geometry_columns showed the_geom as type=GEOMETRY, srid=0). The
+-- coordinate data itself is already correct SRID 4326 from ogr2ogr's
+-- -t_srs; this cast only restores the column's own type modifier, which is
+-- what geometry_columns and any GIS tool (DBeaver included) actually read
+-- to know it can render this as a spatial layer.
 CREATE TABLE ways AS
 SELECT
     gid,
-    geom AS the_geom,
+    geom::geometry(LineString, 4326) AS the_geom,
     cost_s,
     reverse_cost_s,
     length_m,
