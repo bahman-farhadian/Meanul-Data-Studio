@@ -44,6 +44,7 @@ ogr2ogr -f "PostgreSQL" \
     -t_srs EPSG:4326 \
     -lco GEOMETRY_NAME=geom \
     -nln lion_raw \
+    -nlt CONVERT_TO_LINEAR \
     -overwrite \
     -progress
 
