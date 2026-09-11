@@ -150,7 +150,7 @@ def _map_available() -> bool:
 def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     """Invent the whole week and return it, ready to be written."""
     rng = random.Random(seed_value)
-    zone_ids = zones.all_zone_ids(settings)
+    zone_ids = routing.servicable_zone_ids()
     pull = _zone_pull(zone_ids, rng)
     weights = [pull[zid] for zid in zone_ids]
 

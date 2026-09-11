@@ -53,7 +53,9 @@ STATUS_EFFECT = {
 }
 
 
-def load_roster(redis, grid: CityGrid, rng: random.Random) -> dict[str, Driver]:
+def load_roster(
+    redis, grid: CityGrid, rng: random.Random, zone_ids: list[str]
+) -> dict[str, Driver]:
     """Read the drivers out of Redis.
 
     Redis, not PostgreSQL: the profiles are in the cache because
@@ -68,7 +70,12 @@ def load_roster(redis, grid: CityGrid, rng: random.Random) -> dict[str, Driver]:
             continue
         row = json.loads(raw)
         driver_id = row["driver_id"]
-        home = row.get("home_zone_id") or rng.choice(grid.all_zone_ids())
+        # zone_ids, not grid.all_zone_ids(): a driver homed in a zone whose
+        # own centroid cannot reach a real road would keep re-hitting the
+        # unsnapped-point fallback forever. This is only the defensive
+        # fallback for a profile with no home_zone_id at all - bootstrap
+        # already homes every real driver in a servicable zone.
+        home = row.get("home_zone_id") or rng.choice(zone_ids)
         lat = row.get("last_lat")
         lon = row.get("last_lon")
         if lat is None or lon is None:
@@ -79,14 +86,13 @@ def load_roster(redis, grid: CityGrid, rng: random.Random) -> dict[str, Driver]:
     return drivers
 
 
-def read_hotspots(redis, grid: CityGrid) -> dict[str, float]:
-    """The current demand score of every zone.
+def read_hotspots(redis, zone_ids: list[str]) -> dict[str, float]:
+    """The current demand score of every servicable zone.
 
     One round trip for all zones instead of one per zone: at 36 zones the
     difference is small, but this runs every few seconds forever.
     """
     period = day_period(utc_now())
-    zone_ids = grid.all_zone_ids()
     keys = [redis_client.hotspot_key(zone_id, period) for zone_id in zone_ids]
     values = redis.mget(keys)
 
@@ -219,7 +225,12 @@ def main() -> int:
         delay_seconds=5.0,
         shutdown=shutdown,
     )
-    drivers = load_roster(redis, grid, rng)
+    # Computed once, here: a zone whose own centroid cannot reach a real
+    # road (see routing.servicable_zone_ids()) is excluded from home-zone
+    # assignment, hotspot scoring, and wander targets, for the whole run.
+    zone_ids = routing.servicable_zone_ids()
+
+    drivers = load_roster(redis, grid, rng, zone_ids)
     if not drivers:
         log.error("driver keys appeared but none could be read")
         return 1
@@ -241,8 +252,7 @@ def main() -> int:
         from_beginning=False,
     )
 
-    zone_ids = grid.all_zone_ids()
-    zone_scores = read_hotspots(redis, grid)
+    zone_scores = read_hotspots(redis, zone_ids)
     last_hotspot_refresh = time.monotonic()
     last_db_sync = time.monotonic()
     sent = 0
@@ -254,7 +264,7 @@ def main() -> int:
             apply_trip_news(consumer, drivers, redis)
 
             if started - last_hotspot_refresh >= hotspot_refresh_seconds:
-                zone_scores = read_hotspots(redis, grid)
+                zone_scores = read_hotspots(redis, zone_ids)
                 last_hotspot_refresh = started
 
             now = utc_now()

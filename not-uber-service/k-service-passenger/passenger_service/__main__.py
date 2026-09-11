@@ -101,7 +101,9 @@ def main() -> int:
         return 1
     log.info("riders loaded", extra={"riders": len(rider_ids)})
 
-    zone_ids = grid.all_zone_ids()
+    # Not grid.all_zone_ids(): a zone whose own centroid cannot reach a real
+    # road would keep re-hitting the unsnapped-point fallback forever.
+    zone_ids = routing.servicable_zone_ids()
     zone_weights = [zone_popularity(zone_id) for zone_id in zone_ids]
 
     request_producer = AvroTopicProducer(REQUEST_TOPIC)

@@ -10,6 +10,18 @@ CREATE TABLE IF NOT EXISTS city_zones (
     boundary    geometry(Polygon, 4326) NOT NULL,
     -- The middle of the zone, handy for placing a marker or a driver.
     centroid    geometry(Point, 4326)   NOT NULL,
+    -- False when the zone's own centroid cannot reach a real, connected road
+    -- within MAX_SNAP_KM - set once, by h-bootstrap, right after the street
+    -- graph is restored (see bootstrap/zones.py). CITY_MIN/MAX_LAT/LON is a
+    -- rectangle; a real city's shape is not, so a rectangle drawn around one
+    -- inevitably has corners that sit mostly in open water, an airport, or
+    -- (crossing the Hudson to the west) another state entirely, with none of
+    -- that reflected in the imported street data. Unservicable zones are
+    -- excluded from demand generation and home-zone assignment everywhere,
+    -- rather than only being discovered per-point through the max_snap_km
+    -- retry - the same "verify once, trust everywhere" principle
+    -- ways_vertices_pgr.on_main_network already applies one level down.
+    servicable  boolean     NOT NULL DEFAULT true,
     created_at  timestamptz NOT NULL DEFAULT now()
 );
 

@@ -168,3 +168,22 @@ def random_road_point_in_zone(grid, zone_id: str, rng, attempts: int = 5) -> tup
 
     log.warning("no road point found near zone, using an unsnapped point", extra={"zone_id": zone_id})
     return grid.random_point_in(zone_id, rng)
+
+
+SERVICABLE_ZONE_IDS_SQL = "SELECT zone_id FROM city_zones WHERE servicable ORDER BY zone_id"
+
+
+def servicable_zone_ids() -> list[str]:
+    """Zone ids whose centroid actually reaches a real, connected road.
+
+    CITY_MIN/MAX_LAT/LON is a rectangle; a real city's shape is not, so a
+    rectangle drawn around one has corners that can sit mostly in open
+    water, an airport, or another jurisdiction the imported map never
+    covered at all - h-bootstrap marks those zones unservicable once,
+    right after the street graph is restored (bootstrap/zones.py), and
+    every caller here just reads the flag rather than re-discovering it
+    one bad point at a time through the max_snap_km retry.
+    """
+    with postgres.read_connection() as conn:
+        rows = postgres.fetch_all(conn, SERVICABLE_ZONE_IDS_SQL)
+    return [row["zone_id"] for row in rows]

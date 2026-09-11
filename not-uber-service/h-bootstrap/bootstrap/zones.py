@@ -27,18 +27,29 @@ def grid_from(settings: Settings) -> CityGrid:
 
 
 def seed(settings: Settings) -> int:
-    """Create the zone grid. Existing zones are left alone."""
+    """Create the zone grid. Existing zones are left alone.
+
+    Each zone's servicability is checked here, against the just-restored
+    street graph, and baked into city_zones once - see routing.py's
+    servicable_zone_ids() for why.
+    """
     grid = grid_from(settings)
 
     rows = []
+    unservicable = 0
     for zone_id in grid.all_zone_ids():
         south, west, north, east = grid.bounds_of(zone_id)
         _, row_text, col_text = zone_id.split("-")
+        centre_lat, centre_lon = grid.centre_of(zone_id)
+        servicable = routing.nearest_road_point(centre_lat, centre_lon) is not None
+        if not servicable:
+            unservicable += 1
         rows.append(
             {
                 "zone_id": zone_id,
                 "name": f"Zone {int(row_text) + 1}-{int(col_text) + 1}",
                 "west": west, "south": south, "east": east, "north": north,
+                "servicable": servicable,
             }
         )
 
@@ -46,13 +57,14 @@ def seed(settings: Settings) -> int:
         with conn.cursor() as cur:
             cur.executemany(
                 """
-                INSERT INTO city_zones (zone_id, name, boundary, centroid)
+                INSERT INTO city_zones (zone_id, name, boundary, centroid, servicable)
                 VALUES (
                     %(zone_id)s,
                     %(name)s,
                     -- A rectangle built from the four corners of the cell.
                     ST_MakeEnvelope(%(west)s, %(south)s, %(east)s, %(north)s, 4326),
-                    ST_Centroid(ST_MakeEnvelope(%(west)s, %(south)s, %(east)s, %(north)s, 4326))
+                    ST_Centroid(ST_MakeEnvelope(%(west)s, %(south)s, %(east)s, %(north)s, 4326)),
+                    %(servicable)s
                 )
                 ON CONFLICT (zone_id) DO NOTHING
                 """,
@@ -60,7 +72,13 @@ def seed(settings: Settings) -> int:
             )
         conn.commit()
 
-    log.info("zones ready", extra={"zones": len(rows)})
+    log.info("zones ready", extra={"zones": len(rows), "unservicable": unservicable})
+    if unservicable:
+        log.warning(
+            "some zones cannot reach a real road from their own centroid - "
+            "excluded from demand generation and home-zone assignment",
+            extra={"unservicable": unservicable, "total": len(rows)},
+        )
     return len(rows)
 
 
