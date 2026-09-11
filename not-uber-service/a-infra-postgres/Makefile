@@ -36,6 +36,7 @@ pg-cpus-bootstrap: ## Raise PG_CPUS to PG_CPUS_BOOTSTRAP for the routing burst (
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
 	$(call ok,pg-1/2/3 recreated with the higher ceiling)
+	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: pg-cpus-normal
 pg-cpus-normal: ## Put PG_CPUS back to its steady-state value (recreates pg-1/2/3)
@@ -44,6 +45,36 @@ pg-cpus-normal: ## Put PG_CPUS back to its steady-state value (recreates pg-1/2/
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
 	$(call ok,pg-1/2/3 recreated at the steady-state ceiling)
+	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
+
+.PHONY: _wait-haproxy-pg-settled
+_wait-haproxy-pg-settled: ## Wait past the post-recreation flap, not just pg-1/2/3's own healthcheck
+	@printf "  waiting for HAProxy's own health checks to settle: recreating\n"
+	@printf "  pg-1/2/3 together causes a burst of Docker DNS churn that can flap a\n"
+	@printf "  backend down for a moment, and haproxy.cfg.template deliberately kills\n"
+	@printf "  whatever is mid-query on a backend the instant it is marked down\n"
+	@printf "  (default-server on-marked-down shutdown-sessions - correct behaviour\n"
+	@printf "  for a real demotion, but it also fires on a transient flap). pg-1/2/3\n"
+	@printf "  answering their own healthcheck does not mean HAProxy has caught up.\n"
+	@stable=0; write_up=0; read_up=0; \
+	for i in $$(seq 1 30); do \
+		csv=$$(curl -fsS "http://localhost:$(call getenv,LB_A_STATS_PORT,8404)/stats;csv" 2>/dev/null || true); \
+		write_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_write" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
+		read_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_read" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
+		if [ "$$write_up" = "1" ] && [ "$$read_up" = "2" ]; then \
+			stable=$$((stable + 1)); \
+		else \
+			stable=0; \
+		fi; \
+		if [ "$$stable" -ge 3 ]; then \
+			printf "  $(G)ok$(X)      HAProxy stable: pg_write 1 up, pg_read 2 up\n"; \
+			exit 0; \
+		fi; \
+		sleep 1; \
+	done; \
+	printf "  $(R)FAIL$(X)    HAProxy never settled after 30s (last seen: pg_write=%s pg_read=%s)\n" "$$write_up" "$$read_up"; \
+	printf "              check manually: make verify-pg\n"; \
+	exit 1
 
 .PHONY: verify-pg
 verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
