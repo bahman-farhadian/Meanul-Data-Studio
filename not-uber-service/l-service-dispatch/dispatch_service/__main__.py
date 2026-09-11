@@ -142,7 +142,7 @@ def main() -> int:
     setup_logging("dispatch-service")
     shutdown = Shutdown()
     rng = random.Random(config.integer("RANDOM_SEED", 20250824))
-    grid = CityGrid.from_environment()
+    grid = CityGrid.load()
 
     tick_seconds = config.number("DISPATCH_TICK_SECONDS", 1.0)
     search_radius_km = config.number("DISPATCH_SEARCH_RADIUS_KM", 5.0)

@@ -90,14 +90,6 @@ services:
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?must match e-infra-clickhouse/.env}
 
-      # How big the simulated city is.
-      CITY_MIN_LAT: ${CITY_MIN_LAT:-40.49}
-      CITY_MAX_LAT: ${CITY_MAX_LAT:-40.92}
-      CITY_MIN_LON: ${CITY_MIN_LON:--74.26}
-      CITY_MAX_LON: ${CITY_MAX_LON:--73.70}
-      CITY_GRID_ROWS: ${CITY_GRID_ROWS:-6}
-      CITY_GRID_COLS: ${CITY_GRID_COLS:-6}
-
       # How much to create.
       SEED_DRIVERS: ${SEED_DRIVERS:-800}
       SEED_PASSENGERS: ${SEED_PASSENGERS:-5000}

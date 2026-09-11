@@ -46,6 +46,24 @@ lion-fetch: ## Download NYC's official LION street data on the HOST
 		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
 	fi
 
+.PHONY: tlc-zones-fetch
+tlc-zones-fetch: ## Download NYC TLC's real taxi zones on the HOST
+	$(call say,Fetching NYC TLC's real taxi zones on the host)
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	url=$$(grep -E '^TLC_ZONES_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dest="$$root/nus-lion-data"; file="$$dest/taxi-zones.geojson"; \
+	mkdir -p "$$dest"; \
+	if [ -s "$$file" ]; then \
+		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
+	else \
+		printf "  from    %s\n  to      %s\n" "$$url" "$$file"; \
+		curl -fL --progress-bar -o "$$file.part" "$$url" || { rm -f "$$file.part"; \
+			printf "  $(R)FAIL$(X)    download failed. This runs on the HOST, so if it cannot reach\n"; \
+			printf "              NYC Open Data either, neither will lion-prepare.\n"; exit 1; }; \
+		mv "$$file.part" "$$file"; \
+		printf "  $(G)ok$(X)      %s\n" "$$(du -h "$$file" | cut -f1)"; \
+	fi
+
 .PHONY: lion-prepare
 lion-prepare: ## Build the routable graph from LION, once (the slow step, cached after)
 	$(call say,Preparing the routable street graph)

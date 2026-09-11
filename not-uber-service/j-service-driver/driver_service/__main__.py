@@ -199,7 +199,7 @@ def main() -> int:
     setup_logging("driver-service")
     shutdown = Shutdown()
     rng = random.Random(config.integer("RANDOM_SEED", 20250824))
-    grid = CityGrid.from_environment()
+    grid = CityGrid.load()
 
     tick_seconds = config.number("DRIVER_TICK_SECONDS", 3.0)
     speed_kmh = config.number("DRIVER_SPEED_KMH", 25.0)

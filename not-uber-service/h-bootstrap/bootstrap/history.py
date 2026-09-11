@@ -233,11 +233,11 @@ def _next_spec(
     # The dropoff is not picked independently of the pickup - most real trips
     # are short hops, with a long tail of longer ones, not a flat
     # distribution across the whole city.
-    grid = zones.grid_from(settings)
+    grid = zones.grid()
     dropoff_weights = grid.distance_decay_weights(pickup_zone, zone_ids, weights)
     dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
-    pickup_lat, pickup_lon = zones.random_road_point_in_zone(settings, pickup_zone, rng)
-    dropoff_lat, dropoff_lon = zones.random_road_point_in_zone(settings, dropoff_zone, rng)
+    pickup_lat, pickup_lon = zones.random_road_point_in_zone(pickup_zone, rng)
+    dropoff_lat, dropoff_lon = zones.random_road_point_in_zone(dropoff_zone, rng)
 
     trip_id = new_trip_id(requested_at, rng)
     rider = people.passenger_id(rng.randint(1, settings.passenger_count))

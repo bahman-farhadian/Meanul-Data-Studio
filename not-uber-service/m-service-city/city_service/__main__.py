@@ -64,7 +64,7 @@ UPDATE_TRAFFIC = """
 def main() -> int:
     setup_logging("city-service")
     shutdown = Shutdown()
-    grid = CityGrid.from_environment()
+    grid = CityGrid.load()
 
     score_seconds = config.number("CITY_SCORE_SECONDS", 30.0)
     traffic_minutes = config.number("CITY_TRAFFIC_UPDATE_MINUTES", 5.0)

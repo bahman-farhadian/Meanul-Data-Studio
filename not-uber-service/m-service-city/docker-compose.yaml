@@ -66,13 +66,6 @@ services:
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
 
-      CITY_MIN_LAT: ${CITY_MIN_LAT:-40.49}
-      CITY_MAX_LAT: ${CITY_MAX_LAT:-40.92}
-      CITY_MIN_LON: ${CITY_MIN_LON:--74.26}
-      CITY_MAX_LON: ${CITY_MAX_LON:--73.70}
-      CITY_GRID_ROWS: ${CITY_GRID_ROWS:-6}
-      CITY_GRID_COLS: ${CITY_GRID_COLS:-6}
-
       CITY_SCORE_SECONDS: ${CITY_SCORE_SECONDS:-30.0}
       CITY_TRAFFIC_UPDATE_MINUTES: ${CITY_TRAFFIC_UPDATE_MINUTES:-5.0}
       # Six hours: the length of one part of the day, so a score cannot

@@ -1,84 +1,129 @@
-"""The city grid, in one place.
+"""The city's real zones, in one place.
 
-The city is divided into a simple grid of zones. Several components need the
-same answers about it - which zone a point falls in, where the middle of a
-zone is, a random point inside one - and two implementations of the same
-arithmetic would quietly disagree. So the arithmetic lives here and everyone
-asks this class.
-
-A grid rather than real neighbourhoods, because every cell is then the same
-size, and "this zone is busier than that one" means what it says.
+These are NYC TLC's own official Taxi Zones - the same 263 neighborhood-
+shaped polygons Uber, Lyft and yellow cabs actually report trips against -
+not a synthetic grid. h-bootstrap/lion-prepare builds them from TLC's own
+data once, on the host; bootstrap/zones.py copies them into city_zones,
+computing which ones are servicable (their own centroid can reach a real
+road). Every component that needs "which zone is this point in," "the
+middle of a zone," or "a random point inside one" loads the same servicable
+set from there and asks this class - two independent implementations of
+the same lookup would quietly disagree.
 """
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from nus_common import config
+import shapely
+from shapely import STRtree
+from shapely.geometry import Point
+
+from nus_common import postgres
 from nus_common.geo import distance_km
+
+ZONES_SQL = """
+    SELECT zone_id, name, borough,
+           ST_AsText(boundary) AS boundary_wkt,
+           ST_Y(centroid) AS lat, ST_X(centroid) AS lon
+      FROM city_zones
+     WHERE servicable
+"""
+
+
+@dataclass(frozen=True)
+class Zone:
+    zone_id: str
+    name: str
+    borough: str
+    boundary: object  # a shapely Polygon or MultiPolygon
+    lat: float
+    lon: float
 
 
 @dataclass(frozen=True)
 class CityGrid:
-    min_lat: float
-    max_lat: float
-    min_lon: float
-    max_lon: float
-    rows: int
-    cols: int
+    zones: dict[str, Zone]
+    index: STRtree = field(repr=False)
+    index_zone_ids: list[str] = field(repr=False)
 
     @classmethod
-    def from_environment(cls) -> "CityGrid":
-        """Build the grid from the CITY_* settings.
+    def load(cls) -> "CityGrid":
+        """Load every servicable zone's real polygon, once.
 
-        Every component reads the same variables, so all of them draw the
-        same grid. They are set once, in each component's .env.
+        A single query, cached for the life of the process - every method
+        below is then pure, synchronous, in-memory geometry, the same as
+        when this was grid arithmetic. Reused across every caller
+        (h-bootstrap, driver-service, passenger-service, dispatch-service,
+        city-service all load exactly the same set).
         """
-        return cls(
-            min_lat=config.number("CITY_MIN_LAT", 40.49),
-            max_lat=config.number("CITY_MAX_LAT", 40.92),
-            min_lon=config.number("CITY_MIN_LON", -74.26),
-            max_lon=config.number("CITY_MAX_LON", -73.70),
-            rows=config.integer("CITY_GRID_ROWS", 6),
-            cols=config.integer("CITY_GRID_COLS", 6),
-        )
+        with postgres.read_connection() as conn:
+            rows = postgres.fetch_all(conn, ZONES_SQL)
 
-    @property
-    def lat_step(self) -> float:
-        return (self.max_lat - self.min_lat) / self.rows
+        zones: dict[str, Zone] = {}
+        for row in rows:
+            zones[row["zone_id"]] = Zone(
+                zone_id=row["zone_id"],
+                name=row["name"],
+                borough=row["borough"],
+                boundary=shapely.from_wkt(row["boundary_wkt"]),
+                lat=float(row["lat"]),
+                lon=float(row["lon"]),
+            )
 
-    @property
-    def lon_step(self) -> float:
-        return (self.max_lon - self.min_lon) / self.cols
-
-    @staticmethod
-    def zone_id(row: int, col: int) -> str:
-        """The id of one cell, for example z-02-05."""
-        return f"z-{row:02d}-{col:02d}"
+        index_zone_ids = list(zones.keys())
+        index = STRtree([zones[zid].boundary for zid in index_zone_ids])
+        return cls(zones=zones, index=index, index_zone_ids=index_zone_ids)
 
     def all_zone_ids(self) -> list[str]:
-        return [
-            self.zone_id(row, col)
-            for row in range(self.rows)
-            for col in range(self.cols)
-        ]
+        return list(self.zones.keys())
+
+    def zone_of(self, lat: float, lon: float) -> str:
+        """Which zone a point falls in.
+
+        A point outside every zone (open water, the harbor) is pulled to
+        the nearest zone by centroid distance rather than refused: a
+        driver who wandered off the real streets should still be counted
+        somewhere. The STRtree query narrows candidates to the same
+        handful the point's bounding box could plausibly be inside, so the
+        common case (a point genuinely inside one zone) never scans all 263.
+        """
+        point = Point(lon, lat)
+        for idx in self.index.query(point):
+            zone_id = self.index_zone_ids[idx]
+            if self.zones[zone_id].boundary.contains(point):
+                return zone_id
+        return min(
+            self.zones,
+            key=lambda zid: distance_km(lat, lon, self.zones[zid].lat, self.zones[zid].lon),
+        )
 
     def bounds_of(self, zone_id: str) -> tuple[float, float, float, float]:
-        """The (south, west, north, east) edges of one zone."""
-        _, row_text, col_text = zone_id.split("-")
-        row, col = int(row_text), int(col_text)
-        south = self.min_lat + row * self.lat_step
-        west = self.min_lon + col * self.lon_step
-        return south, west, south + self.lat_step, west + self.lon_step
+        """The (south, west, north, east) edges of one zone's bounding box."""
+        west, south, east, north = self.zones[zone_id].boundary.bounds
+        return south, west, north, east
 
     def centre_of(self, zone_id: str) -> tuple[float, float]:
-        """The middle of one zone."""
-        south, west, north, east = self.bounds_of(zone_id)
-        return (south + north) / 2, (west + east) / 2
+        """The middle of one zone - its real centroid, not a bounding-box average."""
+        zone = self.zones[zone_id]
+        return zone.lat, zone.lon
 
     def random_point_in(self, zone_id: str, rng) -> tuple[float, float]:
-        """A random point inside one zone."""
-        south, west, north, east = self.bounds_of(zone_id)
-        return rng.uniform(south, north), rng.uniform(west, east)
+        """A random point inside one zone's real polygon.
+
+        Rejection sampling in the polygon's own bounding box: real NYC
+        zone shapes are compact, not pathologically thin, so this
+        converges in a handful of tries even for a multi-part zone like
+        EWR. Falls back to the centroid in the practically-impossible case
+        every attempt misses.
+        """
+        polygon = self.zones[zone_id].boundary
+        west, south, east, north = polygon.bounds
+        for _ in range(50):
+            lat = rng.uniform(south, north)
+            lon = rng.uniform(west, east)
+            if polygon.contains(Point(lon, lat)):
+                return lat, lon
+        return self.centre_of(zone_id)
 
     def distance_decay_weights(
         self, from_zone_id: str, zone_ids: list[str], base_weights: list[float], decay_km: float = 5.0,
@@ -100,16 +145,3 @@ class CityGrid:
             distance = distance_km(from_lat, from_lon, lat, lon)
             weights.append(base * math.exp(-distance / decay_km))
         return weights
-
-    def zone_of(self, lat: float, lon: float) -> str:
-        """Which zone a point falls in.
-
-        A point outside the city box is pulled to the nearest edge cell
-        rather than refused: a driver who wandered a street too far should
-        still be counted somewhere.
-        """
-        row = int((lat - self.min_lat) / self.lat_step)
-        col = int((lon - self.min_lon) / self.lon_step)
-        row = min(max(row, 0), self.rows - 1)
-        col = min(max(col, 0), self.cols - 1)
-        return self.zone_id(row, col)

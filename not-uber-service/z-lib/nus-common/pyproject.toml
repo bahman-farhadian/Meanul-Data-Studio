@@ -26,6 +26,12 @@ dependencies = [
     "clickhouse-connect>=0.8",
     # Reading the pacing and simulation config files.
     "pyyaml>=6.0",
+    # The real city zones (NYC TLC's own Taxi Zones): point-in-polygon,
+    # random-point-in-polygon and the STRtree spatial index CityGrid uses.
+    # >=2.0 specifically: STRtree.query() returning integer indices (not
+    # geometries) is Shapely 2.x's API, verified directly against 2.1.2 -
+    # 1.x's STRtree has a different, incompatible return shape.
+    "shapely>=2.0",
 ]
 
 [build-system]
