@@ -32,6 +32,10 @@ class Settings:
     base_fare: float
     per_km: float
     per_minute: float
+    # What the platform keeps from every fare; the rest is the driver's
+    # payout. Same default as l-service-dispatch/.env.example, so the
+    # historical week and live trips split fares the same way.
+    platform_commission_pct: float
 
     # --- the map ---------------------------------------------------------
     # The routable graph itself is built once, on the host, by
@@ -62,6 +66,7 @@ def load() -> Settings:
         base_fare=config.number("FARE_BASE", 3.0),
         per_km=config.number("FARE_PER_KM", 1.75),
         per_minute=config.number("FARE_PER_MINUTE", 0.45),
+        platform_commission_pct=config.number("PLATFORM_COMMISSION_PCT", 0.20),
 
         lion_dir=config.optional("LION_DIR", "/data/lion"),
         skip_map_import=config.flag("SKIP_MAP_IMPORT", False),
