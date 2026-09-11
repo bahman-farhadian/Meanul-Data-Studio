@@ -3,9 +3,16 @@ records into the two small calibration tables zone-demand-prepare exists
 to build.
 
 Runs once, in this throwaway container - never against the real stack.
-The Parquet file itself (a few hundred MB) is streamed with column
-projection and never written to disk; only the two derived aggregates
-(a few thousand rows each) are, as plain CSV in /data, restored into
+The Parquet file itself (a few hundred MB) is downloaded once, on the
+host, by `make tlc-trips-fetch` (part of `make prepare`) - not by this
+script. Real, billed traffic on a metered host is worth paying exactly
+once, not on every retry: streaming it fresh from CloudFront on every run
+(the original design here) meant a run that failed partway - for any
+reason, not just a network one - re-paid the whole download on its next
+attempt. This container only reads the already-local file, still with
+column projection so the full six-column-wide frame is the only thing
+ever held in memory. Only the two derived aggregates (a few thousand
+rows each) are written here, as plain CSV in /data, restored into
 zone_demand_calibration/od_pair_calibration by
 h-bootstrap/bootstrap/demand.py during a real bootstrap run.
 
@@ -18,7 +25,6 @@ import os
 import sys
 import time
 
-import fsspec
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -34,12 +40,8 @@ def log(message: str) -> None:
 
 def main() -> int:
     month = os.environ.get("TLC_TRIP_DATA_MONTH", "2025-01")
-    url_template = os.environ.get(
-        "TLC_TRIP_DATA_URL_TEMPLATE",
-        "https://d37ci6vzurychx.cloudfront.net/trip-data/fhvhv_tripdata_{month}.parquet",
-    )
-    url = url_template.format(month=month)
     out_dir = os.environ.get("OUTPUT_DIR", "/data")
+    input_path = os.path.join(out_dir, f"tlc-trips-{month}.parquet")
 
     zone_demand_out = os.path.join(out_dir, "zone_demand_calibration.csv")
     od_pair_out = os.path.join(out_dir, "od_pair_calibration.csv")
@@ -48,16 +50,18 @@ def main() -> int:
         log(f"already built: {zone_demand_out}, {od_pair_out}")
         return 0
 
-    log(f"reading {url} (streamed, column-projected - never written whole to disk)")
+    if not os.path.exists(input_path):
+        log(f"{input_path} not found - run `make tlc-trips-fetch` first (part of `make prepare`)")
+        return 1
+
+    log(f"reading {input_path} (column-projected)")
     t0 = time.monotonic()
     frames = []
-    fs = fsspec.filesystem("https")
-    with fs.open(url, "rb") as f:
-        pf = pq.ParquetFile(f)
-        total_groups = pf.num_row_groups
-        for i in range(total_groups):
-            frames.append(pf.read_row_group(i, columns=COLUMNS).to_pandas())
-            log(f"  row group {i + 1}/{total_groups} ({time.monotonic() - t0:.0f}s elapsed)")
+    pf = pq.ParquetFile(input_path)
+    total_groups = pf.num_row_groups
+    for i in range(total_groups):
+        frames.append(pf.read_row_group(i, columns=COLUMNS).to_pandas())
+        log(f"  row group {i + 1}/{total_groups} ({time.monotonic() - t0:.0f}s elapsed)")
 
     df = pd.concat(frames, ignore_index=True)
     del frames

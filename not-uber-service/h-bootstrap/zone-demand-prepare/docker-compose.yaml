@@ -1,8 +1,16 @@
 # A throwaway one-shot, entirely separate from not-uber-service's own
 # compose project - `make zone-demand-prepare` brings this up on its own
 # (part of `make prepare`) and it exits when done. No database, no
-# network of its own to tear down - just one container that writes two
-# CSV files to the shared volume and stops.
+# network of its own to tear down - just one container that reads the
+# trip-record parquet `make tlc-trips-fetch` already downloaded to the
+# shared volume, and writes two CSV files back to it.
+#
+# Talks to no other container and reaches nowhere outside this host: the
+# one thing here that used to need real internet access (streaming the
+# parquet straight from CloudFront) moved to a host-side fetch step
+# instead, the same as lion-fetch/tlc-zones-fetch - see tlc-trips-fetch
+# in h-bootstrap/Makefile for why (repeated network egress on every
+# retry, real cost on a metered host).
 
 name: nus-zone-demand-prepare
 
@@ -12,17 +20,6 @@ services:
       network: ${BUILD_NETWORK:-host}
       context: ../..
       dockerfile: h-bootstrap/zone-demand-prepare/Dockerfile
-    # Same gap as build.network above, but at runtime: this is the one
-    # container in the whole project that opens its own connection to the
-    # public internet (streaming the TLC parquet directly) instead of
-    # downloading on the host first, like lion-fetch/tlc-zones-fetch do -
-    # confirmed directly, Docker's default bridge network cannot reach it
-    # on this host (ConnectionRefusedError on the CloudFront IP), the same
-    # tunnel-does-not-forward-container-traffic gap lion-fetch/
-    # tlc-zones-fetch were written to route around by running on the host
-    # instead. Override to the default bridge network on a host without
-    # that gap.
-    network_mode: ${ZONE_DEMAND_PREPARE_NETWORK:-host}
     environment:
       TLC_TRIP_DATA_MONTH: ${TLC_TRIP_DATA_MONTH:-2025-01}
       OUTPUT_DIR: /data

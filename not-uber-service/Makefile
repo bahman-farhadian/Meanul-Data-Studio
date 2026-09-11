@@ -221,11 +221,13 @@ prepare: ## Pull, build and prepare the street map — the only step needing net
 	$(call say,Fetching everything the stack needs)
 	@printf "  This is the only step that reaches outside this host. After it the\n"
 	@printf "  stack is self-contained: the containers talk to each other on %s,\n" "$(NETWORK)"
-	@printf "  and the one runtime download - the LION street map - is done here.\n\n"
+	@printf "  and every runtime download - the LION street map, TLC's real zones\n"
+	@printf "  and trip records - is done here, once, and cached under nus-lion-data.\n\n"
 	@$(MAKE) --no-print-directory pull
 	@$(MAKE) --no-print-directory build
 	@$(MAKE) --no-print-directory lion-fetch
 	@$(MAKE) --no-print-directory tlc-zones-fetch
+	@$(MAKE) --no-print-directory tlc-trips-fetch
 	@$(MAKE) --no-print-directory lion-prepare
 	@$(MAKE) --no-print-directory zone-demand-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
