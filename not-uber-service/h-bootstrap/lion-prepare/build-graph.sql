@@ -12,10 +12,11 @@
 -- street (legally mapped, never built), 7/8/9 non-street boundaries, F ferry
 -- route, and anything else not in this list.
 --
--- SegmentTyp: keep undivided (U), roadbed (R), connector (C) and ramp (E)
--- segments - the pieces a car actually drives on. Drop the generic (G)
--- centerline, which is an imaginary duplicate of a divided road's roadbeds,
--- plus terminator (T) and suppressed (S) segments.
+-- SegmentTyp: keep undivided (U), both-directions-on-one-bed (B), roadbed
+-- (R), connector (C) and ramp (E) segments - the pieces a car actually
+-- drives on. Drop the generic (G) centerline, which is an imaginary
+-- duplicate of a divided road's roadbeds, plus terminator (T) and
+-- suppressed (S) segments.
 --
 -- TrafDir: W/A/T are vehicle directions. P (pedestrian path) and blank
 -- (non-street feature) are excluded outright - nothing here is for cars.
