@@ -27,7 +27,7 @@ from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
 
-from dispatch_service import pricing
+from dispatch_service import pricing, ratings
 from dispatch_service.trips import ActiveTrip, first_change_at, next_status
 
 log = get_logger(__name__)
@@ -240,6 +240,8 @@ def main() -> int:
 
                 announce(producer, trip, status, now, actual_duration_s, fare_final)
                 _write_status(trip, status, actual_duration_s, fare_final)
+                if status == "completed":
+                    ratings.rate_and_maintain(trip.trip_id, trip.rider_id, trip.driver_id, rng)
 
                 if status in FINISHED:
                     # The trip is over: forget it here and let the live state

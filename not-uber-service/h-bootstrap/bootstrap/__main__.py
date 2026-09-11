@@ -77,6 +77,7 @@ def main() -> int:
     # --- 7. a week of history, routed for real ---------------------------
     week = history.generate(settings)
     history.store_trips(week.trip_rows)
+    history.store_trip_ratings(week.trip_ratings)
 
     # --- 8. the same week in the warehouse ------------------------------
     if warehouse.already_loaded():
