@@ -17,6 +17,7 @@ log = get_logger(__name__)
 # the others. They must match the DDL in e-infra-clickhouse/ddl/.
 TRIP_EVENT_COLUMNS = [
     "trip_id", "rider_id", "driver_id", "status", "pickup_zone_id",
+    "dropoff_zone_id",
     "route_km", "predicted_duration_s", "actual_duration_s",
     "duration_delta_s", "took_longer_than_predicted",
     "surge_multiplier", "hotspot_score", "is_hotspot_trip",

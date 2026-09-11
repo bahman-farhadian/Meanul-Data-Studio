@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
                                    'no_driver_found' = 9
                                ),
     pickup_zone_id             LowCardinality(String),
+    dropoff_zone_id            LowCardinality(String),
 
     route_km                   Nullable(Float64),
     predicted_duration_s       Nullable(UInt32),

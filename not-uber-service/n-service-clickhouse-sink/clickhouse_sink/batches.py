@@ -24,6 +24,7 @@ log = get_logger(__name__)
 COLUMNS = {
     "nus.trip_events": [
         "trip_id", "rider_id", "driver_id", "status", "pickup_zone_id",
+        "dropoff_zone_id",
         "route_km", "predicted_duration_s", "actual_duration_s",
         "duration_delta_s", "took_longer_than_predicted",
         "surge_multiplier", "hotspot_score", "is_hotspot_trip",

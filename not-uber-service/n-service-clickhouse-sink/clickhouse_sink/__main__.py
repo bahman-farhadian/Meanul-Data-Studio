@@ -166,6 +166,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         batches.add("nus.trip_events", [
             value["trip_id"], value["rider_id"], value.get("driver_id"),
             value["status"], value.get("pickup_zone_id") or "",
+            value.get("dropoff_zone_id") or "",
             value.get("route_km"), predicted, actual, delta, longer,
             value.get("surge_multiplier"), score, is_hotspot,
             value.get("fare_estimate"), value.get("fare_final"),

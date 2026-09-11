@@ -181,6 +181,7 @@ def main() -> int:
                             "dropoff_lat": trip["dropoff_lat"],
                             "dropoff_lon": trip["dropoff_lon"],
                             "pickup_zone_id": trip["pickup_zone_id"],
+                            "dropoff_zone_id": trip["dropoff_zone_id"],
                             "passenger_count": rng.choices([1, 2, 3, 4], [70, 20, 7, 3])[0],
                             "requested_vehicle_type": trip["requested_vehicle_type"],
                             "requested_at": event_time,
