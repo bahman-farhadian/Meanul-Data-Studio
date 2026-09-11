@@ -28,9 +28,13 @@ def _run(command: list[str], env: dict[str, str] | None = None) -> None:
     full_env = {**os.environ, **env} if env else None
     result = subprocess.run(command, capture_output=True, text=True, env=full_env)
     if result.returncode != 0:
+        # The front, not the tail: for a multi-statement restore that fails
+        # partway through and keeps going (pg_restore without --exit-on-error),
+        # every later "does not exist" is downstream noise from the first,
+        # real error - truncating from the tail was hiding exactly that.
         log.error(
             "command failed",
-            extra={"command": command[0], "stderr": result.stderr[-2000:]},
+            extra={"command": command[0], "stderr": result.stderr[:4000]},
         )
         raise RuntimeError(f"{command[0]} exited with code {result.returncode}")
 
