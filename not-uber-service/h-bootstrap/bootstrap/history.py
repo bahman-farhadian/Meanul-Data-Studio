@@ -302,7 +302,7 @@ def _finish_no_driver(spec: _TripSpec, week: GeneratedWeek) -> None:
     )
     week.trip_events.append(
         _event_row(spec.trip_id, spec.rider, None, "no_driver_found", spec.pickup_zone,
-                   None, None, None, None, None, None, ended_at)
+                   spec.dropoff_zone, None, None, None, None, None, None, ended_at)
     )
 
 
@@ -348,7 +348,7 @@ def _finish_trip(
         )
         week.trip_events.append(
             _event_row(spec.trip_id, spec.rider, spec.driver, spec.outcome, spec.pickup_zone,
-                       route_km, predicted_s, None, surge, estimate, None, ended)
+                       spec.dropoff_zone, route_km, predicted_s, None, surge, estimate, None, ended)
         )
         return
 
@@ -379,7 +379,7 @@ def _finish_trip(
     )
     week.trip_events.append(
         _event_row(spec.trip_id, spec.rider, spec.driver, "completed", spec.pickup_zone,
-                   route_km, predicted_s, actual_s, surge, estimate, final, ended_at)
+                   spec.dropoff_zone, route_km, predicted_s, actual_s, surge, estimate, final, ended_at)
     )
     # Same bidirectional pattern dispatch-service uses for live trips
     # (l-service-dispatch/dispatch_service/ratings.py) - a completed trip
@@ -471,8 +471,8 @@ def _trip_row(**kwargs) -> dict:
     }
 
 
-def _event_row(trip_id, rider, driver, status, zone, route_km, predicted_s,
-               actual_s, surge, estimate, final, moment) -> list:
+def _event_row(trip_id, rider, driver, status, zone, dropoff_zone, route_km,
+               predicted_s, actual_s, surge, estimate, final, moment) -> list:
     """One row for the ClickHouse trip_events table.
 
     The column order matches warehouse.TRIP_EVENT_COLUMNS.
@@ -480,7 +480,7 @@ def _event_row(trip_id, rider, driver, status, zone, route_km, predicted_s,
     delta = None if (actual_s is None or predicted_s is None) else actual_s - predicted_s
     longer = None if delta is None else int(delta > 0)
     return [
-        trip_id, rider, driver, status, zone,
+        trip_id, rider, driver, status, zone, dropoff_zone,
         route_km, predicted_s, actual_s, delta, longer,
         surge, None, None, estimate, final, moment,
     ]

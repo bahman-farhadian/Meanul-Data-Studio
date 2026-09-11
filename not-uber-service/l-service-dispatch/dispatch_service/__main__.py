@@ -106,6 +106,7 @@ def announce(producer: AvroTopicProducer, trip: ActiveTrip, status: str,
             "driver_id": trip.driver_id,
             "status": status,
             "pickup_zone_id": trip.pickup_zone_id,
+            "dropoff_zone_id": trip.dropoff_zone_id,
             "route_km": trip.route_km,
             "predicted_duration_s": trip.predicted_duration_s,
             "actual_duration_s": actual_duration_s,
@@ -326,6 +327,7 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
     dropoff_lat = float(request["dropoff_lat"])
     dropoff_lon = float(request["dropoff_lon"])
     zone_id = request.get("pickup_zone_id") or grid.zone_of(pickup_lat, pickup_lon)
+    dropoff_zone_id = request.get("dropoff_zone_id") or grid.zone_of(dropoff_lat, dropoff_lon)
     # Defaults to economy: passenger-service does not send this field yet
     # (its own follow-up commit), and an old request already in flight
     # during a rolling deploy should still be matchable.
@@ -357,6 +359,7 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
         pickup_lat=pickup_lat, pickup_lon=pickup_lon,
         dropoff_lat=dropoff_lat, dropoff_lon=dropoff_lon,
         pickup_zone_id=zone_id,
+        dropoff_zone_id=dropoff_zone_id,
         route_km=route_km,
         predicted_duration_s=predicted_s,
         surge_multiplier=surge,
@@ -401,6 +404,7 @@ def _no_driver(producer: AvroTopicProducer, request: dict, trip_id: str,
             "driver_id": None,
             "status": "no_driver_found",
             "pickup_zone_id": zone_id,
+            "dropoff_zone_id": request.get("dropoff_zone_id"),
             "route_km": None,
             "predicted_duration_s": None,
             "actual_duration_s": None,

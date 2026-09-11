@@ -9,6 +9,7 @@
     {"name": "driver_id", "type": ["null", "string"], "default": null, "doc": "Empty until a driver has been matched."},
     {"name": "status", "type": {"type": "enum", "name": "TripStatus", "symbols": ["requested", "matched", "accepted", "en_route_pickup", "in_progress", "completed", "cancelled_by_passenger", "cancelled_by_driver", "no_driver_found"]}, "doc": "The status the trip has just entered."},
     {"name": "pickup_zone_id", "type": ["null", "string"], "default": null},
+    {"name": "dropoff_zone_id", "type": ["null", "string"], "default": null},
     {"name": "route_km", "type": ["null", "double"], "default": null, "doc": "Length of the route pgRouting computed at assignment time."},
     {"name": "predicted_duration_s", "type": ["null", "int"], "default": null, "doc": "How long the route was expected to take, given the traffic factors at that moment."},
     {"name": "actual_duration_s", "type": ["null", "int"], "default": null, "doc": "How long it really took. Only set when the trip ends."},

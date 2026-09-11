@@ -37,6 +37,7 @@ class ActiveTrip:
     dropoff_lat: float
     dropoff_lon: float
     pickup_zone_id: str
+    dropoff_zone_id: str
 
     route_km: float
     predicted_duration_s: int
