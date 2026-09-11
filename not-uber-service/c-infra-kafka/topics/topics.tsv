@@ -9,15 +9,23 @@
 #   purpose       a short note for humans
 #
 # Replication is always 3 (one copy per broker) and is set by the script.
-# The two location topics get 6 partitions because they carry by far the
-# most messages; everything else gets 3, one per broker.
+# Partition counts re-derived for NYC TLC real-scale fleet/demand (~106,000
+# licensed vehicles, ~655,000 trips/day full-scale - see h-bootstrap's own
+# scale settings): driver_location/rider_location carry by far the most
+# messages and scale with fleet size, so they get the most headroom for
+# consumer parallelism (cache-updater, clickhouse-sink) if those services
+# are ever run as more than one instance. trip_requests/trip_lifecycle scale
+# with request volume, which stays modest even at full scale (well under
+# 1,000 messages/minute) - some headroom, not as much. city_hotspots is
+# capped at 263 possible keys (one per real TLC zone) regardless of fleet
+# or demand scale, so it stays at one partition per broker.
 #
 # The cdc.* topics are NOT listed here: Debezium creates them itself, one
 # per PostgreSQL table (see d-infra-debezium).
 #
 # name	partitions	key	purpose
-driver_location	6	driver_id	where each driver is, every few seconds
-rider_location	6	rider_id	where each rider's phone is during a trip
-trip_requests	3	trip_id	a passenger asks for a ride
-trip_lifecycle	3	trip_id	every status change of a trip, up to the final fare
+driver_location	12	driver_id	where each driver is, every few seconds
+rider_location	12	rider_id	where each rider's phone is during a trip
+trip_requests	6	trip_id	a passenger asks for a ride
+trip_lifecycle	6	trip_id	every status change of a trip, up to the final fare
 city_hotspots	3	zone_id	demand score per city zone, published by city-service
