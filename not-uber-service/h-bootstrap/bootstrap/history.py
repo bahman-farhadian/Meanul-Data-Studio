@@ -39,7 +39,7 @@ from datetime import datetime, timedelta, timezone
 
 import psycopg
 
-from nus_common import postgres, redis_client, routing
+from nus_common import demand_calibration, postgres, redis_client, routing
 from nus_common.geo import day_period, distance_km, points_along_linestring
 from nus_common.ids import new_trip_id
 from nus_common.logging import get_logger
@@ -123,15 +123,6 @@ def _pick_hour(rng: random.Random) -> int:
     return rng.choices(range(24), weights=HOUR_WEIGHTS, k=1)[0]
 
 
-def _zone_pull(zone_ids: list[str], rng: random.Random) -> dict[str, float]:
-    """Give each zone a fixed popularity, so demand is uneven but stable.
-
-    Without this every zone would be equally busy and there would be no such
-    thing as a hotspot.
-    """
-    return {zid: rng.triangular(0.4, 2.5, 0.9) for zid in zone_ids}
-
-
 def _star(rng: random.Random) -> int:
     """A 1-5 rating. Most trips go fine, so most ratings cluster near the
     top - the same triangular shape people.py uses for a starting rating."""
@@ -164,8 +155,6 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     """Invent the whole week and return it, ready to be written."""
     rng = random.Random(seed_value)
     zone_ids = routing.servicable_zone_ids()
-    pull = _zone_pull(zone_ids, rng)
-    weights = [pull[zid] for zid in zone_ids]
 
     now = datetime.now(tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
     week = GeneratedWeek()
@@ -181,7 +170,7 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     for day_offset in range(settings.history_days, 0, -1):
         day_start = now - timedelta(days=day_offset)
         for _ in range(settings.trips_per_day):
-            spec = _next_spec(settings, rng, zone_ids, weights, day_start)
+            spec = _next_spec(settings, rng, zone_ids, day_start)
             if spec.outcome == "no_driver_found":
                 _finish_no_driver(spec, week)
             else:
@@ -214,7 +203,7 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
 
         _finish_trip(spec, route_km, predicted_s, route_wkt, rng, settings, week)
 
-    _hotspot_history(settings, rng, zone_ids, pull, now, week)
+    _hotspot_history(settings, rng, zone_ids, now, week)
 
     log.info(
         "history generated",
@@ -233,21 +222,35 @@ def _next_spec(
     settings: Settings,
     rng: random.Random,
     zone_ids: list[str],
-    weights: list[float],
     day_start: datetime,
 ) -> _TripSpec:
     """Decide everything about one trip that does not depend on routing."""
     hour = _pick_hour(rng)
+    day_of_week = day_start.weekday()
     requested_at = day_start + timedelta(
         hours=hour, minutes=rng.randint(0, 59), seconds=rng.randint(0, 59)
     )
 
+    # Real TLC-trip-record weight for this exact zone/hour/day-of-week
+    # (nus_common.demand_calibration - see zone-demand-prepare), not a
+    # flat per-zone guess: JFK at 8am on a Monday is genuinely busier than
+    # a residential zone at 3am, and now that shows up here because it
+    # showed up in a real month of trips.
+    weights = [demand_calibration.zone_weight(zid, hour, day_of_week) for zid in zone_ids]
     pickup_zone = rng.choices(zone_ids, weights=weights, k=1)[0]
+
     # The dropoff is not picked independently of the pickup - most real trips
     # are short hops, with a long tail of longer ones, not a flat
-    # distribution across the whole city.
+    # distribution across the whole city. Real OD shares from the same
+    # calibration month are used wherever they exist; distance decay is
+    # the fallback for a pair the sample month never recorded, not a
+    # replacement for it.
     grid = zones.grid()
-    dropoff_weights = grid.distance_decay_weights(pickup_zone, zone_ids, weights)
+    decay_weights = grid.distance_decay_weights(pickup_zone, zone_ids, weights)
+    dropoff_weights = [
+        demand_calibration.od_share(pickup_zone, zid) or decay_weights[i]
+        for i, zid in enumerate(zone_ids)
+    ]
     dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
     pickup_lat, pickup_lon = zones.random_road_point_in_zone(pickup_zone, rng)
     dropoff_lat, dropoff_lon = zones.random_road_point_in_zone(dropoff_zone, rng)
@@ -422,7 +425,6 @@ def _hotspot_history(
     settings: Settings,
     rng: random.Random,
     zone_ids: list[str],
-    pull: dict[str, float],
     now: datetime,
     week: GeneratedWeek,
 ) -> None:
@@ -430,9 +432,9 @@ def _hotspot_history(
     for hours_ago in range(settings.history_days * 24, 0, -1):
         moment = now - timedelta(hours=hours_ago)
         period = day_period(moment)
-        hour_weight = HOUR_WEIGHTS[moment.hour]
         for zid in zone_ids:
-            score = round(min(pull[zid] * hour_weight / 2.5, 1.0) * rng.uniform(0.8, 1.2), 3)
+            real_weight = demand_calibration.zone_weight(zid, moment.hour, moment.weekday())
+            score = round(min(real_weight / 2.5, 1.0) * rng.uniform(0.8, 1.2), 3)
             score = min(score, 1.0)
             waiting = int(score * rng.randint(5, 40))
             free = max(int((1.05 - score) * rng.randint(5, 40)), 0)
