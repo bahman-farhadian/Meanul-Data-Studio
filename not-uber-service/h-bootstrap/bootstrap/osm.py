@@ -11,6 +11,7 @@ What runs here is just the fast part: restore that already-built graph into
 the live database, skipped entirely if it is already there.
 """
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -22,9 +23,10 @@ from bootstrap.settings import Settings
 log = get_logger(__name__)
 
 
-def _run(command: list[str]) -> None:
+def _run(command: list[str], env: dict[str, str] | None = None) -> None:
     log.info("running", extra={"command": " ".join(command[:2]) + " ..."})
-    result = subprocess.run(command, capture_output=True, text=True)
+    full_env = {**os.environ, **env} if env else None
+    result = subprocess.run(command, capture_output=True, text=True, env=full_env)
     if result.returncode != 0:
         log.error(
             "command failed",
@@ -69,16 +71,19 @@ def import_map(settings: Settings) -> None:
         )
 
     log.info("restoring the routable graph", extra={"dump": str(dump)})
-    _run([
-        "pg_restore",
-        "--host", _pg("PG_HOST", "nus-lb-a"),
-        "--port", _pg("PG_WRITE_PORT", "5432"),
-        "--dbname", _pg("PG_DATABASE", "nus"),
-        "--username", _pg("PG_USER", "postgres"),
-        "--no-owner",
-        "--no-privileges",
-        str(dump),
-    ])
+    _run(
+        [
+            "pg_restore",
+            "--host", _pg("PG_HOST", "nus-lb-a"),
+            "--port", _pg("PG_WRITE_PORT", "5432"),
+            "--dbname", _pg("PG_DATABASE", "nus"),
+            "--username", _pg("PG_USER", "postgres"),
+            "--no-owner",
+            "--no-privileges",
+            str(dump),
+        ],
+        env={"PGPASSWORD": _pg("PG_PASSWORD", "")},
+    )
 
     with postgres.read_connection() as conn:
         ways = postgres.fetch_one(conn, "SELECT count(*) AS n FROM ways")
@@ -108,6 +113,4 @@ def import_map(settings: Settings) -> None:
 
 def _pg(name: str, default: str) -> str:
     """Read one of the PostgreSQL settings, for passing to pg_restore."""
-    import os
-
     return os.environ.get(name, default)
