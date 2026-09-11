@@ -19,3 +19,20 @@ that `city_zones_source` exists in the cached dump's table of contents,
 and it does (with the wrong, 260-zone data) in a dump built before this
 fix. Delete the cached dump manually before the next `make up`:
 `rm $NUS_VOLUME_ROOT/nus-lion-data/routable-graph.dump` on the host.
+
+## Not yet done: segment_traffic history in ClickHouse
+
+Part C of the routes/OLAP plan scoped four ClickHouse downstream tables;
+three are done (`trip_stats_daily`, `od_matrix_daily`,
+`driver_utilization_hourly`). `segment_traffic` history is genuinely
+different scope from the other three: `segment_traffic` (Postgres) is
+overwritten in place by city-service, with no history and no Kafka event
+marking an update - there is nothing for clickhouse-sink to consume yet.
+
+To do this properly: city-service needs to publish an event each time it
+updates a segment's `congestion_factor` (a new Kafka topic, or folded into
+an existing one it already produces to), and clickhouse-sink needs a new
+consumer path for it, the same shape as the other four topics it already
+handles. Real, separate infrastructure work - not a schema-only addition
+like the other three tables were.
+
