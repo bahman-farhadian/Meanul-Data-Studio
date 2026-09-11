@@ -17,7 +17,7 @@
     "publication.autocreate.mode": "filtered",
 
     "snapshot.mode": "initial",
-    "table.include.list": "nus.drivers,nus.passengers,nus.trips,nus.city_zones,nus.vehicles",
+    "table.include.list": "nus.drivers,nus.passengers,nus.trips,nus.city_zones,nus.vehicles,nus.trip_ratings,nus.driver_sessions",
     "tombstones.on.delete": "true",
     "heartbeat.interval.ms": "10000",
 
