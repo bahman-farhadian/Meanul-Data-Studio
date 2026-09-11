@@ -29,3 +29,4 @@ rider_location	12	rider_id	where each rider's phone is during a trip
 trip_requests	6	trip_id	a passenger asks for a ride
 trip_lifecycle	6	trip_id	every status change of a trip, up to the final fare
 city_hotspots	3	zone_id	demand score per city zone, published by city-service
+segment_traffic_updates	3	zone_id	a real congestion-factor update, published by city-service

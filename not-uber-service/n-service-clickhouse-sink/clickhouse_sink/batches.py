@@ -41,6 +41,10 @@ COLUMNS = {
         "zone_id", "period", "demand_score", "open_requests",
         "available_drivers", "surge_multiplier", "computed_at",
     ],
+    "nus.segment_traffic_history": [
+        "zone_id", "period", "congestion_factor", "speed_samples",
+        "segments_updated", "computed_at",
+    ],
 }
 
 
