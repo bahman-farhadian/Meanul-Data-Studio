@@ -166,8 +166,15 @@ def main() -> int:
     active_ttl = config.integer("TRIP_ACTIVE_TTL_SECONDS", 7200)
     max_per_tick = config.integer("DISPATCH_MAX_REQUESTS_PER_TICK", 50)
 
-    redis = redis_client.primary()
-    wait_for_bootstrap(redis, shutdown)
+    # Three connections: matching a driver reads the requested tier's geo
+    # set (DB_DRIVER) and the pickup zone's surge score (DB_DEMAND) in the
+    # same call; live trip state is its own domain (DB_TRIP). A trip touches
+    # all three, which is the real, unavoidable shape of "match, price, and
+    # track" - not something a single db could simplify away.
+    redis_driver = redis_client.primary(redis_client.DB_DRIVER)
+    redis_demand = redis_client.primary(redis_client.DB_DEMAND)
+    redis_trip = redis_client.primary(redis_client.DB_TRIP)
+    wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     producer = AvroTopicProducer(LIFECYCLE_TOPIC)
     consumer = AvroTopicConsumer(
@@ -201,7 +208,7 @@ def main() -> int:
                     continue
 
                 trip = assign(
-                    request, redis, producer, now, period, rng, grid,
+                    request, redis_driver, redis_demand, producer, now, period, rng, grid,
                     search_radius_km, base_fare, per_km, per_minute,
                 )
                 if trip is None:
@@ -209,7 +216,7 @@ def main() -> int:
                     continue
 
                 active[trip.trip_id] = trip
-                store_live_state(redis, trip, now, active_ttl)
+                store_live_state(redis_trip, trip, now, active_ttl)
                 matched += 1
 
             if taken:
@@ -270,9 +277,9 @@ def main() -> int:
                     # The trip is over: forget it here and let the live state
                     # go, so nothing keeps reading a finished trip.
                     active.pop(trip.trip_id, None)
-                    redis.delete(redis_client.trip_active_key(trip.trip_id))
+                    redis_trip.delete(redis_client.trip_active_key(trip.trip_id))
                 else:
-                    store_live_state(redis, trip, now, active_ttl)
+                    store_live_state(redis_trip, trip, now, active_ttl)
 
                 log.debug(
                     "trip moved on",
@@ -282,7 +289,7 @@ def main() -> int:
             # --- 4. keep running trips fresh ---------------------------
             for trip in active.values():
                 if trip.status == "in_progress":
-                    store_live_state(redis, trip, now, active_ttl)
+                    store_live_state(redis_trip, trip, now, active_ttl)
 
             if taken:
                 log.info(
@@ -311,7 +318,7 @@ def main() -> int:
     return 0
 
 
-def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
+def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProducer, now: datetime,
            period: str, rng: random.Random, grid: CityGrid,
            search_radius_km: float, base_fare: float, per_km: float,
            per_minute: float) -> ActiveTrip | None:
@@ -333,7 +340,7 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
     # during a rolling deploy should still be matchable.
     vehicle_type = request.get("requested_vehicle_type") or "economy"
 
-    driver_id = find_driver(redis, pickup_lat, pickup_lon, search_radius_km, vehicle_type)
+    driver_id = find_driver(redis_driver, pickup_lat, pickup_lon, search_radius_km, vehicle_type)
     if driver_id is None:
         _no_driver(producer, request, trip_id, zone_id, now)
         return None
@@ -349,7 +356,7 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
         return None
 
     route_km, predicted_s, route_wkt = computed
-    surge = pricing.surge_for(redis, zone_id, period)
+    surge = pricing.surge_for(redis_demand, zone_id, period)
     estimate = pricing.fare(base_fare, per_km, per_minute, route_km, predicted_s, surge)
 
     trip = ActiveTrip(
@@ -387,7 +394,7 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
 
     # Taken out of its tier's free list at once, so no second trip can be
     # offered to this driver before driver-service notices.
-    redis.zrem(redis_client.geo_available_drivers_key(vehicle_type), driver_id)
+    redis_driver.zrem(redis_client.geo_available_drivers_key(vehicle_type), driver_id)
 
     announce(producer, trip, "matched", now)
     return trip
