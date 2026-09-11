@@ -15,13 +15,22 @@
 -- sitting in lion-pg's volume.
 DROP TABLE IF EXISTS city_zones_source CASCADE;
 
+-- GROUP BY locationid, not a plain SELECT: TLC's real GeoJSON genuinely
+-- has more than one feature for a handful of zone ids - confirmed directly
+-- against a live import (locationid 56 duplicated, ADD PRIMARY KEY failing
+-- on it). Real ride-hailing zones can be legitimately non-contiguous, so
+-- this merges every part into one proper multi-part boundary instead of
+-- picking one row and silently dropping the other's geometry - the same
+-- ST_Union pattern would still be correct even if a duplicate turned out
+-- to be an exact repeat rather than a second real part.
 CREATE TABLE city_zones_source AS
 SELECT
-    locationid AS zone_id,
-    zone        AS zone_name,
-    borough,
-    geom        AS boundary
-FROM taxi_zones_raw;
+    locationid               AS zone_id,
+    max(zone)                AS zone_name,
+    max(borough)             AS borough,
+    ST_Multi(ST_Union(geom)) AS boundary
+FROM taxi_zones_raw
+GROUP BY locationid;
 
 ALTER TABLE city_zones_source ADD PRIMARY KEY (zone_id);
 CREATE INDEX city_zones_source_boundary_idx ON city_zones_source USING gist (boundary);
