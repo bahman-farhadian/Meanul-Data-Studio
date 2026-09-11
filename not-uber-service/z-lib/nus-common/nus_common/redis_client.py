@@ -80,9 +80,21 @@ def hotspot_key(zone_id: str, period: str) -> str:
     return f"hotspot:{zone_id}:{period}"
 
 
-# Redis GEO set of drivers that are free right now. dispatch-service asks it
-# for the nearest driver to a pickup point.
-GEO_AVAILABLE_DRIVERS = "geo:drivers:available"
+# Kept in sync with vehicles.vehicle_type's CHECK constraint
+# (h-bootstrap/migrations/005_vehicles.sql).
+VEHICLE_TYPES = ("economy", "xl", "premium")
+
+
+def geo_available_drivers_key(vehicle_type: str) -> str:
+    """The free-driver GEO set for one vehicle tier.
+
+    One set per tier, not one flat set filtered afterwards: Redis GEO has no
+    secondary filter, and searching each tier separately is what lets
+    dispatch match "this rider wants XL" to a driver who actually has one,
+    instead of finding the nearest driver of any tier and hoping.
+    """
+    return f"geo:drivers:available:{vehicle_type}"
+
 
 # How long a hotspot score stays valid: six hours, the length of one period.
 HOTSPOT_TTL_SECONDS = 6 * 60 * 60

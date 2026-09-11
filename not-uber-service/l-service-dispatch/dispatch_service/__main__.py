@@ -68,15 +68,16 @@ UPDATE_STATUS = """
 """
 
 
-def find_driver(redis, lat: float, lon: float, radius_km: float) -> str | None:
-    """The nearest free driver, or None if there is nobody close enough.
+def find_driver(redis, lat: float, lon: float, radius_km: float, vehicle_type: str) -> str | None:
+    """The nearest free driver of the requested tier, or None if nobody is close enough.
 
-    Redis keeps the free drivers in a geo set that driver-service updates
-    every few seconds, so this is one fast lookup rather than a query over
-    the whole fleet. Nothing here touches PostgreSQL.
+    Redis keeps one geo set per vehicle tier, updated by driver-service every
+    few seconds - searching only the requested tier's set is what stops an
+    economy rider being matched to an XL car (or the reverse). Nothing here
+    touches PostgreSQL.
     """
     found = redis.geosearch(
-        redis_client.GEO_AVAILABLE_DRIVERS,
+        redis_client.geo_available_drivers_key(vehicle_type),
         longitude=lon, latitude=lat,
         radius=radius_km, unit="km",
         sort="ASC", count=1,
@@ -301,8 +302,12 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
     dropoff_lat = float(request["dropoff_lat"])
     dropoff_lon = float(request["dropoff_lon"])
     zone_id = request.get("pickup_zone_id") or grid.zone_of(pickup_lat, pickup_lon)
+    # Defaults to economy: passenger-service does not send this field yet
+    # (its own follow-up commit), and an old request already in flight
+    # during a rolling deploy should still be matchable.
+    vehicle_type = request.get("requested_vehicle_type") or "economy"
 
-    driver_id = find_driver(redis, pickup_lat, pickup_lon, search_radius_km)
+    driver_id = find_driver(redis, pickup_lat, pickup_lon, search_radius_km, vehicle_type)
     if driver_id is None:
         _no_driver(producer, request, trip_id, zone_id, now)
         return None
@@ -353,9 +358,9 @@ def assign(request: dict, redis, producer: AvroTopicProducer, now: datetime,
             )
         conn.commit()
 
-    # Taken out of the free list at once, so no second trip can be offered to
-    # this driver before driver-service notices.
-    redis.zrem(redis_client.GEO_AVAILABLE_DRIVERS, driver_id)
+    # Taken out of its tier's free list at once, so no second trip can be
+    # offered to this driver before driver-service notices.
+    redis.zrem(redis_client.geo_available_drivers_key(vehicle_type), driver_id)
 
     announce(producer, trip, "matched", now)
     return trip

@@ -80,8 +80,13 @@ def load_roster(
         lon = row.get("last_lon")
         if lat is None or lon is None:
             lat, lon = routing.random_road_point_in_zone(grid, home, rng)
+        vehicle_raw = redis.get(redis_client.vehicle_key(driver_id))
+        vehicle_type = "economy"
+        if vehicle_raw:
+            vehicle_type = json.loads(vehicle_raw).get("vehicle_type") or "economy"
         drivers[driver_id] = Driver(
-            driver_id=driver_id, lat=float(lat), lon=float(lon), home_zone_id=home
+            driver_id=driver_id, lat=float(lat), lon=float(lon), home_zone_id=home,
+            vehicle_type=vehicle_type,
         )
     return drivers
 
@@ -269,8 +274,11 @@ def main() -> int:
 
             now = utc_now()
             event_time = to_millis(now)
-            free_drivers: list[tuple] = []
-            busy_drivers: list[str] = []
+            # Grouped by vehicle_type: dispatch searches one tier's GEO set
+            # at a time (see redis_client.geo_available_drivers_key), so the
+            # publish side has to group the same way.
+            free_drivers: dict[str, list[tuple]] = {t: [] for t in redis_client.VEHICLE_TYPES}
+            busy_drivers: dict[str, list[str]] = {t: [] for t in redis_client.VEHICLE_TYPES}
 
             for driver in drivers.values():
                 # Drivers start and end shifts. Without this the fleet would
@@ -283,7 +291,7 @@ def main() -> int:
                         driver.set_status(OFFLINE)
 
                 if not driver.online:
-                    busy_drivers.append(driver.driver_id)
+                    busy_drivers[driver.vehicle_type].append(driver.driver_id)
                     continue
 
                 # A free driver that has arrived picks a new place to drift
@@ -311,20 +319,22 @@ def main() -> int:
                 sent += 1
 
                 if driver.free:
-                    free_drivers.append((driver.lon, driver.lat, driver.driver_id))
+                    free_drivers[driver.vehicle_type].append((driver.lon, driver.lat, driver.driver_id))
                 else:
-                    busy_drivers.append(driver.driver_id)
+                    busy_drivers[driver.vehicle_type].append(driver.driver_id)
 
-            # The list dispatch searches. Free drivers are added with their
-            # position; everyone else is taken out, so a busy driver can
-            # never be offered a second trip.
+            # The set dispatch searches, one per tier. Free drivers are added
+            # with their position; everyone else is taken out, so a busy
+            # driver can never be offered a second trip.
             with redis.pipeline() as pipe:
-                if free_drivers:
-                    pipe.geoadd(redis_client.GEO_AVAILABLE_DRIVERS, [
-                        item for driver in free_drivers for item in driver
-                    ])
-                if busy_drivers:
-                    pipe.zrem(redis_client.GEO_AVAILABLE_DRIVERS, *busy_drivers)
+                for vehicle_type in redis_client.VEHICLE_TYPES:
+                    key = redis_client.geo_available_drivers_key(vehicle_type)
+                    if free_drivers[vehicle_type]:
+                        pipe.geoadd(key, [
+                            item for driver in free_drivers[vehicle_type] for item in driver
+                        ])
+                    if busy_drivers[vehicle_type]:
+                        pipe.zrem(key, *busy_drivers[vehicle_type])
                 pipe.execute()
 
             if started - last_db_sync >= db_sync_seconds:
@@ -334,7 +344,7 @@ def main() -> int:
                     "tick",
                     extra={
                         "online": sum(1 for d in drivers.values() if d.online),
-                        "free": len(free_drivers),
+                        "free": sum(len(v) for v in free_drivers.values()),
                         "positions_sent": sent,
                         "database_rows_updated": updated,
                     },
