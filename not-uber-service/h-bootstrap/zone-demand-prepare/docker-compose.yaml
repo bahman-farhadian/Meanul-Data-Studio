@@ -12,6 +12,17 @@ services:
       network: ${BUILD_NETWORK:-host}
       context: ../..
       dockerfile: h-bootstrap/zone-demand-prepare/Dockerfile
+    # Same gap as build.network above, but at runtime: this is the one
+    # container in the whole project that opens its own connection to the
+    # public internet (streaming the TLC parquet directly) instead of
+    # downloading on the host first, like lion-fetch/tlc-zones-fetch do -
+    # confirmed directly, Docker's default bridge network cannot reach it
+    # on this host (ConnectionRefusedError on the CloudFront IP), the same
+    # tunnel-does-not-forward-container-traffic gap lion-fetch/
+    # tlc-zones-fetch were written to route around by running on the host
+    # instead. Override to the default bridge network on a host without
+    # that gap.
+    network_mode: ${ZONE_DEMAND_PREPARE_NETWORK:-host}
     environment:
       TLC_TRIP_DATA_MONTH: ${TLC_TRIP_DATA_MONTH:-2025-01}
       OUTPUT_DIR: /data
