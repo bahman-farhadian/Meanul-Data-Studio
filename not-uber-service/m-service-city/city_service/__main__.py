@@ -32,6 +32,7 @@ from city_service.counters import ZoneCounter, surge_from_score
 log = get_logger(__name__)
 
 HOTSPOT_TOPIC = "city_hotspots"
+TRAFFIC_TOPIC = "segment_traffic_updates"
 WATCHED_TOPICS = ["driver_location", "rider_location", "trip_lifecycle"]
 
 # A trip in one of these statuses is a rider still waiting for a car.
@@ -77,6 +78,7 @@ def main() -> int:
     wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     producer = AvroTopicProducer(HOTSPOT_TOPIC)
+    traffic_producer = AvroTopicProducer(TRAFFIC_TOPIC)
     consumer = AvroTopicConsumer(
         topics=WATCHED_TOPICS,
         group_id=config.optional("KAFKA_GROUP_ID", "city-service"),
@@ -126,11 +128,12 @@ def main() -> int:
                 last_score = now_monotonic
 
             if now_monotonic - last_traffic >= traffic_minutes * 60:
-                _update_traffic(zones)
+                _update_traffic(zones, traffic_producer)
                 last_traffic = now_monotonic
 
     finally:
         producer.flush()
+        traffic_producer.flush()
         consumer.close()
         log.info("stopped", extra={"scores_published": published})
 
@@ -217,16 +220,35 @@ def _publish_scores(
     return len(grid.all_zone_ids())
 
 
-def _update_traffic(zones: dict[str, ZoneCounter]) -> None:
+def _update_traffic(zones: dict[str, ZoneCounter], traffic_producer: AvroTopicProducer) -> None:
     """Push what cars are really doing back into the routing costs.
 
     This is the slowest thing the service does: it touches every road segment
     inside a zone, which is why it runs every few minutes rather than every
     tick. Zones with no speed reports are skipped, so a quiet zone keeps its
     existing factor instead of being handed a guess.
+
+    segment_traffic (Postgres) only ever holds the current factor - this is
+    the one place that also announces the update on Kafka, which is what
+    gives clickhouse-sink something to build a real history from. One event
+    per zone/period, not per road segment: that is the real granularity this
+    update already works at (one UPDATE_TRAFFIC statement touches every
+    segment intersecting the zone with the same factor), so the event
+    matches what actually happened rather than inventing a finer grain the
+    source data does not have.
+
+    The event carries the raw reading (counter.congestion_factor()), not
+    the smoothed value UPDATE_TRAFFIC actually stores - deliberately: the
+    smoothed result can differ per segment (each one's own prior factor
+    smooths differently even against the same new reading), so there is no
+    single "the" smoothed value for a zone to publish. The raw reading is
+    the real, comparable signal - what traffic actually looked like in
+    this zone at this time - and is already the number every downstream
+    consumer of this event would want to chart.
     """
     period = day_period(utc_now())
     updated = 0
+    now = utc_now()
 
     with postgres.write_connection() as conn:
         for zone_id, counter in zones.items():
@@ -244,7 +266,19 @@ def _update_traffic(zones: dict[str, ZoneCounter]) -> None:
                         "smoothing": SMOOTHING,
                     },
                 )
-                updated += cur.rowcount
+                segments_updated = cur.rowcount
+                updated += segments_updated
+            traffic_producer.send(
+                key=zone_id,
+                value={
+                    "zone_id": zone_id,
+                    "period": period,
+                    "congestion_factor": factor,
+                    "speed_samples": counter.speed_samples,
+                    "segments_updated": segments_updated,
+                    "computed_at": to_millis(now),
+                },
+            )
             counter.reset_speeds()
         conn.commit()
 

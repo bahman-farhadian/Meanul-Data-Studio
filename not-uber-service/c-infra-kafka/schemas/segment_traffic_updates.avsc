@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "SegmentTrafficUpdate",
+  "namespace": "nus.events",
+  "doc": "One congestion-factor update, as computed by city-service from real speed reports and applied to every road segment in one zone for one part of the day. This is the event trail behind segment_traffic (Postgres), which only ever holds the current factor - this is what makes a real history of it possible.",
+  "fields": [
+    {"name": "zone_id", "type": "string", "doc": "The city zone every updated segment sits inside."},
+    {"name": "period", "type": {"type": "enum", "name": "DayPeriod", "symbols": ["night", "morning", "afternoon", "evening"]}, "doc": "Which six-hour part of the day this factor applies to."},
+    {"name": "congestion_factor", "type": "double", "doc": "The smoothed factor just applied - 1.0 is free-flow, higher is more congested. The same number every intersecting segment's cost was multiplied by."},
+    {"name": "speed_samples", "type": "int", "doc": "Real position reports this reading was built from. More samples means a more trustworthy reading."},
+    {"name": "segments_updated", "type": "int", "doc": "How many road segments in this zone actually got this factor."},
+    {"name": "computed_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When city-service applied this update. Always UTC."}
+  ]
+}

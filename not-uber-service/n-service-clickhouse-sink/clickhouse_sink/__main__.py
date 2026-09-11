@@ -38,6 +38,7 @@ TOPICS = [
     "trip_requests",
     "trip_lifecycle",
     "city_hotspots",
+    "segment_traffic_updates",
 ]
 
 
@@ -152,6 +153,14 @@ def _collect(batches: Batches, topic: str, value: dict,
             value["zone_id"], value["period"], value["demand_score"],
             value["open_requests"], value["available_drivers"],
             value["surge_multiplier"], _moment(value["computed_at"]),
+        ])
+        return
+
+    if topic == "segment_traffic_updates":
+        batches.add("nus.segment_traffic_history", [
+            value["zone_id"], value["period"], value["congestion_factor"],
+            value["speed_samples"], value["segments_updated"],
+            _moment(value["computed_at"]),
         ])
         return
 
