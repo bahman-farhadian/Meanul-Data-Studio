@@ -43,12 +43,19 @@ DROP TABLE IF EXISTS city_zones_source CASCADE;
 -- the table before the very next INSERT could see it), not inside one
 -- transaction block. A plain TEMP table is cleaned up when the session
 -- ends regardless, which is the whole rest of this same psql run.
-CREATE TEMP TABLE zone_id_extras (base_id int PRIMARY KEY, extra_ids int[]);
-INSERT INTO zone_id_extras VALUES (56, ARRAY[57]), (103, ARRAY[104, 105]);
+--
+-- text, not int: ogr2ogr's PostgreSQL driver reads locationid as a string
+-- (confirmed directly against the real TLC GeoJSON export - its own
+-- locationid property is JSON string "1", not a number), so
+-- taxi_zones_raw.locationid comes in as character varying. Typing this
+-- table to match is what lets every comparison below stay a plain
+-- equality instead of a cast sprinkled at each use site.
+CREATE TEMP TABLE zone_id_extras (base_id text PRIMARY KEY, extra_ids text[]);
+INSERT INTO zone_id_extras VALUES ('56', ARRAY['57']), ('103', ARRAY['104', '105']);
 
 DO $$
 DECLARE
-    unexpected int;
+    unexpected text;
 BEGIN
     SELECT locationid INTO unexpected
     FROM taxi_zones_raw
