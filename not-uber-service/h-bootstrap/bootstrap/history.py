@@ -90,6 +90,7 @@ class GeneratedWeek:
     """Everything one generated day produced, ready to be stored."""
 
     trip_rows: list[dict] = field(default_factory=list)
+    trip_ratings: list[dict] = field(default_factory=list)
     trip_events: list[list] = field(default_factory=list)
     driver_positions: list[list] = field(default_factory=list)
     rider_positions: list[list] = field(default_factory=list)
@@ -129,6 +130,12 @@ def _zone_pull(zone_ids: list[str], rng: random.Random) -> dict[str, float]:
     thing as a hotspot.
     """
     return {zid: rng.triangular(0.4, 2.5, 0.9) for zid in zone_ids}
+
+
+def _star(rng: random.Random) -> int:
+    """A 1-5 rating. Most trips go fine, so most ratings cluster near the
+    top - the same triangular shape people.py uses for a starting rating."""
+    return round(rng.triangular(3, 5, 4.7))
 
 
 def _surge_from_score(score: float) -> float:
@@ -363,6 +370,12 @@ def _finish_trip(
         _event_row(spec.trip_id, spec.rider, spec.driver, "completed", spec.pickup_zone,
                    route_km, predicted_s, actual_s, surge, estimate, final, ended_at)
     )
+    # Same bidirectional pattern dispatch-service uses for live trips
+    # (l-service-dispatch/dispatch_service/ratings.py) - a completed trip
+    # that never got rated would make drivers.rating/passengers.rating a lie
+    # for every historically-seeded driver and rider.
+    week.trip_ratings.append({"trip_id": spec.trip_id, "rater_type": "rider", "rating": _star(rng)})
+    week.trip_ratings.append({"trip_id": spec.trip_id, "rater_type": "driver", "rating": _star(rng)})
 
     # A few positions along the way. When a real route exists they follow its
     # streets; otherwise (the map-unavailable fallback) they fall back to a
@@ -499,6 +512,57 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             conn.commit()
             inserted += len(batch)
             log.info("trips written", extra={"done": inserted, "of": len(rows)})
+    return inserted
+
+
+def store_trip_ratings(rows: list[dict], batch_size: int = 1000) -> int:
+    """Write the historical week's ratings, then refresh every average once.
+
+    The averages are recomputed set-wise, one UPDATE for all drivers and one
+    for all passengers, after every row is in - not one UPDATE per trip the
+    way dispatch-service's live path does it. Live trips complete a handful
+    at a time; a week of history completes hundreds of thousands at once, so
+    a per-trip round trip here would turn a few seconds of writing into the
+    slowest part of the whole run.
+    """
+    inserted = 0
+    sql = """
+        INSERT INTO trip_ratings (trip_id, rater_type, rating)
+        VALUES (%(trip_id)s, %(rater_type)s, %(rating)s)
+        ON CONFLICT (trip_id, rater_type) DO NOTHING
+    """
+    with postgres.write_connection() as conn:
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start:start + batch_size]
+            with conn.cursor() as cur:
+                cur.executemany(sql, batch)
+            conn.commit()
+            inserted += len(batch)
+
+        with conn.cursor() as cur:
+            cur.execute("""
+                UPDATE drivers d SET rating = a.avg_rating
+                  FROM (
+                      SELECT t.driver_id, round(avg(tr.rating)::numeric, 1) AS avg_rating
+                        FROM trip_ratings tr JOIN trips t ON t.trip_id = tr.trip_id
+                       WHERE tr.rater_type = 'rider' AND t.driver_id IS NOT NULL
+                       GROUP BY t.driver_id
+                  ) a
+                 WHERE a.driver_id = d.driver_id
+            """)
+            cur.execute("""
+                UPDATE passengers p SET rating = a.avg_rating
+                  FROM (
+                      SELECT t.rider_id, round(avg(tr.rating)::numeric, 1) AS avg_rating
+                        FROM trip_ratings tr JOIN trips t ON t.trip_id = tr.trip_id
+                       WHERE tr.rater_type = 'driver'
+                       GROUP BY t.rider_id
+                  ) a
+                 WHERE a.rider_id = p.passenger_id
+            """)
+        conn.commit()
+
+    log.info("trip ratings written", extra={"ratings": inserted})
     return inserted
 
 
