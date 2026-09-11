@@ -33,9 +33,9 @@ services:
     image: nus/city-service:${NUS_VERSION:-0.1.0}
     container_name: city-service
     restart: unless-stopped
-    cpus: ${CITY_SERVICE_CPUS:-0.15}
-    mem_limit: ${CITY_SERVICE_MEM:-768m}
-    memswap_limit: ${CITY_SERVICE_MEM:-768m}
+    cpus: ${CITY_SERVICE_CPUS:-1}
+    mem_limit: ${CITY_SERVICE_MEM:-1024m}
+    memswap_limit: ${CITY_SERVICE_MEM:-1024m}
     depends_on:
       kafka-1:
         condition: service_healthy

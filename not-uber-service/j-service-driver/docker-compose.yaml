@@ -32,9 +32,9 @@ services:
     image: nus/driver-service:${NUS_VERSION:-0.1.0}
     container_name: driver-service
     restart: unless-stopped
-    cpus: ${DRIVER_SERVICE_CPUS:-0.15}
-    mem_limit: ${DRIVER_SERVICE_MEM:-768m}
-    memswap_limit: ${DRIVER_SERVICE_MEM:-768m}
+    cpus: ${DRIVER_SERVICE_CPUS:-2}
+    mem_limit: ${DRIVER_SERVICE_MEM:-2048m}
+    memswap_limit: ${DRIVER_SERVICE_MEM:-2048m}
     depends_on:
       kafka-1:
         condition: service_healthy
