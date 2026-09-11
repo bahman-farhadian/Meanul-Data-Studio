@@ -200,6 +200,39 @@ def sync_to_database(drivers: dict[str, Driver]) -> int:
     return len(changed)
 
 
+def record_shift_changes(starts: list[tuple[str, str]], ends: list[str]) -> None:
+    """Open a session for every driver going online, close one for every
+    driver going offline - this tick's shift changes only."""
+    with postgres.write_connection() as conn:
+        with conn.cursor() as cur:
+            if starts:
+                # ON CONFLICT, not a bare INSERT: driver_sessions_one_open_idx
+                # is a real constraint (see the migration), and a duplicate
+                # here would be a bug worth investigating, not a reason to
+                # crash the whole tick and stop reporting every other
+                # driver's position too.
+                cur.executemany(
+                    "INSERT INTO driver_sessions (driver_id, started_at, zone_id) "
+                    "VALUES (%s, now(), %s) "
+                    "ON CONFLICT (driver_id) WHERE ended_at IS NULL DO NOTHING",
+                    starts,
+                )
+            if ends:
+                # The most recent open session for this driver - there
+                # should only ever be one, since a driver can't go offline
+                # twice without going online in between.
+                cur.executemany(
+                    "UPDATE driver_sessions SET ended_at = now() "
+                    "WHERE session_id = ("
+                    "    SELECT session_id FROM driver_sessions "
+                    "     WHERE driver_id = %s AND ended_at IS NULL "
+                    "     ORDER BY started_at DESC LIMIT 1"
+                    ")",
+                    [(driver_id,) for driver_id in ends],
+                )
+        conn.commit()
+
+
 def main() -> int:
     setup_logging("driver-service")
     shutdown = Shutdown()
@@ -279,6 +312,8 @@ def main() -> int:
             # publish side has to group the same way.
             free_drivers: dict[str, list[tuple]] = {t: [] for t in redis_client.VEHICLE_TYPES}
             busy_drivers: dict[str, list[str]] = {t: [] for t in redis_client.VEHICLE_TYPES}
+            session_starts: list[tuple[str, str]] = []
+            session_ends: list[str] = []
 
             for driver in drivers.values():
                 # Drivers start and end shifts. Without this the fleet would
@@ -287,8 +322,10 @@ def main() -> int:
                     if driver.status == OFFLINE:
                         driver.set_status(IDLE)
                         driver.head_towards(*routing.random_road_point_in_zone(grid, driver.home_zone_id, rng))
+                        session_starts.append((driver.driver_id, grid.zone_of(driver.lat, driver.lon)))
                     elif driver.status == IDLE:
                         driver.set_status(OFFLINE)
+                        session_ends.append(driver.driver_id)
 
                 if not driver.online:
                     busy_drivers[driver.vehicle_type].append(driver.driver_id)
@@ -336,6 +373,14 @@ def main() -> int:
                     if busy_drivers[vehicle_type]:
                         pipe.zrem(key, *busy_drivers[vehicle_type])
                 pipe.execute()
+
+            if session_starts or session_ends:
+                # Written as soon as it happens, not batched onto
+                # db_sync_seconds's timer - a shift change is a discrete
+                # event, worth its own row the moment it occurs, the same
+                # way dispatch-service writes a trip status change at once
+                # rather than on a delay.
+                record_shift_changes(session_starts, session_ends)
 
             if started - last_db_sync >= db_sync_seconds:
                 updated = sync_to_database(drivers)
