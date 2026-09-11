@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS vehicles (
 );
 
 CREATE INDEX IF NOT EXISTS vehicles_driver_idx ON vehicles (driver_id);
+CREATE INDEX IF NOT EXISTS vehicles_type_idx   ON vehicles (vehicle_type);
 
 -- Backfill from the jsonb blob every existing driver already has. One
 -- vehicle per driver today - this project has no notion yet of a driver
