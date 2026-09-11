@@ -31,6 +31,7 @@ class Driver:
     lat: float
     lon: float
     home_zone_id: str
+    vehicle_type: str = "economy"
     status: str = OFFLINE
     trip_id: str | None = None
     # Where this driver is currently heading, if anywhere.
