@@ -64,7 +64,9 @@ UPDATE_STATUS = """
                               THEN now() ELSE ended_at END,
            actual_duration_s = COALESCE(%(actual_duration_s)s, actual_duration_s),
            fare_final = COALESCE(%(fare_final)s, fare_final),
-           cancellation_reason = COALESCE(%(cancellation_reason)s, cancellation_reason)
+           cancellation_reason = COALESCE(%(cancellation_reason)s, cancellation_reason),
+           driver_payout = COALESCE(%(driver_payout)s, driver_payout),
+           payment_method = COALESCE(%(payment_method)s, payment_method)
      WHERE trip_id = %(trip_id)s
 """
 
@@ -157,6 +159,7 @@ def main() -> int:
     base_fare = config.number("FARE_BASE", 3.0)
     per_km = config.number("FARE_PER_KM", 1.75)
     per_minute = config.number("FARE_PER_MINUTE", 0.45)
+    commission_pct = config.number("PLATFORM_COMMISSION_PCT", 0.20)
     cancel_by_driver = config.number("CANCEL_BY_DRIVER_CHANCE", 0.06)
     cancel_by_passenger = config.number("CANCEL_BY_PASSENGER_CHANCE", 0.07)
     active_ttl = config.integer("TRIP_ACTIVE_TTL_SECONDS", 7200)
@@ -232,6 +235,8 @@ def main() -> int:
                 actual_duration_s = None
                 fare_final = None
                 cancellation_reason = None
+                driver_payout = None
+                payment_method = None
 
                 if status == "in_progress":
                     trip.started_at = now
@@ -244,6 +249,8 @@ def main() -> int:
                         base_fare, per_km, per_minute,
                         trip.route_km, actual_duration_s, trip.surge_multiplier,
                     )
+                    driver_payout = round(fare_final * (1 - commission_pct), 2)
+                    payment_method = rng.choice(["card", "wallet", "cash"])
                     completed += 1
                 elif status == "cancelled_by_driver":
                     cancellation_reason = rng.choice(DRIVER_CANCEL_REASONS)
@@ -251,7 +258,10 @@ def main() -> int:
                     cancellation_reason = rng.choice(PASSENGER_CANCEL_REASONS)
 
                 announce(producer, trip, status, now, actual_duration_s, fare_final)
-                _write_status(trip, status, actual_duration_s, fare_final, cancellation_reason)
+                _write_status(
+                    trip, status, actual_duration_s, fare_final, cancellation_reason,
+                    driver_payout, payment_method,
+                )
                 if status == "completed":
                     ratings.rate_and_maintain(trip.trip_id, trip.rider_id, trip.driver_id, rng)
 
@@ -410,13 +420,16 @@ def _no_driver(producer: AvroTopicProducer, request: dict, trip_id: str,
                     "actual_duration_s": None,
                     "fare_final": None,
                     "cancellation_reason": None,
+                    "driver_payout": None,
+                    "payment_method": None,
                 },
             )
         conn.commit()
 
 
 def _write_status(trip: ActiveTrip, status: str, actual_duration_s: int | None,
-                  fare_final: float | None, cancellation_reason: str | None = None) -> None:
+                  fare_final: float | None, cancellation_reason: str | None = None,
+                  driver_payout: float | None = None, payment_method: str | None = None) -> None:
     """Record a status change in the database."""
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
@@ -428,6 +441,8 @@ def _write_status(trip: ActiveTrip, status: str, actual_duration_s: int | None,
                     "actual_duration_s": actual_duration_s,
                     "fare_final": fare_final,
                     "cancellation_reason": cancellation_reason,
+                    "driver_payout": driver_payout,
+                    "payment_method": payment_method,
                 },
             )
         conn.commit()

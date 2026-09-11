@@ -362,6 +362,8 @@ def _finish_trip(
          + settings.per_minute * actual_s / 60) * surge,
         2,
     )
+    payout = round(final * (1 - settings.platform_commission_pct), 2)
+    payment_method = rng.choice(["card", "wallet", "cash"])
 
     week.trip_rows.append(
         _trip_row(
@@ -369,6 +371,7 @@ def _finish_trip(
             pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
             pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
             requested_vehicle_type=spec.requested_vehicle_type,
+            driver_payout=payout, payment_method=payment_method,
             route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=actual_s,
             surge=surge, estimate=estimate, final=final,
             requested_at=spec.requested_at, ended_at=ended_at, started_at=started_at,
@@ -453,6 +456,8 @@ def _trip_row(**kwargs) -> dict:
         "dropoff_zone_id": kwargs["dropoff_zone"],
         "requested_vehicle_type": kwargs["requested_vehicle_type"],
         "cancellation_reason": kwargs.get("cancellation_reason"),
+        "driver_payout": kwargs.get("driver_payout"),
+        "payment_method": kwargs.get("payment_method"),
         "route_km": kwargs["route_km"],
         "route_wkt": kwargs.get("route_wkt"),
         "predicted_duration_s": kwargs["predicted_s"],
@@ -493,6 +498,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             trip_id, rider_id, driver_id, status,
             pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
             requested_vehicle_type, cancellation_reason,
+            driver_payout, payment_method,
             route, route_km, predicted_duration_s, actual_duration_s,
             surge_multiplier, fare_estimate, fare_final,
             requested_at, started_at, ended_at
@@ -503,6 +509,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
             %(pickup_zone_id)s, %(dropoff_zone_id)s,
             %(requested_vehicle_type)s, %(cancellation_reason)s,
+            %(driver_payout)s, %(payment_method)s,
             -- NULL for no_driver_found, and for the straight-line fallback
             -- when the map was not available - ST_GeomFromText(NULL, ...)
             -- is itself NULL, no CASE needed.
