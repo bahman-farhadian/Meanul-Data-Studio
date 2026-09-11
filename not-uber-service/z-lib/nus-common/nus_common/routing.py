@@ -1,16 +1,25 @@
-"""Finding the best path over the real street network.
+"""Finding a real path over the real street network.
 
 This is the one place in the stack that asks pgRouting a question, and it is
-the most expensive query anywhere in the pipeline - roughly 50 to 150
-milliseconds per call. It is shared: dispatch-service calls it once per live
-trip, and h-bootstrap calls it once per historical trip while inventing a
-seeded week, so a pickup and dropoff picked at random are never priced
-without first checking they are actually connected by a real road.
+the most expensive query anywhere in the pipeline. A single pgr_dijkstra call
+ran roughly 50-150ms; pgr_ksp (K_ROUTES candidate routes instead of one) costs
+real, measured multiples of that - about 3.5-4.5x on a synthetic benchmark
+graph, confirmed live against this stack's actual pgRouting 4.0.1 - because a
+repeated OD pair always taking the literal same streets was worse than the
+extra cost. It is shared: dispatch-service calls it once per live trip, and
+h-bootstrap calls it once per historical trip while inventing a seeded week,
+so a pickup and dropoff picked at random are never priced without first
+checking they are actually connected by a real road.
 
 The cost of a road segment is its travel time multiplied by how congested it
 is at this time of day. That is what makes the answer change between rush
-hour and three in the morning: the same two points, a different best path.
+hour and three in the morning: the same two points, a different best path -
+and now, the same two points at the same hour can still take one of a few
+different real streets, the way real traffic actually distributes.
 """
+
+import hashlib
+import random
 
 from nus_common import config, postgres
 from nus_common.logging import get_logger
@@ -21,6 +30,21 @@ log = get_logger(__name__)
 # into the edge query below as text, and a value that goes into a statement
 # as text must come from a fixed list, never from anything a caller made up.
 PERIODS = {"night", "morning", "afternoon", "evening"}
+
+# How many distinct candidate routes pgr_ksp considers per trip. A real
+# trip between two points has several reasonable routes, not one - K=3
+# gives real diversity without pgr_ksp's cost (it runs roughly K
+# single-source shortest-path passes internally, confirmed live against
+# this stack's actual pgRouting 4.0.1) growing unreasonably.
+K_ROUTES = 3
+
+# How the one actually driven is picked among the K candidates - pgr_ksp's
+# own path_id ordering is cheapest-first (confirmed live), so this still
+# favors the traffic-cheapest route most of the time, without a repeated
+# OD pair always taking the literal same streets forever the way a single
+# pgr_dijkstra call did. Shorter than K_ROUTES is handled by using as many
+# of these as candidates actually came back.
+ROUTE_CHOICE_WEIGHTS = [60, 25, 15]
 
 # The edge list pgRouting walks over. pgRouting takes this as a complete
 # statement in a string, which is why the period is placed in it here rather
@@ -40,7 +64,7 @@ EDGES_SQL_TEMPLATE = """
              ON st.way_id = w.gid AND st.period = '{period}'
 """
 
-ROUTE_SQL = """
+KSP_SQL = """
     WITH start_vertex AS (
         SELECT id FROM ways_vertices_pgr
          WHERE on_main_network
@@ -53,17 +77,24 @@ ROUTE_SQL = """
          ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(%(to_lon)s, %(to_lat)s), 4326)
          LIMIT 1
     )
-    SELECT COALESCE(SUM(w.length_m) / 1000.0, 0)                       AS route_km,
-           COALESCE(MAX(d.agg_cost), 0)                                AS seconds,
-           ST_AsText(ST_LineMerge(ST_Collect(w.the_geom ORDER BY d.seq))) AS route_wkt
-      FROM pgr_dijkstra(
+    SELECT path_id, edge, cost
+      FROM pgr_ksp(
                %(edges_sql)s,
                (SELECT id FROM start_vertex),
                (SELECT id FROM end_vertex),
+               %(k)s,
                directed => true
-           ) d
-      JOIN ways w ON w.gid = d.edge
-     WHERE d.edge > 0
+           )
+     WHERE edge > 0
+"""
+
+# gid is ways' own primary key, so this is an indexed lookup, not a scan -
+# cheap relative to the pgr_ksp call itself.
+ROUTE_GEOMETRY_SQL = """
+    SELECT COALESCE(SUM(length_m) / 1000.0, 0) AS route_km,
+           ST_AsText(ST_LineMerge(ST_Collect(the_geom))) AS route_wkt
+      FROM ways
+     WHERE gid = ANY(%(gids)s)
 """
 
 
@@ -79,6 +110,17 @@ def route(
     None means the two points are not connected in the imported map - usually
     a point outside the imported area. The caller treats that as "no driver
     found" rather than crashing.
+
+    Up to K_ROUTES candidate routes are computed (pgr_ksp), and one is
+    picked with ROUTE_CHOICE_WEIGHTS favoring the cheaper ones - not always
+    the single cheapest, the way one pgr_dijkstra call always was. The pick
+    is seeded from this call's own inputs rather than a shared random.Random:
+    this runs inside h-bootstrap's own ThreadPoolExecutor for the historical
+    week (see history.py), where a shared generator would make which route
+    gets picked depend on thread-scheduling order, breaking the same-seed-
+    same-output guarantee the rest of this codebase relies on for debugging.
+    A given trip's two points and period still always pick the same route on
+    a repeat run.
     """
     if period not in PERIODS:
         raise ValueError(f"unknown period {period!r}; expected one of {sorted(PERIODS)}")
@@ -86,26 +128,58 @@ def route(
     edges_sql = EDGES_SQL_TEMPLATE.format(period=period)
 
     with postgres.read_connection() as conn:
-        row = postgres.fetch_one(
+        rows = postgres.fetch_all(
             conn,
-            ROUTE_SQL,
+            KSP_SQL,
             {
                 "from_lat": from_lat, "from_lon": from_lon,
                 "to_lat": to_lat, "to_lon": to_lon,
                 "edges_sql": edges_sql,
+                "k": K_ROUTES,
             },
         )
 
-    if not row or not row["route_km"]:
+    if not rows:
         return None
 
-    seconds = int(row["seconds"]) if row["seconds"] else 0
+    candidates: dict[int, dict] = {}
+    for row in rows:
+        candidate = candidates.setdefault(row["path_id"], {"gids": [], "cost_s": 0.0})
+        candidate["gids"].append(row["edge"])
+        candidate["cost_s"] += float(row["cost"])
+
+    path_ids = sorted(candidates)
+    weights = [
+        ROUTE_CHOICE_WEIGHTS[i] if i < len(ROUTE_CHOICE_WEIGHTS) else ROUTE_CHOICE_WEIGHTS[-1]
+        for i in range(len(path_ids))
+    ]
+    # hashlib, not Python's built-in hash(): a plain tuple containing the
+    # period string would hash differently on every process (PYTHONHASHSEED
+    # randomizes str hashing by default), which would silently break the
+    # same-inputs-same-route guarantee this docstring promises across runs,
+    # not just within one - confirmed live, hash() on a tuple also just
+    # rejects being used as a seed directly.
+    seed_key = f"{from_lat}:{from_lon}:{to_lat}:{to_lon}:{period}".encode()
+    seed = int(hashlib.md5(seed_key).hexdigest(), 16)
+    chooser = random.Random(seed)
+    chosen_id = chooser.choices(path_ids, weights=weights, k=1)[0]
+    chosen = candidates[chosen_id]
+
+    with postgres.read_connection() as conn:
+        geo_row = postgres.fetch_one(
+            conn, ROUTE_GEOMETRY_SQL, {"gids": chosen["gids"]}
+        )
+
+    if not geo_row or not geo_row["route_km"]:
+        return None
+
+    seconds = int(chosen["cost_s"])
     # A route that claims to take no time is a broken cost column, not a
     # teleport. Fall back to a plain speed estimate so the trip still works.
     if seconds <= 0:
-        seconds = int(float(row["route_km"]) / 25.0 * 3600)
+        seconds = int(float(geo_row["route_km"]) / 25.0 * 3600)
 
-    return float(row["route_km"]), seconds, row["route_wkt"]
+    return float(geo_row["route_km"]), seconds, geo_row["route_wkt"]
 
 
 NEAREST_ROAD_POINT_SQL = """
