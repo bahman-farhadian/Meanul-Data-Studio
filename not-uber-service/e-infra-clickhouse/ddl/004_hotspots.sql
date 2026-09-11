@@ -4,12 +4,12 @@
 
 CREATE TABLE IF NOT EXISTS nus.hotspot_history_local ON CLUSTER nus_cluster
 (
-    -- LowCardinality(FixedString)/Enum8 - same reasoning as 002_positions.sql
-    -- and 003_trips.sql: zone_id is a fixed-width dictionary of a
-    -- config-sized set; period is a closed set already enforced by the
-    -- Avro schema (DayPeriod) and by Postgres's own segment_traffic
-    -- CHECK constraint.
-    zone_id            LowCardinality(FixedString(7)),
+    -- LowCardinality(String)/Enum8 - same reasoning as 002_positions.sql
+    -- and 003_trips.sql: zone_id is TLC's own variable-width LocationID,
+    -- not a fixed-width format this codebase mints; period is a closed set
+    -- already enforced by the Avro schema (DayPeriod) and by Postgres's
+    -- own segment_traffic CHECK constraint.
+    zone_id            LowCardinality(String),
     period             Enum8('night' = 1, 'morning' = 2, 'afternoon' = 3, 'evening' = 4),
     demand_score       Float64,
     open_requests      UInt32,

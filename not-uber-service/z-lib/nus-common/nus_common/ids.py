@@ -10,7 +10,12 @@ one-line edit.
 
     driver_id / passenger_id   drv-000001 / psg-000001   10 characters
     trip_id                    trp-20250824-a1b2c3d4     21 characters
-    zone_id (nus_common.citygrid.CityGrid.zone_id)        z-00-00        7 characters
+
+zone_id is deliberately not on this list: it is NYC TLC's own LocationID
+("1".."263"), not an id this codebase mints, so it is not fixed-width and
+is stored as plain text/String throughout (Postgres text, ClickHouse
+LowCardinality(String)) rather than following the FixedString convention
+above.
 """
 
 import random

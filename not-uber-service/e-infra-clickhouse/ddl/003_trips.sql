@@ -7,11 +7,12 @@
 
 CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
 (
-    -- FixedString, Enum8, LowCardinality(FixedString) - same reasoning as
-    -- driver_positions/rider_positions in 002_positions.sql: every one of
-    -- these formats is fixed-width by construction, and status is a
-    -- closed set already enforced by the Avro schema (TripStatus) and by
-    -- Postgres's own CHECK constraint.
+    -- FixedString/Enum8 for the ids and status this codebase mints itself
+    -- (nus_common/ids.py) and constrains itself (Avro's TripStatus, and
+    -- Postgres's own CHECK) - see driver_positions/rider_positions in
+    -- 002_positions.sql. pickup_zone_id is LowCardinality(String), not
+    -- FixedString: it's TLC's own variable-width LocationID, not a format
+    -- this codebase controls.
     trip_id                    FixedString(21),
     rider_id                   FixedString(10),
     driver_id                  Nullable(FixedString(10)),
@@ -21,7 +22,7 @@ CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
                                    'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8,
                                    'no_driver_found' = 9
                                ),
-    pickup_zone_id             LowCardinality(FixedString(7)),
+    pickup_zone_id             LowCardinality(String),
 
     route_km                   Nullable(Float64),
     predicted_duration_s       Nullable(UInt32),

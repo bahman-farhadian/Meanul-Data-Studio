@@ -13,7 +13,8 @@
 CREATE TABLE IF NOT EXISTS nus.trip_stats_hourly_local ON CLUSTER nus_cluster
 (
     hour             DateTime('UTC'),
-    pickup_zone_id   LowCardinality(FixedString(7)),
+    -- LowCardinality(String), not FixedString - see 002_positions.sql.
+    pickup_zone_id   LowCardinality(String),
     completed_trips  UInt64,
     revenue          Float64,
     -- Surge added up, not averaged: an average of averages would be wrong.
