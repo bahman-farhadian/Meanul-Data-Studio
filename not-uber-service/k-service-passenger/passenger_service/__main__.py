@@ -18,7 +18,7 @@ import random
 import sys
 import time
 
-from nus_common import config, postgres, redis_client, routing
+from nus_common import config, demand_calibration, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
 from nus_common.geo import to_millis, utc_now
 from nus_common.ids import new_trip_id
@@ -26,7 +26,7 @@ from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
 
-from passenger_service.demand import requests_this_tick, zone_popularity
+from passenger_service.demand import requests_this_tick
 
 log = get_logger(__name__)
 
@@ -113,7 +113,6 @@ def main() -> int:
     # Not grid.all_zone_ids(): a zone whose own centroid cannot reach a real
     # road would keep re-hitting the unsnapped-point fallback forever.
     zone_ids = routing.servicable_zone_ids()
-    zone_weights = [zone_popularity(zone_id) for zone_id in zone_ids]
 
     request_producer = AvroTopicProducer(REQUEST_TOPIC)
     position_producer = AvroTopicProducer(POSITION_TOPIC)
@@ -135,6 +134,16 @@ def main() -> int:
             now = utc_now()
             event_time = to_millis(now)
 
+            # Real TLC-trip-record weight for the current wall-clock hour
+            # and day of week (nus_common.demand_calibration) - the same
+            # calibration bootstrap's historical week reads, so live
+            # traffic continues the same real pattern rather than
+            # contradicting it. Computed once per tick, not once per
+            # request within it - the hour does not change mid-tick.
+            zone_weights = [
+                demand_calibration.zone_weight(zid, now.hour, now.weekday()) for zid in zone_ids
+            ]
+
             # --- 1. new ride requests ----------------------------------
             count = requests_this_tick(base_per_minute, now.hour, tick_seconds, rng)
             new_trips = []
@@ -142,8 +151,15 @@ def main() -> int:
                 rider_id = rng.choice(rider_ids)
                 pickup_zone = rng.choices(zone_ids, weights=zone_weights, k=1)[0]
                 # Not independent of the pickup - most real trips are short
-                # hops, with a long tail of longer ones.
-                dropoff_weights = grid.distance_decay_weights(pickup_zone, zone_ids, zone_weights)
+                # hops, with a long tail of longer ones. Real OD shares from
+                # the same calibration are preferred where they exist;
+                # distance decay is the fallback for a pair the sample
+                # month never recorded, not a replacement for it.
+                decay_weights = grid.distance_decay_weights(pickup_zone, zone_ids, zone_weights)
+                dropoff_weights = [
+                    demand_calibration.od_share(pickup_zone, zid) or decay_weights[i]
+                    for i, zid in enumerate(zone_ids)
+                ]
                 dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
                 pickup_lat, pickup_lon = routing.random_road_point_in_zone(grid, pickup_zone, rng)
                 dropoff_lat, dropoff_lon = routing.random_road_point_in_zone(grid, dropoff_zone, rng)
