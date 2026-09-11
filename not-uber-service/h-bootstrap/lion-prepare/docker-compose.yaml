@@ -12,6 +12,12 @@ name: nus-lion-prepare
 services:
   lion-pg:
     build:
+      # Builds install packages, which needs egress from the build container.
+      # Defaults to the host's own network: a tunnel between here and this
+      # host usually cannot see a build's forwarded container traffic, even
+      # while the host's own connections work fine. Set BUILD_NETWORK=default
+      # if this host has no such gap.
+      network: ${BUILD_NETWORK:-host}
       context: .
       dockerfile: lion-pg.Dockerfile
       args:
@@ -32,6 +38,8 @@ services:
 
   lion-prepare:
     build:
+      # See lion-pg's build.network comment above.
+      network: ${BUILD_NETWORK:-host}
       context: ../..
       dockerfile: h-bootstrap/lion-prepare/Dockerfile
     depends_on:
