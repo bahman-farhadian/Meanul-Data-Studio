@@ -1,0 +1,19 @@
+# A throwaway one-shot, entirely separate from not-uber-service's own
+# compose project - `make zone-demand-prepare` brings this up on its own
+# (part of `make prepare`) and it exits when done. No database, no
+# network of its own to tear down - just one container that writes two
+# CSV files to the shared volume and stops.
+
+name: nus-zone-demand-prepare
+
+services:
+  zone-demand-prepare:
+    build:
+      network: ${BUILD_NETWORK:-host}
+      context: ../..
+      dockerfile: h-bootstrap/zone-demand-prepare/Dockerfile
+    environment:
+      TLC_TRIP_DATA_MONTH: ${TLC_TRIP_DATA_MONTH:-2025-01}
+      OUTPUT_DIR: /data
+    volumes:
+      - ${NUS_LION_DATA_DIR:?set it}:/data

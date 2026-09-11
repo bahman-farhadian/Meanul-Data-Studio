@@ -98,6 +98,29 @@ lion-prepare: ## Build the routable graph from LION, once (the slow step, cached
 	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true; \
 	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip straight to restoring it\n"
 
+.PHONY: zone-demand-prepare
+zone-demand-prepare: ## Build real TLC-trip-record demand calibration, once (cached after)
+	$(call say,Preparing real demand calibration from TLC's own trip records)
+	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dir="$$root/nus-lion-data"; \
+	zone_out="$$dir/zone_demand_calibration.csv"; od_out="$$dir/od_pair_calibration.csv"; \
+	NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down --remove-orphans >/dev/null 2>&1 || true; \
+	if [ -s "$$zone_out" ] && [ -s "$$od_out" ]; then \
+		printf "  $(G)ok$(X)      already built: %s, %s\n" "$$zone_out" "$$od_out"; \
+	else \
+		printf "  Streams one real month of TLC's High-Volume For-Hire Vehicle trip\n"; \
+		printf "  records (a few hundred MB, never written whole to disk) and reduces it\n"; \
+		printf "  to two small calibration tables. Takes several minutes; runs once.\n\n"; \
+		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from zone-demand-prepare; \
+		status=$$?; \
+		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down; \
+		if [ "$$status" -ne 0 ] || [ ! -s "$$zone_out" ] || [ ! -s "$$od_out" ]; then \
+			printf "  $(R)FAIL$(X)    zone-demand-prepare did not produce %s and %s\n" "$$zone_out" "$$od_out"; exit 1; \
+		fi; \
+		printf "  $(G)ok$(X)      %s, %s\n" "$$zone_out" "$$od_out"; \
+	fi; \
+	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true
+
 .PHONY: verify-data
 verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
 	$(call say,Data)
