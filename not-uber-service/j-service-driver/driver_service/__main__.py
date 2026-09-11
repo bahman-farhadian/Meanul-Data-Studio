@@ -246,10 +246,17 @@ def main() -> int:
     db_sync_seconds = config.number("DRIVER_DB_SYNC_SECONDS", 30.0)
     hotspot_refresh_seconds = config.number("DRIVER_HOTSPOT_REFRESH_SECONDS", 60.0)
 
-    redis = redis_client.primary()
+    # Four connections, not one: this service owns driver:*/vehicle:*/the
+    # geo sets (DB_DRIVER), but also reads hotspot scores to decide where an
+    # idle driver drifts (DB_DEMAND) and live trip state to know where a
+    # driver on a trip is actually heading (DB_TRIP) - real cross-domain
+    # reads, not something a single db could avoid.
+    redis_driver = redis_client.primary(redis_client.DB_DRIVER)
+    redis_demand = redis_client.primary(redis_client.DB_DEMAND)
+    redis_trip = redis_client.primary(redis_client.DB_TRIP)
 
     # Nothing to simulate until the drivers exist.
-    wait_for_bootstrap(redis, shutdown)
+    wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     # The cache is filled by cache-updater from Debezium's first pass over the
     # seeded rows, which starts only once the CDC connector is registered — so
@@ -257,7 +264,7 @@ def main() -> int:
     # to load yet. Wait for them rather than exiting: this is a normal state
     # of a stack that has just come up, not a failure.
     wait_for(
-        lambda: bool(next(redis.scan_iter(match="driver:*", count=1), None)),
+        lambda: bool(next(redis_driver.scan_iter(match="driver:*", count=1), None)),
         description="cache-updater to fill the driver profiles (Redis driver:*)",
         attempts=120,
         delay_seconds=5.0,
@@ -268,7 +275,7 @@ def main() -> int:
     # assignment, hotspot scoring, and wander targets, for the whole run.
     zone_ids = routing.servicable_zone_ids()
 
-    drivers = load_roster(redis, grid, rng, zone_ids)
+    drivers = load_roster(redis_driver, grid, rng, zone_ids)
     if not drivers:
         log.error("driver keys appeared but none could be read")
         return 1
@@ -290,7 +297,7 @@ def main() -> int:
         from_beginning=False,
     )
 
-    zone_scores = read_hotspots(redis, zone_ids)
+    zone_scores = read_hotspots(redis_demand, zone_ids)
     last_hotspot_refresh = time.monotonic()
     last_db_sync = time.monotonic()
     sent = 0
@@ -299,10 +306,10 @@ def main() -> int:
         while not shutdown.requested:
             started = time.monotonic()
 
-            apply_trip_news(consumer, drivers, redis)
+            apply_trip_news(consumer, drivers, redis_trip)
 
             if started - last_hotspot_refresh >= hotspot_refresh_seconds:
-                zone_scores = read_hotspots(redis, zone_ids)
+                zone_scores = read_hotspots(redis_demand, zone_ids)
                 last_hotspot_refresh = started
 
             now = utc_now()
@@ -363,7 +370,7 @@ def main() -> int:
             # The set dispatch searches, one per tier. Free drivers are added
             # with their position; everyone else is taken out, so a busy
             # driver can never be offered a second trip.
-            with redis.pipeline() as pipe:
+            with redis_driver.pipeline() as pipe:
                 for vehicle_type in redis_client.VEHICLE_TYPES:
                     key = redis_client.geo_available_drivers_key(vehicle_type)
                     if free_drivers[vehicle_type]:
