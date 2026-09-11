@@ -325,14 +325,22 @@ def _finish_trip(
 
     if spec.outcome != "completed":
         # Cancelled after matching: there is a driver and a quote, but no
-        # journey and no charge.
+        # journey and no charge. Same reason sets dispatch-service draws
+        # from for live trips (l-service-dispatch/dispatch_service/
+        # __main__.py's DRIVER_CANCEL_REASONS/PASSENGER_CANCEL_REASONS).
         ended = spec.requested_at + timedelta(minutes=rng.randint(1, 6))
+        reason = (
+            rng.choice(["rider_no_show", "driver_too_far", "vehicle_issue"])
+            if spec.outcome == "cancelled_by_driver"
+            else rng.choice(["changed_mind", "found_alternative", "wait_too_long"])
+        )
         week.trip_rows.append(
             _trip_row(
                 trip_id=spec.trip_id, rider=spec.rider, driver=spec.driver, status=spec.outcome,
                 pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
                 pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
-            requested_vehicle_type=spec.requested_vehicle_type,
+                requested_vehicle_type=spec.requested_vehicle_type,
+                cancellation_reason=reason,
                 route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=None,
                 surge=surge, estimate=estimate, final=None,
                 requested_at=spec.requested_at, ended_at=ended,
@@ -444,6 +452,7 @@ def _trip_row(**kwargs) -> dict:
         "pickup_zone_id": kwargs["pickup_zone"],
         "dropoff_zone_id": kwargs["dropoff_zone"],
         "requested_vehicle_type": kwargs["requested_vehicle_type"],
+        "cancellation_reason": kwargs.get("cancellation_reason"),
         "route_km": kwargs["route_km"],
         "route_wkt": kwargs.get("route_wkt"),
         "predicted_duration_s": kwargs["predicted_s"],
@@ -483,7 +492,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
         INSERT INTO trips (
             trip_id, rider_id, driver_id, status,
             pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
-            requested_vehicle_type,
+            requested_vehicle_type, cancellation_reason,
             route, route_km, predicted_duration_s, actual_duration_s,
             surge_multiplier, fare_estimate, fare_final,
             requested_at, started_at, ended_at
@@ -493,7 +502,7 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             ST_SetSRID(ST_MakePoint(%(pickup_lon)s, %(pickup_lat)s), 4326),
             ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
             %(pickup_zone_id)s, %(dropoff_zone_id)s,
-            %(requested_vehicle_type)s,
+            %(requested_vehicle_type)s, %(cancellation_reason)s,
             -- NULL for no_driver_found, and for the straight-line fallback
             -- when the map was not available - ST_GeomFromText(NULL, ...)
             -- is itself NULL, no CASE needed.

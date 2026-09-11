@@ -63,9 +63,16 @@ UPDATE_STATUS = """
                                                   'cancelled_by_driver', 'no_driver_found')
                               THEN now() ELSE ended_at END,
            actual_duration_s = COALESCE(%(actual_duration_s)s, actual_duration_s),
-           fare_final = COALESCE(%(fare_final)s, fare_final)
+           fare_final = COALESCE(%(fare_final)s, fare_final),
+           cancellation_reason = COALESCE(%(cancellation_reason)s, cancellation_reason)
      WHERE trip_id = %(trip_id)s
 """
+
+# Which side cancelled shapes why - a driver who bails does so for a
+# different reason than a rider who gives up waiting, and conflating them
+# would make the data lie about which problem is actually happening.
+DRIVER_CANCEL_REASONS = ["rider_no_show", "driver_too_far", "vehicle_issue"]
+PASSENGER_CANCEL_REASONS = ["changed_mind", "found_alternative", "wait_too_long"]
 
 
 def find_driver(redis, lat: float, lon: float, radius_km: float, vehicle_type: str) -> str | None:
@@ -224,6 +231,7 @@ def main() -> int:
 
                 actual_duration_s = None
                 fare_final = None
+                cancellation_reason = None
 
                 if status == "in_progress":
                     trip.started_at = now
@@ -237,9 +245,13 @@ def main() -> int:
                         trip.route_km, actual_duration_s, trip.surge_multiplier,
                     )
                     completed += 1
+                elif status == "cancelled_by_driver":
+                    cancellation_reason = rng.choice(DRIVER_CANCEL_REASONS)
+                elif status == "cancelled_by_passenger":
+                    cancellation_reason = rng.choice(PASSENGER_CANCEL_REASONS)
 
                 announce(producer, trip, status, now, actual_duration_s, fare_final)
-                _write_status(trip, status, actual_duration_s, fare_final)
+                _write_status(trip, status, actual_duration_s, fare_final, cancellation_reason)
                 if status == "completed":
                     ratings.rate_and_maintain(trip.trip_id, trip.rider_id, trip.driver_id, rng)
 
@@ -397,13 +409,14 @@ def _no_driver(producer: AvroTopicProducer, request: dict, trip_id: str,
                     "status": "no_driver_found",
                     "actual_duration_s": None,
                     "fare_final": None,
+                    "cancellation_reason": None,
                 },
             )
         conn.commit()
 
 
 def _write_status(trip: ActiveTrip, status: str, actual_duration_s: int | None,
-                  fare_final: float | None) -> None:
+                  fare_final: float | None, cancellation_reason: str | None = None) -> None:
     """Record a status change in the database."""
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
@@ -414,6 +427,7 @@ def _write_status(trip: ActiveTrip, status: str, actual_duration_s: int | None,
                     "status": status,
                     "actual_duration_s": actual_duration_s,
                     "fare_final": fare_final,
+                    "cancellation_reason": cancellation_reason,
                 },
             )
         conn.commit()
