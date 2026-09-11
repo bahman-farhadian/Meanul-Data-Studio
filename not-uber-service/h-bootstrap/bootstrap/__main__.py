@@ -30,7 +30,7 @@ from nus_common import clickhouse, postgres, redis_client
 from nus_common.lifecycle import BOOTSTRAP_DONE_KEY, wait_for
 from nus_common.logging import get_logger, setup_logging
 
-from bootstrap import database, history, migrate, osm, people
+from bootstrap import database, demand_calibration, history, migrate, osm, people
 from bootstrap import settings as settings_module
 from bootstrap import warehouse, zones
 
@@ -72,6 +72,9 @@ def main() -> int:
     # --- 4 and 5. the city and the people -------------------------------
     zones.seed()
     people.seed(settings)
+
+    # --- 4.5. real TLC demand calibration, if zone-demand-prepare has run -
+    demand_calibration.seed(settings.lion_dir)
 
     # --- 6. a starting congestion factor, so the routing this step's ------
     # ---    history relies on has a traffic model from its first query ----

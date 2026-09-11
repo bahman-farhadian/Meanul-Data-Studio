@@ -227,6 +227,7 @@ prepare: ## Pull, build and prepare the street map — the only step needing net
 	@$(MAKE) --no-print-directory lion-fetch
 	@$(MAKE) --no-print-directory tlc-zones-fetch
 	@$(MAKE) --no-print-directory lion-prepare
+	@$(MAKE) --no-print-directory zone-demand-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
 	@printf "  Every image is built and the routable graph is on disk, ready to restore.\n\n"
 
