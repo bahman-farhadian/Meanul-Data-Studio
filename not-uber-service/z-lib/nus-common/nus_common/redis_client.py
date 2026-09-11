@@ -101,6 +101,24 @@ HOTSPOT_TTL_SECONDS = 6 * 60 * 60
 
 
 # --------------------------------------------------------------------------
+# Which of Redis's 16 numbered logical databases each domain lives in.
+# --------------------------------------------------------------------------
+# Redis Sentinel (unlike Cluster mode) fully supports these, and until now
+# nothing here used more than db0. Splitting by domain makes "how many
+# drivers are free right now" a `redis-cli -n 1 DBSIZE` instead of a
+# manual scan - exactly what diagnosing dispatch saturation needed earlier
+# in this project and had to do by hand. Worth knowing honestly:
+# maxmemory-policy is instance-wide, not per-db, so this buys operational
+# clarity and blast-radius isolation, not independent eviction tuning.
+DB_SYSTEM = 0     # system:bootstrap:done - the one thing every service checks
+DB_DRIVER = 1     # driver:*, vehicle:*, geo:drivers:available:*
+DB_PASSENGER = 2  # passenger:*
+DB_TRIP = 3       # trip:*, trip:*:active
+DB_DEMAND = 4     # hotspot:*, zone:* (reference data, grouped with demand -
+                  # neither is any single service's own domain)
+
+
+# --------------------------------------------------------------------------
 # Connections
 # --------------------------------------------------------------------------
 
@@ -124,8 +142,9 @@ def _sentinel() -> Sentinel:
     )
 
 
-def primary() -> Redis:
-    """A connection to whichever Redis node is primary right now.
+def primary(db: int = DB_SYSTEM) -> Redis:
+    """A connection to whichever Redis node is primary right now, for one
+    numbered database (see the DB_* constants above).
 
     Use it for writes. After a failover the library asks Sentinel again and
     reconnects on its own; the caller only sees one failed command.
@@ -138,10 +157,11 @@ def primary() -> Redis:
         decode_responses=True,
         socket_timeout=2.0,
         health_check_interval=30,
+        db=db,
     )
 
 
-def replica() -> Redis:
+def replica(db: int = DB_SYSTEM) -> Redis:
     """A connection to a replica, for reads that may be a moment behind.
 
     Replication is fast but not instant, so anything that must see its own
@@ -153,4 +173,5 @@ def replica() -> Redis:
         decode_responses=True,
         socket_timeout=2.0,
         health_check_interval=30,
+        db=db,
     )
