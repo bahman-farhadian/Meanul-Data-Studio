@@ -35,6 +35,16 @@ services:
     # step (filtering, cost computation, pgr_createTopology over ~170,000
     # edges) - confirmed directly, under 10% CPU on a 24-thread host.
     # Every value is overridable in .env for a smaller dev machine.
+    #
+    # This is the only container running when lion-prepare is on the
+    # critical path (make prepare runs it before the real stack exists,
+    # and zone-demand-prepare after it, never alongside it - see
+    # Makefile's prepare target), so there is nothing else on the host to
+    # leave headroom for. Every other service in this project reserves
+    # cpus explicitly (docker leaves a container unlimited without it);
+    # this one had been the one exception, which is worth closing rather
+    # than relying on an implicit default.
+    cpus: ${LION_PG_CPUS:-20}
     command:
       - -c
       - shared_buffers=${LION_PG_SHARED_BUFFERS:-2GB}
@@ -82,6 +92,9 @@ services:
     environment:
       LION_PG_HOST: lion-pg
       LION_PG_PASSWORD: ${LION_PG_PASSWORD:-throwaway-local-only}
+    # A psql/ogr2ogr client mostly waiting on lion-pg, not computing itself -
+    # a modest reservation, not the large one lion-pg gets above.
+    cpus: ${LION_PREPARE_CPUS:-4}
     volumes:
       - ${NUS_LION_DATA_DIR:?set it}:/data
     networks:
