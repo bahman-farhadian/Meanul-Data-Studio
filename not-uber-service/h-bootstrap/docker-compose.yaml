@@ -106,6 +106,10 @@ services:
       HISTORY_POSITIONS_PER_TRIP: ${HISTORY_POSITIONS_PER_TRIP:-8}
       HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-8}
 
+      # How far a random point may sit from the nearest on-network road
+      # vertex before nearest_road_point() rejects it and the caller retries.
+      MAX_SNAP_KM: ${MAX_SNAP_KM:-0.5}
+
       # Prices, shared with dispatch-service so both quote the same way.
       FARE_BASE: ${FARE_BASE:-3.0}
       FARE_PER_KM: ${FARE_PER_KM:-1.75}

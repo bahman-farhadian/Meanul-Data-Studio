@@ -74,6 +74,10 @@ services:
       CITY_GRID_ROWS: ${CITY_GRID_ROWS:-6}
       CITY_GRID_COLS: ${CITY_GRID_COLS:-6}
 
+      # How far a random point may sit from the nearest on-network road
+      # vertex before nearest_road_point() rejects it and the caller retries.
+      MAX_SNAP_KM: ${MAX_SNAP_KM:-0.5}
+
       # How much demand there is. This is the second volume dial of the
       # stack, after driver-service's tick: every request becomes a routing
       # calculation in dispatch, which is the most expensive step anywhere.
