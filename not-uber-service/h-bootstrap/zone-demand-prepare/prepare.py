@@ -121,7 +121,7 @@ def main() -> int:
     # how the real driver-pay-to-fare ratio this month compares to
     # PLATFORM_COMMISSION_PCT's own default.
     real_commission = 1 - (df["driver_pay"].sum() / df["base_passenger_fare"].sum())
-    log(f"real commission ratio this month: {real_commission:.3f} (PLATFORM_COMMISSION_PCT default is 0.20)")
+    log(f"real commission ratio this month: {real_commission:.3f} - compare against PLATFORM_COMMISSION_PCT")
 
     return 0
 

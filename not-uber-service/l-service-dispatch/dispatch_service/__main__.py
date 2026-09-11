@@ -160,7 +160,7 @@ def main() -> int:
     base_fare = config.number("FARE_BASE", 3.0)
     per_km = config.number("FARE_PER_KM", 1.75)
     per_minute = config.number("FARE_PER_MINUTE", 0.45)
-    commission_pct = config.number("PLATFORM_COMMISSION_PCT", 0.20)
+    commission_pct = config.number("PLATFORM_COMMISSION_PCT", 0.23)
     cancel_by_driver = config.number("CANCEL_BY_DRIVER_CHANCE", 0.06)
     cancel_by_passenger = config.number("CANCEL_BY_PASSENGER_CHANCE", 0.07)
     active_ttl = config.integer("TRIP_ACTIVE_TTL_SECONDS", 7200)
