@@ -59,7 +59,7 @@ lion-prepare: ## Build the routable graph from LION, once (the slow step, cached
 		printf "  after this one restores the cached result instead.\n\n"; \
 		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from lion-prepare; \
 		status=$$?; \
-		$(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v; \
+		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v; \
 		if [ "$$status" -ne 0 ] || [ ! -s "$$dump" ]; then \
 			printf "  $(R)FAIL$(X)    lion-prepare did not produce %s\n" "$$dump"; exit 1; \
 		fi; \
