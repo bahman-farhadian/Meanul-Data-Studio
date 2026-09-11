@@ -26,6 +26,40 @@ services:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${LION_PG_PASSWORD:-throwaway-local-only}
       POSTGRES_DB: lion
+    # Tuned for throughput, not durability - this database is destroyed
+    # with the container at the end of this same run (see the note at the
+    # top of this file), so fsync/synchronous_commit/full_page_writes buy
+    # crash-safety nothing here will ever need. Out of the box Postgres's
+    # tiny defaults (128MB shared_buffers, 2 parallel workers) leave a real
+    # server's cores and RAM almost entirely idle during the expensive
+    # step (filtering, cost computation, pgr_createTopology over ~170,000
+    # edges) - confirmed directly, under 10% CPU on a 24-thread host.
+    # Every value is overridable in .env for a smaller dev machine.
+    command:
+      - -c
+      - shared_buffers=${LION_PG_SHARED_BUFFERS:-2GB}
+      - -c
+      - work_mem=${LION_PG_WORK_MEM:-256MB}
+      - -c
+      - maintenance_work_mem=${LION_PG_MAINTENANCE_WORK_MEM:-1GB}
+      - -c
+      - max_wal_size=${LION_PG_MAX_WAL_SIZE:-8GB}
+      - -c
+      - checkpoint_timeout=30min
+      - -c
+      - max_worker_processes=${LION_PG_MAX_WORKER_PROCESSES:-16}
+      - -c
+      - max_parallel_workers=${LION_PG_MAX_PARALLEL_WORKERS:-12}
+      - -c
+      - max_parallel_workers_per_gather=${LION_PG_MAX_PARALLEL_WORKERS_PER_GATHER:-6}
+      - -c
+      - max_parallel_maintenance_workers=${LION_PG_MAX_PARALLEL_MAINTENANCE_WORKERS:-6}
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
     volumes:
       - ./init-extensions.sql:/docker-entrypoint-initdb.d/init-extensions.sql:ro
     healthcheck:
