@@ -6,6 +6,7 @@
 -- Spatial indexes. A GiST index is what makes "which zone contains this
 -- point" and "which trips started near here" fast instead of a full scan.
 CREATE INDEX IF NOT EXISTS city_zones_boundary_idx  ON city_zones USING gist (boundary);
+CREATE INDEX IF NOT EXISTS city_zones_borough_idx   ON city_zones (borough);
 CREATE INDEX IF NOT EXISTS trips_pickup_point_idx   ON trips      USING gist (pickup_point);
 CREATE INDEX IF NOT EXISTS trips_dropoff_point_idx  ON trips      USING gist (dropoff_point);
 

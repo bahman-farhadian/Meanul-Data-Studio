@@ -9,6 +9,7 @@
 set -euo pipefail
 
 INPUT_ZIP="/data/lion.zip"
+TLC_ZONES_GEOJSON="/data/taxi-zones.geojson"
 OUTPUT_DUMP="/data/routable-graph.dump"
 WORKDIR="/tmp/lion"
 
@@ -60,7 +61,20 @@ psql -v ON_ERROR_STOP=1 -c "
       FROM lion_filtered;
 "
 
-echo "dumping ways and ways_vertices_pgr to $OUTPUT_DUMP"
-pg_dump -Fc -t ways -t ways_vertices_pgr -f "$OUTPUT_DUMP"
+echo "importing NYC TLC's real taxi zones"
+ogr2ogr -f "PostgreSQL" \
+    "PG:host=$PGHOST port=$PGPORT dbname=$PGDATABASE user=$PGUSER password=$PGPASSWORD" \
+    "$TLC_ZONES_GEOJSON" \
+    -lco GEOMETRY_NAME=geom \
+    -nln taxi_zones_raw \
+    -overwrite \
+    -progress
+
+echo "building the clean zone table"
+psql -v ON_ERROR_STOP=1 -f /taxi-zones.sql
+psql -v ON_ERROR_STOP=1 -c "SELECT count(*) AS zones FROM city_zones_source;"
+
+echo "dumping ways, ways_vertices_pgr and city_zones_source to $OUTPUT_DUMP"
+pg_dump -Fc -t ways -t ways_vertices_pgr -t city_zones_source -f "$OUTPUT_DUMP"
 
 echo "done: $OUTPUT_DUMP ($(du -h "$OUTPUT_DUMP" | cut -f1))"

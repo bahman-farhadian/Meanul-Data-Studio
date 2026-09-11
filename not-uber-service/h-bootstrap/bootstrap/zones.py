@@ -1,107 +1,110 @@
-"""Creating the city zones in the database.
+"""Creating the city zones in the database, and sharing one loaded grid.
 
-The grid arithmetic itself lives in nus_common.citygrid, so that this
-component and the six services all draw exactly the same city. This module
-only writes the result into PostgreSQL.
+NYC TLC's real Taxi Zones (see h-bootstrap/lion-prepare/taxi-zones.sql) are
+restored once, per bring-up, into city_zones_source alongside the routable
+graph. seed() copies that into city_zones, computing which zones are
+servicable against the just-restored street graph - the shared CityGrid
+(nus_common.citygrid) then loads only the servicable set from there.
+
+grid() caches that load for the life of this process: CityGrid.load() is a
+real database round trip plus parsing 263 real polygons, and the functions
+below are called once per driver, per passenger, per historical trip - up
+to hundreds of thousands of times in one bootstrap run. Loading it once and
+reusing it is what keeps this the same cheap, in-memory lookup it always
+was, now backed by real geometry instead of grid arithmetic.
 """
 
 from nus_common import postgres, routing
 from nus_common.citygrid import CityGrid
 from nus_common.logging import get_logger
 
-from bootstrap.settings import Settings
-
 log = get_logger(__name__)
 
+ZONE_SOURCE_SQL = """
+    SELECT zone_id, zone_name, borough,
+           ST_Y(ST_Centroid(boundary)) AS centre_lat,
+           ST_X(ST_Centroid(boundary)) AS centre_lon
+      FROM city_zones_source
+"""
 
-def grid_from(settings: Settings) -> CityGrid:
-    """Build the grid from bootstrap's own settings."""
-    return CityGrid(
-        min_lat=settings.min_lat,
-        max_lat=settings.max_lat,
-        min_lon=settings.min_lon,
-        max_lon=settings.max_lon,
-        rows=settings.grid_rows,
-        cols=settings.grid_cols,
-    )
+INSERT_ZONES_SQL = """
+    INSERT INTO city_zones (zone_id, name, borough, boundary, centroid, servicable)
+    SELECT zone_id, zone_name, borough, boundary, ST_Centroid(boundary), true
+      FROM city_zones_source
+    ON CONFLICT (zone_id) DO NOTHING
+"""
+
+_grid: CityGrid | None = None
 
 
-def seed(settings: Settings) -> int:
-    """Create the zone grid. Existing zones are left alone.
+def grid() -> CityGrid:
+    """The shared city grid, loaded once per process and reused."""
+    global _grid
+    if _grid is None:
+        _grid = CityGrid.load()
+    return _grid
+
+
+def seed() -> int:
+    """Copy NYC TLC's real zones from the restored source table. Existing zones are left alone.
 
     Each zone's servicability is checked here, against the just-restored
     street graph, and baked into city_zones once - see routing.py's
-    servicable_zone_ids() for why.
+    servicable_zone_ids() for why. Deliberately does not use grid()/
+    CityGrid.load(): this is the function that populates city_zones in the
+    first place, so nothing can load it from there yet.
     """
-    grid = grid_from(settings)
-
-    rows = []
-    unservicable = 0
-    for zone_id in grid.all_zone_ids():
-        south, west, north, east = grid.bounds_of(zone_id)
-        _, row_text, col_text = zone_id.split("-")
-        centre_lat, centre_lon = grid.centre_of(zone_id)
-        servicable = routing.nearest_road_point(centre_lat, centre_lon) is not None
-        if not servicable:
-            unservicable += 1
-        rows.append(
-            {
-                "zone_id": zone_id,
-                "name": f"Zone {int(row_text) + 1}-{int(col_text) + 1}",
-                "west": west, "south": south, "east": east, "north": north,
-                "servicable": servicable,
-            }
-        )
-
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
-            cur.executemany(
-                """
-                INSERT INTO city_zones (zone_id, name, boundary, centroid, servicable)
-                VALUES (
-                    %(zone_id)s,
-                    %(name)s,
-                    -- A rectangle built from the four corners of the cell.
-                    ST_MakeEnvelope(%(west)s, %(south)s, %(east)s, %(north)s, 4326),
-                    ST_Centroid(ST_MakeEnvelope(%(west)s, %(south)s, %(east)s, %(north)s, 4326)),
-                    %(servicable)s
-                )
-                ON CONFLICT (zone_id) DO NOTHING
-                """,
-                rows,
-            )
+            cur.execute(INSERT_ZONES_SQL)
         conn.commit()
 
-    log.info("zones ready", extra={"zones": len(rows), "unservicable": unservicable})
-    if unservicable:
+    with postgres.read_connection() as conn:
+        rows = postgres.fetch_all(conn, ZONE_SOURCE_SQL)
+
+    unservicable_ids = [
+        row["zone_id"]
+        for row in rows
+        if routing.nearest_road_point(float(row["centre_lat"]), float(row["centre_lon"])) is None
+    ]
+
+    if unservicable_ids:
+        with postgres.write_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE city_zones SET servicable = false WHERE zone_id = ANY(%s)",
+                    (unservicable_ids,),
+                )
+            conn.commit()
+
+    log.info("zones ready", extra={"zones": len(rows), "unservicable": len(unservicable_ids)})
+    if unservicable_ids:
         log.warning(
             "some zones cannot reach a real road from their own centroid - "
             "excluded from demand generation and home-zone assignment",
-            extra={"unservicable": unservicable, "total": len(rows)},
+            extra={"unservicable": len(unservicable_ids), "total": len(rows)},
         )
     return len(rows)
 
 
-def all_zone_ids(settings: Settings) -> list[str]:
-    """Every zone id, without going back to the database."""
-    return grid_from(settings).all_zone_ids()
+def all_zone_ids() -> list[str]:
+    """Every servicable zone id, without going back to the database."""
+    return grid().all_zone_ids()
 
 
-def random_point_in_zone(settings: Settings, zone_id: str, rng) -> tuple[float, float]:
-    """A random latitude and longitude inside one zone.
+def random_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
+    """A random latitude and longitude inside one zone's real polygon.
 
-    Raw rectangle arithmetic, no road awareness - use
+    Raw polygon arithmetic, no road awareness - use
     random_road_point_in_zone for anything that becomes a pickup, dropoff,
     or driver location.
     """
-    return grid_from(settings).random_point_in(zone_id, rng)
+    return grid().random_point_in(zone_id, rng)
 
 
-def random_road_point_in_zone(
-    settings: Settings, zone_id: str, rng, attempts: int = 5,
-) -> tuple[float, float]:
+def random_road_point_in_zone(zone_id: str, rng, attempts: int = 5) -> tuple[float, float]:
     """A random point inside one zone, snapped to the real, connected road
     network. See nus_common.routing.random_road_point_in_zone - this is
-    just that, with bootstrap's own grid.
+    just that, with bootstrap's own shared grid.
     """
-    return routing.random_road_point_in_zone(grid_from(settings), zone_id, rng, attempts)
+    return routing.random_road_point_in_zone(grid(), zone_id, rng, attempts)

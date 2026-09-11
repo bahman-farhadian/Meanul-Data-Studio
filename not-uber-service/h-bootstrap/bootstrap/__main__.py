@@ -67,7 +67,7 @@ def main() -> int:
     osm.import_map(settings)
 
     # --- 4 and 5. the city and the people -------------------------------
-    zones.seed(settings)
+    zones.seed()
     people.seed(settings)
 
     # --- 6. a starting congestion factor, so the routing this step's ------

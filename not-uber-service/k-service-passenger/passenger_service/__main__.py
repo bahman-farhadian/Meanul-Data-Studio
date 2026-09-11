@@ -77,7 +77,7 @@ def main() -> int:
     setup_logging("passenger-service")
     shutdown = Shutdown()
     rng = random.Random(config.integer("RANDOM_SEED", 20250824))
-    grid = CityGrid.from_environment()
+    grid = CityGrid.load()
 
     tick_seconds = config.number("PASSENGER_TICK_SECONDS", 5.0)
     base_per_minute = config.number("TRIP_REQUESTS_PER_MINUTE", 40.0)

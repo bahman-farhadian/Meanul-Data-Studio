@@ -12,19 +12,6 @@ from nus_common import config
 
 @dataclass(frozen=True)
 class Settings:
-    # --- the city -------------------------------------------------------
-    # A box around New York City, in degrees. Everything generated - zones,
-    # drivers, pickups - stays inside it, and the map import is cut to it.
-    min_lat: float
-    max_lat: float
-    min_lon: float
-    max_lon: float
-    # The city is divided into a simple grid of zones. 6 x 6 gives 36 zones,
-    # which is enough for demand to look uneven without making every zone
-    # too small to hold a trip.
-    grid_rows: int
-    grid_cols: int
-
     # --- how much to seed ------------------------------------------------
     driver_count: int
     passenger_count: int
@@ -37,7 +24,8 @@ class Settings:
     # Historical trips are routed for real, through the same pgRouting query
     # dispatch-service uses live - one Postgres round trip per trip, roughly
     # 50-150ms each. This many run at once, each on its own pooled
-    # connection, so routing 14,000 trips does not run one at a time.
+    # connection, so routing hundreds of thousands of trips does not run
+    # one at a time.
     history_routing_workers: int
 
     # --- prices ----------------------------------------------------------
@@ -61,19 +49,15 @@ class Settings:
 
 def load() -> Settings:
     return Settings(
-        min_lat=config.number("CITY_MIN_LAT", 40.49),
-        max_lat=config.number("CITY_MAX_LAT", 40.92),
-        min_lon=config.number("CITY_MIN_LON", -74.26),
-        max_lon=config.number("CITY_MAX_LON", -73.70),
-        grid_rows=config.integer("CITY_GRID_ROWS", 6),
-        grid_cols=config.integer("CITY_GRID_COLS", 6),
-
-        driver_count=config.integer("SEED_DRIVERS", 800),
-        passenger_count=config.integer("SEED_PASSENGERS", 5000),
+        # 1/10 of real NYC HVFHS scale (NYC TLC 2024 Annual Report: ~106,000
+        # licensed vehicles, ~655,000 trips/day) - the development-scale
+        # default. Dionysus's own .env carries the full-scale values.
+        driver_count=config.integer("SEED_DRIVERS", 10_000),
+        passenger_count=config.integer("SEED_PASSENGERS", 150_000),
         history_days=config.integer("HISTORY_DAYS", 7),
-        trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 2000),
+        trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 65_000),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
-        history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 8),
+        history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 16),
 
         base_fare=config.number("FARE_BASE", 3.0),
         per_km=config.number("FARE_PER_KM", 1.75),

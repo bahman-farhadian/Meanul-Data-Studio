@@ -26,10 +26,12 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
     lon           Float64,
     heading_deg   Nullable(Float32),
     speed_kmh     Nullable(Float32),
-    -- Still LowCardinality, not Enum: 36 zones is a config choice
-    -- (CITY_GRID_ROWS x COLS), not a closed set fixed at schema time. The
-    -- dictionary encoding is what buys the compression here; FixedString
-    -- underneath makes the dictionary's own entries fixed-width too.
+    -- Still LowCardinality, not Enum: the 263 NYC TLC taxi zones are real
+    -- external data (city_zones, restored from TLC's own dataset - see
+    -- h-bootstrap/lion-prepare/taxi-zones.sql), not a closed set fixed at
+    -- schema time. The dictionary encoding is what buys the compression
+    -- here; FixedString underneath makes the dictionary's own entries
+    -- fixed-width too.
     zone_id       LowCardinality(FixedString(7)),
     event_time    DateTime64(3, 'UTC'),
     -- Computed on write and used for partitioning, so queries by day never
