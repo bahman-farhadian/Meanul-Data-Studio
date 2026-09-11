@@ -39,6 +39,7 @@ TOPIC_MAP = {
     "cdc.passengers": ("passenger_id", redis_client.passenger_key),
     "cdc.trips": ("trip_id", redis_client.trip_key),
     "cdc.city_zones": ("zone_id", redis_client.zone_key),
+    "cdc.vehicles": ("driver_id", redis_client.vehicle_key),
 }
 
 # Debezium's word for what happened: created, updated, deleted, or read

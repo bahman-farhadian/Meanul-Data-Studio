@@ -36,6 +36,18 @@ def passenger_key(passenger_id: str) -> str:
     return f"passenger:{passenger_id}"
 
 
+def vehicle_key(driver_id: str) -> str:
+    """The vehicle a driver drives. Written by cache-updater from cdc.vehicles.
+
+    A separate key from driver_key rather than a merged one: two CDC streams
+    (cdc.drivers, cdc.vehicles) writing into one key would need read-modify-
+    write and a defined merge order, breaking cache-updater's "safe to
+    replay, one row overwrites one key" invariant. One vehicle per driver
+    today, so keying by driver_id is enough.
+    """
+    return f"vehicle:{driver_id}"
+
+
 def trip_active_key(trip_id: str) -> str:
     """State of a trip while it runs, including route and predicted duration.
 
