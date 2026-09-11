@@ -1,29 +1,21 @@
 # Known issues to come back to
 
-## city_zones_source has 260 zones, not the real TLC count of 263
+## ~~city_zones_source has 260 zones, not the real TLC count of 263~~ — fixed
 
-`h-bootstrap/lion-prepare/taxi-zones.sql` now does `GROUP BY locationid`
-with `ST_Union` to handle TLC zone ids that appear as more than one
-feature in the raw import (confirmed live: locationid 56 duplicated,
-which used to break `ADD PRIMARY KEY`). That fix landed and is correct
-for a zone genuinely split into multiple polygon parts - but it was never
-confirmed that's what's actually happening for all of them.
+Root-caused by downloading the real GeoJSON and checking it directly
+against TLC's own `taxi_zone_lookup.csv`: ids 56/57 are both officially
+"Corona, Queens" and 103/104/105 are all officially "Governor's Island/
+Ellis Island/Liberty Island, Manhattan" - the shapefile just never labels
+the extra polygon parts with their real official ids. The original
+GROUP BY + ST_Union fix silently merged these into 260 zones instead of
+263; `taxi-zones.sql` now assigns each duplicate's parts to its real
+sibling ids explicitly (see the commit for the full reasoning), verified
+live against the real downloaded data - 263 zones, ids 56/57/103/104/105
+all present with real geometry.
 
-After the fix, a real run produced 260 zones instead of TLC's official
-263 - a deficit of exactly 3, which is consistent with 3 ids each having
-had 2 raw rows merged into 1. Not yet confirmed whether that's really 3
-zones each legitimately split into 2 parts (the fix is correct), or
-whether 2 of those 3 are actually 2 *different* real zones that happen to
-share a locationid by a data error - in which case GROUP BY is silently
-merging two real zones into one and losing a whole zone.
-
-**Next step**: on the live stack, run
-```sql
-SELECT locationid, count(*) FROM taxi_zones_raw GROUP BY locationid HAVING count(*) > 1;
-```
-against the throwaway lion-pg container's data (or re-derive from
-`city_zones_source` vs a fresh TLC LocationID list) to see exactly which
-ids collapsed and whether their merged geometry is one sensible
-multi-part shape or two unrelated polygons in different parts of the
-city. If it's the latter for any of them, `taxi-zones.sql` needs a real
-per-id decision, not a blanket GROUP BY.
+Requires a fresh `make lion-prepare` to pick this up, and the existing
+stale-cache check will NOT catch it on its own this time: it only checks
+that `city_zones_source` exists in the cached dump's table of contents,
+and it does (with the wrong, 260-zone data) in a dump built before this
+fix. Delete the cached dump manually before the next `make up`:
+`rm $NUS_VOLUME_ROOT/nus-lion-data/routable-graph.dump` on the host.
