@@ -238,9 +238,14 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
                 start=1,
             ):
                 routed.append(result)
-                now = time.monotonic()
-                if now - last_logged >= PROGRESS_LOG_INTERVAL_S or done == total:
-                    elapsed_s = now - started
+                # poll_t, not now: generate() has its own `now` (the real
+                # datetime "as of" this whole invented week) used later by
+                # _hotspot_history - a function has no per-loop scoping in
+                # Python, so reusing that name here silently clobbered it
+                # for the rest of the function, confirmed live the hard way.
+                poll_t = time.monotonic()
+                if poll_t - last_logged >= PROGRESS_LOG_INTERVAL_S or done == total:
+                    elapsed_s = poll_t - started
                     rate = done / elapsed_s if elapsed_s > 0 else 0.0
                     remaining = int((total - done) / rate) if rate > 0 else None
                     log.info(
@@ -252,7 +257,7 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
                             "eta_s": remaining,
                         },
                     )
-                    last_logged = now
+                    last_logged = poll_t
     else:
         routed = [None] * len(to_route)
 
