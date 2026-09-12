@@ -42,7 +42,7 @@ services:
     # A one-shot must not come back after it finishes. Anything else would
     # mean re-running the whole preparation on every container restart.
     restart: "no"
-    cpus: ${BOOTSTRAP_CPUS:-1.25}
+    cpus: ${BOOTSTRAP_CPUS:-10}
     # The routable graph is now a pg_restore of an already-built dump, not a
     # from-scratch topology build (h-bootstrap/lion-prepare/ does that part,
     # outside this container, once). Kept generous anyway - too small a
@@ -91,12 +91,20 @@ services:
       CH_PASSWORD: ${CH_PASSWORD:?must match e-infra-clickhouse/.env}
 
       # How much to create.
-      SEED_DRIVERS: ${SEED_DRIVERS:-800}
-      SEED_PASSENGERS: ${SEED_PASSENGERS:-5000}
+      SEED_DRIVERS: ${SEED_DRIVERS:-106000}
+      SEED_PASSENGERS: ${SEED_PASSENGERS:-1500000}
+      # Real OS processes generating driver/passenger records - pure CPU
+      # work (Faker), so this matches BOOTSTRAP_CPUS above, not a thread
+      # count.
+      PEOPLE_GENERATION_WORKERS: ${PEOPLE_GENERATION_WORKERS:-10}
       HISTORY_DAYS: ${HISTORY_DAYS:-7}
-      HISTORY_TRIPS_PER_DAY: ${HISTORY_TRIPS_PER_DAY:-2000}
+      HISTORY_TRIPS_PER_DAY: ${HISTORY_TRIPS_PER_DAY:-655000}
       HISTORY_POSITIONS_PER_TRIP: ${HISTORY_POSITIONS_PER_TRIP:-8}
-      HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-8}
+      HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-18}
+      # Real, road-snapped points precomputed per zone before assigning
+      # driver/passenger home locations and historical pickups/dropoffs -
+      # see zones.build_road_point_pools's own docstring for why.
+      ROAD_POINT_POOL_SIZE: ${ROAD_POINT_POOL_SIZE:-300}
 
       # How far a random point may sit from the nearest on-network road
       # vertex before nearest_road_point() rejects it and the caller retries.
