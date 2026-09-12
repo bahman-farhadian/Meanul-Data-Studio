@@ -27,6 +27,11 @@ class Settings:
     # connection, so routing hundreds of thousands of trips does not run
     # one at a time.
     history_routing_workers: int
+    # How many real, road-snapped points to precompute per zone before
+    # assigning driver/passenger home locations and historical trip
+    # pickups/dropoffs - see zones.build_road_point_pools's own docstring
+    # for why this exists at all.
+    road_point_pool_size: int
 
     # --- prices ----------------------------------------------------------
     base_fare: float
@@ -64,6 +69,7 @@ def load() -> Settings:
         trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 655_000),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
         history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 18),
+        road_point_pool_size=config.integer("ROAD_POINT_POOL_SIZE", 300),
 
         base_fare=config.number("FARE_BASE", 3.0),
         per_km=config.number("FARE_PER_KM", 1.75),

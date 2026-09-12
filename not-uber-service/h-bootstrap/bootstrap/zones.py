@@ -14,11 +14,16 @@ reusing it is what keeps this the same cheap, in-memory lookup it always
 was, now backed by real geometry instead of grid arithmetic.
 """
 
+import random
+from concurrent.futures import ThreadPoolExecutor
+
 from nus_common import postgres, routing
 from nus_common.citygrid import CityGrid
 from nus_common.logging import get_logger
 
 log = get_logger(__name__)
+
+_road_point_pools: dict[str, list[tuple[float, float]]] = {}
 
 ZONE_SOURCE_SQL = """
     SELECT zone_id, zone_name, borough,
@@ -108,3 +113,55 @@ def random_road_point_in_zone(zone_id: str, rng, attempts: int = 5) -> tuple[flo
     just that, with bootstrap's own shared grid.
     """
     return routing.random_road_point_in_zone(grid(), zone_id, rng, attempts)
+
+
+def build_road_point_pools(pool_size: int, workers: int, seed_value: int = 20250824) -> None:
+    """Precompute a pool of real, road-snapped points for every servicable
+    zone, once.
+
+    random_road_point_in_zone's own snapping step is a real database round
+    trip (nus_common.routing.nearest_road_point), and people.seed() and
+    history.py both used to call it directly once per driver, per
+    passenger, per historical trip pickup and dropoff - up to several
+    million sequential round trips at full scale, which is most of what
+    made bootstrap's people-seeding step take tens of minutes with the
+    host otherwise idle (confirmed directly: the process is I/O-wait-
+    blocked between calls, not computing anything). A modest pool per
+    zone, sampled from in memory afterward (pooled_road_point_in_zone),
+    turns that into a bounded, one-time cost of zones x pool_size calls
+    instead - threaded the same way history.py already threads its own
+    routing calls, since these are independent, I/O-bound work.
+    """
+    global _road_point_pools
+    zone_ids = all_zone_ids()
+
+    def _one_zone(zone_id: str) -> tuple[str, list[tuple[float, float]]]:
+        rng = random.Random(f"{seed_value}:{zone_id}:road-point-pool")
+        points = [random_road_point_in_zone(zone_id, rng) for _ in range(pool_size)]
+        return zone_id, points
+
+    pools: dict[str, list[tuple[float, float]]] = {}
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        for zone_id, points in executor.map(_one_zone, zone_ids):
+            pools[zone_id] = points
+
+    _road_point_pools = pools
+    log.info(
+        "road point pools ready",
+        extra={"zones": len(pools), "points_per_zone": pool_size},
+    )
+
+
+def pooled_road_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
+    """A real, road-snapped point in this zone, sampled from the pool
+    build_road_point_pools already built - no database round trip.
+
+    Falls back to a direct snap (the real cost random_road_point_in_zone
+    always paid) if the pool was never built or does not cover this zone,
+    so a caller that skips build_road_point_pools still gets a correct
+    answer, just not the fast path.
+    """
+    pool = _road_point_pools.get(zone_id)
+    if not pool:
+        return random_road_point_in_zone(zone_id, rng)
+    return rng.choice(pool)

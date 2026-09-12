@@ -252,8 +252,8 @@ def _next_spec(
         for i, zid in enumerate(zone_ids)
     ]
     dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
-    pickup_lat, pickup_lon = zones.random_road_point_in_zone(pickup_zone, rng)
-    dropoff_lat, dropoff_lon = zones.random_road_point_in_zone(dropoff_zone, rng)
+    pickup_lat, pickup_lon = zones.pooled_road_point_in_zone(pickup_zone, rng)
+    dropoff_lat, dropoff_lon = zones.pooled_road_point_in_zone(dropoff_zone, rng)
 
     trip_id = new_trip_id(requested_at, rng)
     vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
