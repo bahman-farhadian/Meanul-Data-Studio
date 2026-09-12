@@ -71,6 +71,12 @@ services:
       # vertex before nearest_road_point() rejects it and the caller retries.
       MAX_SNAP_KM: ${MAX_SNAP_KM:-0.5}
 
+      # A pool of real, road-snapped points per zone, built once at startup
+      # (nus_common.routing.build_road_point_pools) instead of paying a real
+      # database round trip twice per new trip request, forever.
+      ROAD_POINT_POOL_SIZE: ${ROAD_POINT_POOL_SIZE:-300}
+      ROAD_POINT_POOL_WORKERS: ${ROAD_POINT_POOL_WORKERS:-8}
+
       # How much demand there is. This is the second volume dial of the
       # stack, after driver-service's tick: every request becomes a routing
       # calculation in dispatch, which is the most expensive step anywhere.

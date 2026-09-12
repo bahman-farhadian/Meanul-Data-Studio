@@ -69,6 +69,12 @@ services:
       # vertex before nearest_road_point() rejects it and the caller retries.
       MAX_SNAP_KM: ${MAX_SNAP_KM:-0.5}
 
+      # A pool of real, road-snapped points per zone, built once at startup
+      # (nus_common.routing.build_road_point_pools) instead of paying a real
+      # database round trip per driver, per shift change, per re-target.
+      ROAD_POINT_POOL_SIZE: ${ROAD_POINT_POOL_SIZE:-300}
+      ROAD_POINT_POOL_WORKERS: ${ROAD_POINT_POOL_WORKERS:-8}
+
       # How the fleet behaves. These are the main volume dial of the stack:
       # a shorter tick or a larger online share means more messages a second.
       DRIVER_TICK_SECONDS: ${DRIVER_TICK_SECONDS:-3.0}

@@ -86,6 +86,8 @@ def main() -> int:
 
     tick_seconds = config.number("PASSENGER_TICK_SECONDS", 5.0)
     base_per_minute = config.number("TRIP_REQUESTS_PER_MINUTE", 455.0)
+    road_point_pool_size = config.integer("ROAD_POINT_POOL_SIZE", 300)
+    road_point_pool_workers = config.integer("ROAD_POINT_POOL_WORKERS", 8)
 
     # Two connections: passenger:* is this service's own domain (DB_PASSENGER);
     # reporting a travelling rider's live position needs the trip's current
@@ -113,6 +115,13 @@ def main() -> int:
     # Not grid.all_zone_ids(): a zone whose own centroid cannot reach a real
     # road would keep re-hitting the unsnapped-point fallback forever.
     zone_ids = routing.servicable_zone_ids()
+
+    # random_road_point_in_zone's own snapping step is a real database
+    # round trip - every new trip request calls it twice (pickup and
+    # dropoff), forever, at TRIP_REQUESTS_PER_MINUTE. Built once here
+    # instead; see nus_common.routing.build_road_point_pools's own
+    # docstring for the full story.
+    routing.build_road_point_pools(grid, road_point_pool_size, road_point_pool_workers)
 
     request_producer = AvroTopicProducer(REQUEST_TOPIC)
     position_producer = AvroTopicProducer(POSITION_TOPIC)
@@ -161,8 +170,8 @@ def main() -> int:
                     for i, zid in enumerate(zone_ids)
                 ]
                 dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
-                pickup_lat, pickup_lon = routing.random_road_point_in_zone(grid, pickup_zone, rng)
-                dropoff_lat, dropoff_lon = routing.random_road_point_in_zone(grid, dropoff_zone, rng)
+                pickup_lat, pickup_lon = routing.pooled_road_point_in_zone(grid, pickup_zone, rng)
+                dropoff_lat, dropoff_lon = routing.pooled_road_point_in_zone(grid, dropoff_zone, rng)
                 trip_id = new_trip_id(now, rng)
                 vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
 
