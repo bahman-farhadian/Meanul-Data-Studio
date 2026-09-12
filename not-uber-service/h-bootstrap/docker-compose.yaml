@@ -76,7 +76,7 @@ services:
       PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
       # Raised above the code's own default (5): the threaded routing pass
       # below checks out HISTORY_ROUTING_WORKERS connections at once.
-      PG_POOL_SIZE: ${PG_POOL_SIZE:-16}
+      PG_POOL_SIZE: ${PG_POOL_SIZE:-24}
 
       # Redis, through Sentinel.
       REDIS_SENTINELS: ${REDIS_SENTINELS:-nus-sentinel-1:26379,nus-sentinel-2:26379,nus-sentinel-3:26379}
