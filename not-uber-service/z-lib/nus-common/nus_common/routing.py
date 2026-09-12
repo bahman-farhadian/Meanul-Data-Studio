@@ -113,13 +113,14 @@ def route(
     at the nearest place a car can be.
 
     None means the two points are not connected in the imported map - usually
-    a point outside the imported area - or that pgr_ksp itself ran past
-    postgres.py's own statement_timeout for this specific pair (confirmed
-    live: a real call can run away and exhaust a node's memory rather than
-    just running slowly, for a still-unidentified reason - logged as an
-    error, with the exact coordinates, precisely so a repeat is
-    reproducible instead of another multi-hour hunt). Either way the
-    caller treats it as "no driver found" rather than crashing.
+    a point outside the imported area - or that this specific call's own
+    connection died underneath it (confirmed live: some pgr_ksp call for a
+    still-unidentified reason can exhaust a node's memory fast enough that
+    postgres.py's own statement_timeout never gets a chance to cancel it
+    first - the backend is just gone). Either failure is logged as an
+    error with the exact coordinates, so a repeat is reproducible instead
+    of another multi-hour hunt, and either way the caller treats it as "no
+    driver found" for this one trip rather than crashing the whole run.
 
     Up to K_ROUTES candidate routes are computed (pgr_ksp), and one is
     picked with ROUTE_CHOICE_WEIGHTS favoring the cheaper ones - not always
@@ -149,12 +150,23 @@ def route(
                     "k": K_ROUTES,
                 },
             )
-    except psycopg.errors.QueryCanceled:
+    except psycopg.OperationalError as exc:
+        # Broader than QueryCanceled on purpose: confirmed live that
+        # whatever kills a backend under this call does it faster than the
+        # statement_timeout ever gets a chance to fire (the OOM killer, not
+        # a slow query) - it surfaces here as the connection itself dying
+        # mid-call ("server closed the connection unexpectedly"), not a
+        # clean cancellation. The pool discards and replaces the broken
+        # connection on its own; this call just can't use its result.
+        # Logged with the exact coordinates and the real exception text so
+        # a repeat is reproducible, and treated the same as no path found
+        # rather than crashing the whole run over one trip.
         log.error(
-            "pgr_ksp exceeded its statement timeout - treating as no route found",
+            "pgr_ksp call failed - treating as no route found",
             extra={
                 "from_lat": from_lat, "from_lon": from_lon,
                 "to_lat": to_lat, "to_lon": to_lon, "period": period,
+                "error": str(exc),
             },
         )
         return None
@@ -190,13 +202,13 @@ def route(
             geo_row = postgres.fetch_one(
                 conn, ROUTE_GEOMETRY_SQL, {"gids": chosen["gids"]}
             )
-    except psycopg.errors.QueryCanceled:
+    except psycopg.OperationalError as exc:
         log.error(
-            "route geometry lookup exceeded its statement timeout - treating as no route found",
+            "route geometry lookup failed - treating as no route found",
             extra={
                 "from_lat": from_lat, "from_lon": from_lon,
                 "to_lat": to_lat, "to_lon": to_lon, "period": period,
-                "gids": len(chosen["gids"]),
+                "gids": len(chosen["gids"]), "error": str(exc),
             },
         )
         return None
