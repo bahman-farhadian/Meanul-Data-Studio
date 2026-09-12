@@ -28,7 +28,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 from faker import Faker
 
-from nus_common import postgres, redis_client, routing
+from nus_common import postgres, redis_client
 from nus_common.ids import driver_id, passenger_id
 from nus_common.logging import get_logger
 
@@ -161,11 +161,6 @@ def _passenger_chunk(args: tuple[int, int, int, list[str]]) -> list[dict]:
 
 def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     """Create drivers and passengers. Existing rows are left alone."""
-    # Not zones.all_zone_ids(): a driver or passenger homed in a zone whose
-    # own centroid cannot reach a real road would keep re-hitting the
-    # unsnapped-point fallback for as long as it exists.
-    zone_ids = routing.servicable_zone_ids()
-
     # A home point per driver/passenger used to mean a real database round
     # trip each (nearest_road_point) - up to ~1.6 million of them at full
     # scale, sequential, nothing else running. Built once here instead;
@@ -176,6 +171,19 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     zones.build_road_point_pools(
         settings.road_point_pool_size, settings.history_routing_workers, seed_value
     )
+
+    # zones.all_zone_ids() (grid().all_zone_ids()), not
+    # routing.servicable_zone_ids(): the latter is a second, independent
+    # read-replica query against the same city_zones WHERE servicable
+    # condition - confirmed live to disagree with the grid actually used
+    # above under replication lag (a zone marked unservicable moments
+    # earlier by zones.seed()'s own UPDATE can still read as servicable
+    # from a replica that has not caught up yet), which is exactly what
+    # crashed a real run with KeyError on a zone id the pool never built
+    # a point for. Deriving zone_ids from the same already-loaded grid
+    # instead makes the two impossible to disagree - there is only one
+    # read of city_zones happening here, not two.
+    zone_ids = zones.all_zone_ids()
 
     workers = settings.people_generation_workers
 
