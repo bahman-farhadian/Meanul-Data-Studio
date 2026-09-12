@@ -36,6 +36,17 @@ bootstrap:
         wal_log_hints: "on"
         hot_standby: "on"
         max_connections: 200
+        # Postgres's own compiled-in default (128MB) left every read almost
+        # entirely dependent on the OS page cache to hold the routing graph
+        # (ways/ways_vertices_pgr) in memory - confirmed to matter: that page
+        # cache usage counts against the container's own memcg limit
+        # (PG_MEM in a-infra-postgres/.env) the same as shared_buffers does,
+        # and a real run OOM-killed pg-1 under concurrent pgr_ksp load with
+        # shared_buffers still at the default. Fixed value, not env-driven -
+        # patroni.yml is copied into the image as-is, no envsubst step - kept
+        # at roughly a quarter of PG_MEM's new 16g ceiling, ordinary Postgres
+        # guidance for a dedicated instance.
+        shared_buffers: 4GB
         max_wal_senders: 10
         max_replication_slots: 10
         password_encryption: scram-sha-256
