@@ -35,9 +35,18 @@ def _connection_string(port: int) -> str:
     user = config.optional("PG_USER", "postgres")
     password = config.required("PG_PASSWORD")
     # connect_timeout keeps a dead proxy from turning into a hung service.
+    # statement_timeout is the same idea for a single query: pgr_ksp
+    # (nus_common.routing.route) is a real graph search over a real street
+    # network, and confirmed live, some specific call can run away and
+    # exhaust a node's memory rather than just running slowly - a plain
+    # pgr_dijkstra call is 50-150ms, so 30s is generous headroom for a
+    # legitimate call and still a hard ceiling on a runaway one. The
+    # caller (routing.route) treats psycopg.errors.QueryCanceled the same
+    # way it already treats "no path found" - not a crash.
     return (
         f"host={host} port={port} dbname={database} "
-        f"user={user} password={password} connect_timeout=10"
+        f"user={user} password={password} connect_timeout=10 "
+        f"options='-c statement_timeout=30000'"
     )
 
 
