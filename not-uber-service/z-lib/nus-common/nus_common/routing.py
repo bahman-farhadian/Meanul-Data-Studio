@@ -22,6 +22,8 @@ import hashlib
 import random
 from concurrent.futures import ThreadPoolExecutor
 
+import psycopg
+
 from nus_common import config, postgres
 from nus_common.logging import get_logger
 
@@ -111,8 +113,13 @@ def route(
     at the nearest place a car can be.
 
     None means the two points are not connected in the imported map - usually
-    a point outside the imported area. The caller treats that as "no driver
-    found" rather than crashing.
+    a point outside the imported area - or that pgr_ksp itself ran past
+    postgres.py's own statement_timeout for this specific pair (confirmed
+    live: a real call can run away and exhaust a node's memory rather than
+    just running slowly, for a still-unidentified reason - logged as an
+    error, with the exact coordinates, precisely so a repeat is
+    reproducible instead of another multi-hour hunt). Either way the
+    caller treats it as "no driver found" rather than crashing.
 
     Up to K_ROUTES candidate routes are computed (pgr_ksp), and one is
     picked with ROUTE_CHOICE_WEIGHTS favoring the cheaper ones - not always
@@ -130,17 +137,27 @@ def route(
 
     edges_sql = EDGES_SQL_TEMPLATE.format(period=period)
 
-    with postgres.read_connection() as conn:
-        rows = postgres.fetch_all(
-            conn,
-            KSP_SQL,
-            {
+    try:
+        with postgres.read_connection() as conn:
+            rows = postgres.fetch_all(
+                conn,
+                KSP_SQL,
+                {
+                    "from_lat": from_lat, "from_lon": from_lon,
+                    "to_lat": to_lat, "to_lon": to_lon,
+                    "edges_sql": edges_sql,
+                    "k": K_ROUTES,
+                },
+            )
+    except psycopg.errors.QueryCanceled:
+        log.error(
+            "pgr_ksp exceeded its statement timeout - treating as no route found",
+            extra={
                 "from_lat": from_lat, "from_lon": from_lon,
-                "to_lat": to_lat, "to_lon": to_lon,
-                "edges_sql": edges_sql,
-                "k": K_ROUTES,
+                "to_lat": to_lat, "to_lon": to_lon, "period": period,
             },
         )
+        return None
 
     if not rows:
         return None
@@ -168,10 +185,21 @@ def route(
     chosen_id = chooser.choices(path_ids, weights=weights, k=1)[0]
     chosen = candidates[chosen_id]
 
-    with postgres.read_connection() as conn:
-        geo_row = postgres.fetch_one(
-            conn, ROUTE_GEOMETRY_SQL, {"gids": chosen["gids"]}
+    try:
+        with postgres.read_connection() as conn:
+            geo_row = postgres.fetch_one(
+                conn, ROUTE_GEOMETRY_SQL, {"gids": chosen["gids"]}
+            )
+    except psycopg.errors.QueryCanceled:
+        log.error(
+            "route geometry lookup exceeded its statement timeout - treating as no route found",
+            extra={
+                "from_lat": from_lat, "from_lon": from_lon,
+                "to_lat": to_lat, "to_lon": to_lon, "period": period,
+                "gids": len(chosen["gids"]),
+            },
         )
+        return None
 
     if not geo_row or not geo_row["route_km"]:
         return None
