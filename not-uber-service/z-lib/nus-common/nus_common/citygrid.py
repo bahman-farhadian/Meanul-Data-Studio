@@ -48,7 +48,7 @@ class CityGrid:
     index_zone_ids: list[str] = field(repr=False)
 
     @classmethod
-    def load(cls) -> "CityGrid":
+    def load(cls, from_leader: bool = False) -> "CityGrid":
         """Load every servicable zone's real polygon, once.
 
         A single query, cached for the life of the process - every method
@@ -56,8 +56,17 @@ class CityGrid:
         when this was grid arithmetic. Reused across every caller
         (h-bootstrap, driver-service, passenger-service, dispatch-service,
         city-service all load exactly the same set).
+
+        from_leader=True reads through the write connection instead of a
+        replica - only h-bootstrap needs this, and only for the one load
+        that happens moments after its own zones.seed() UPDATE marks some
+        zones unservicable: a replica can still be a beat behind that
+        write (confirmed live - a zone just marked unservicable briefly
+        still turning up here), where every other caller starts up long
+        after bootstrap finished and has no such race to avoid.
         """
-        with postgres.read_connection() as conn:
+        connect = postgres.write_connection if from_leader else postgres.read_connection
+        with connect() as conn:
             rows = postgres.fetch_all(conn, ZONES_SQL)
 
         zones: dict[str, Zone] = {}
