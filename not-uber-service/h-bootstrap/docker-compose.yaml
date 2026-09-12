@@ -100,6 +100,11 @@ services:
       HISTORY_DAYS: ${HISTORY_DAYS:-7}
       HISTORY_TRIPS_PER_DAY: ${HISTORY_TRIPS_PER_DAY:-655000}
       HISTORY_POSITIONS_PER_TRIP: ${HISTORY_POSITIONS_PER_TRIP:-8}
+      # Real OS processes deciding trip specs before routing - pure CPU
+      # work (zone-weight/OD-share lookups, distance decay), so this
+      # matches BOOTSTRAP_CPUS too, same reasoning as
+      # PEOPLE_GENERATION_WORKERS above.
+      HISTORY_GENERATION_WORKERS: ${HISTORY_GENERATION_WORKERS:-10}
       HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-18}
       # Real, road-snapped points precomputed per zone before assigning
       # driver/passenger home locations and historical pickups/dropoffs -

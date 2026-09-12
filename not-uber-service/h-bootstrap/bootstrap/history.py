@@ -33,7 +33,7 @@ logged as such.
 """
 
 import random
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -153,6 +153,10 @@ def _map_available() -> bool:
 
 def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     """Invent the whole week and return it, ready to be written."""
+    # A second, separate rng from the ones the process pool workers use
+    # below: this one is only for what still happens sequentially in this
+    # process after routing (see _finish_trip/_hotspot_history) - a much
+    # smaller amount of work, not worth parallelizing on its own.
     rng = random.Random(seed_value)
     # zones.all_zone_ids() (grid().all_zone_ids()), not
     # routing.servicable_zone_ids() - see people.py's own seed() for why:
@@ -163,6 +167,12 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     # disagree. By the time this runs, people.seed() has already loaded
     # and cached the grid - this is not a new database call.
     zone_ids = zones.all_zone_ids()
+    # Force-loaded here, before any process pool below is created: a
+    # forked worker inherits whatever is already cached at fork time, not
+    # anything loaded afterward - the same reasoning as the road-point
+    # pool above it. Without this, every worker's own first zone_weight()/
+    # od_share() call would each independently query Postgres.
+    demand_calibration.preload()
 
     now = datetime.now(tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
     week = GeneratedWeek()
@@ -174,15 +184,28 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
             "straight-line fallback, not real routing"
         )
 
+    # Deciding one trip's pickup/dropoff/outcome before routing is pure
+    # CPU work (zone-weight and OD-share lookups, distance decay - a
+    # handful of per-zone loops, run once per trip) - confirmed live to
+    # be a real, severe bottleneck at full scale (up to
+    # history_days x trips_per_day trips, each doing several O(zones)
+    # passes), the same class of problem people.py's Faker generation
+    # had. Real processes, not threads, for the same reason: this is
+    # CPU-bound, not I/O-bound, so the GIL would serialize it across
+    # threads regardless of how many were started.
+    workers = settings.history_generation_workers
     to_route: list[_TripSpec] = []
     for day_offset in range(settings.history_days, 0, -1):
         day_start = now - timedelta(days=day_offset)
-        for _ in range(settings.trips_per_day):
-            spec = _next_spec(settings, rng, zone_ids, day_start)
-            if spec.outcome == "no_driver_found":
-                _finish_no_driver(spec, week)
-            else:
-                to_route.append(spec)
+        chunk_args = [
+            (settings, seed_value, zone_ids, day_start, day_offset, start, end)
+            for start, end in _chunks(settings.trips_per_day, workers)
+        ]
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            for chunk_to_route, chunk_rows, chunk_events in pool.map(_spec_chunk, chunk_args):
+                to_route.extend(chunk_to_route)
+                week.trip_rows.extend(chunk_rows)
+                week.trip_events.extend(chunk_events)
 
     if map_available:
         with ThreadPoolExecutor(max_workers=settings.history_routing_workers) as pool:
@@ -224,6 +247,50 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
         },
     )
     return week
+
+
+def _chunks(total: int, workers: int) -> list[tuple[int, int]]:
+    """Split the range 0..total into up to `workers` contiguous pieces."""
+    if total <= 0:
+        return []
+    workers = max(1, min(workers, total))
+    size = -(-total // workers)  # ceiling division, no float rounding
+    return [(start, min(start + size, total)) for start in range(0, total, size)]
+
+
+def _spec_chunk(
+    args: tuple[Settings, int, list[str], datetime, int, int, int],
+) -> tuple[list["_TripSpec"], list[dict], list[list]]:
+    """Decide one contiguous range of one day's trips - runs in its own
+    process (see generate() above for why).
+
+    Its own random.Random, seeded from the day and the chunk's own start
+    index rather than shared: independent of every other chunk, and of
+    how many workers there are, so the same seed_value and worker count
+    always reproduce the same week (a different worker count changes the
+    specific trips generated, the same way a different HISTORY_DAYS
+    would - the guarantee is "these settings always produce this week",
+    not "the exact trips a different partitioning would have produced").
+
+    Returns (specs still needing routing, no_driver trip rows, no_driver
+    trip events) - plain, picklable data, not a GeneratedWeek: a worker
+    process cannot mutate the parent's own week object directly.
+    """
+    settings, seed_value, zone_ids, day_start, day_offset, start, end = args
+    rng = random.Random(f"{seed_value}:history:{day_offset}:{start}")
+
+    to_route: list[_TripSpec] = []
+    no_driver_rows: list[dict] = []
+    no_driver_events: list[list] = []
+    for _ in range(start, end):
+        spec = _next_spec(settings, rng, zone_ids, day_start)
+        if spec.outcome == "no_driver_found":
+            row, event = _no_driver_rows(spec)
+            no_driver_rows.append(row)
+            no_driver_events.append(event)
+        else:
+            to_route.append(spec)
+    return to_route, no_driver_rows, no_driver_events
 
 
 def _next_spec(
@@ -296,25 +363,31 @@ def _fallback_route(spec: _TripSpec) -> tuple[float, int, None]:
     return route_km, predicted_s, None
 
 
+def _no_driver_rows(spec: _TripSpec) -> tuple[dict, list]:
+    """No route, no driver, no fare - the trip row and event row for that
+    outcome, as plain data rather than appended to a GeneratedWeek
+    directly, so a process pool worker can produce these too."""
+    ended_at = spec.requested_at + timedelta(minutes=3)
+    row = _trip_row(
+        trip_id=spec.trip_id, rider=spec.rider, driver=None, status="no_driver_found",
+        pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
+        pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
+        requested_vehicle_type=spec.requested_vehicle_type,
+        route_km=None, predicted_s=None, actual_s=None,
+        surge=None, estimate=None, final=None,
+        requested_at=spec.requested_at, ended_at=ended_at,
+    )
+    event = _event_row(spec.trip_id, spec.rider, None, "no_driver_found", spec.pickup_zone,
+                        spec.dropoff_zone, None, None, None, None, None, None, ended_at)
+    return row, event
+
+
 def _finish_no_driver(spec: _TripSpec, week: GeneratedWeek) -> None:
     """No route, no driver, no fare. The trip is still recorded - "we could
     not serve this" is a number worth having."""
-    ended_at = spec.requested_at + timedelta(minutes=3)
-    week.trip_rows.append(
-        _trip_row(
-            trip_id=spec.trip_id, rider=spec.rider, driver=None, status="no_driver_found",
-            pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
-            pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
-            requested_vehicle_type=spec.requested_vehicle_type,
-            route_km=None, predicted_s=None, actual_s=None,
-            surge=None, estimate=None, final=None,
-            requested_at=spec.requested_at, ended_at=ended_at,
-        )
-    )
-    week.trip_events.append(
-        _event_row(spec.trip_id, spec.rider, None, "no_driver_found", spec.pickup_zone,
-                   spec.dropoff_zone, None, None, None, None, None, None, ended_at)
-    )
+    row, event = _no_driver_rows(spec)
+    week.trip_rows.append(row)
+    week.trip_events.append(event)
 
 
 def _finish_trip(
