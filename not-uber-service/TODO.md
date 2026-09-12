@@ -29,17 +29,6 @@ by hash across N replicas, each instance only handling its own slice).
 Worth doing only after confirming the config-propagation fix and the
 vertical CPU bump this round aren't already enough on their own.
 
-## Not yet done: pool road-snapped points in the live services too
-
-bootstrap's own per-driver/per-trip database round trip for
-random_road_point_in_zone is fixed (build_road_point_pools /
-pooled_road_point_in_zone, h-bootstrap/bootstrap/zones.py) - but
-driver-service and passenger-service call the exact same underlying
-nearest_road_point() directly, live, still paying a real query every
-time: once per driver at startup (up to 106,000 sequential calls, no
-threading), and twice per new trip request (~910/minute at full-scale
-TRIP_REQUESTS_PER_MINUTE, forever, not just once). Same fix, different
-location: the pooling logic needs to move from bootstrap/zones.py into
-nus_common (routing.py or citygrid.py) so every service - bootstrap,
-driver-service, passenger-service - can build its own pool once at its
-own process startup instead of bootstrap's copy only helping bootstrap.
+Currently pending real data: deploying at the current commit specifically
+to measure driver-service/passenger-service CPU utilization and actual
+throughput against the theoretical target before deciding.
