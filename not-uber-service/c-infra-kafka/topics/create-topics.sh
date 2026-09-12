@@ -36,7 +36,7 @@ existing=$("$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" --list)
 
 # IFS is set to a tab so the columns of topics.tsv are read as they are
 # written. Lines starting with # and empty lines are skipped.
-while IFS="$TAB" read -r name partitions key purpose; do
+while IFS="$TAB" read -r name partitions retention_hours key purpose; do
     case "$name" in
         ''|\#*) continue ;;
     esac
@@ -46,7 +46,13 @@ while IFS="$TAB" read -r name partitions key purpose; do
         continue
     fi
 
-    echo "+ creating ${name} (${partitions} partitions, keyed by ${key}) - ${purpose}"
+    if [ "$retention_hours" = "-" ]; then
+        topic_retention_ms="$RETENTION_MS"
+    else
+        topic_retention_ms=$(( retention_hours * 3600 * 1000 ))
+    fi
+
+    echo "+ creating ${name} (${partitions} partitions, ${retention_hours}h retention, keyed by ${key}) - ${purpose}"
     # kafka-topics.sh's '.'/'_' JMX metric-name warning lands on STDOUT, not
     # stderr (confirmed against this exact image - not the split you'd
     # guess). It fires for ANY topic using either character, regardless of
@@ -62,7 +68,7 @@ while IFS="$TAB" read -r name partitions key purpose; do
         --partitions "$partitions" \
         --replication-factor 3 \
         --config min.insync.replicas=2 \
-        --config retention.ms="$RETENTION_MS" \
+        --config retention.ms="$topic_retention_ms" \
         >"$out" 2>&1; then
         grep -v "WARNING: Due to limitations in metric names" "$out" || true
         rm -f "$out"

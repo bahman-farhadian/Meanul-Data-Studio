@@ -1,12 +1,15 @@
 # Every topic of the stack, in one place. create-topics.sh reads this file.
 #
 # Columns, separated by tabs:
-#   name          the topic name
-#   partitions    how many pieces the topic is split into; more partitions
-#                 means more consumers can read it at the same time
-#   key           what the producer uses as the message key, so that all
-#                 messages about one entity keep their order
-#   purpose       a short note for humans
+#   name             the topic name
+#   partitions       how many pieces the topic is split into; more
+#                    partitions means more consumers can read it at the
+#                    same time
+#   retention_hours  how long a message stays before Kafka deletes it;
+#                    "-" means use KAFKA_RETENTION_HOURS (the default)
+#   key              what the producer uses as the message key, so that
+#                    all messages about one entity keep their order
+#   purpose          a short note for humans
 #
 # Replication is always 3 (one copy per broker) and is set by the script.
 # Partition counts re-derived for NYC TLC real-scale fleet/demand (~106,000
@@ -20,13 +23,24 @@
 # capped at 263 possible keys (one per real TLC zone) regardless of fleet
 # or demand scale, so it stays at one partition per broker.
 #
+# retention_hours overrides exist because one default never fit every
+# topic here once real scale was actually flowing: driver_location alone
+# at full scale (~106,000 drivers, ~60% online, one report every
+# DRIVER_TICK_SECONDS) is on the order of 20,000 messages/second - the
+# 48-hour default this project used to apply everywhere would let it grow
+# toward several hundred GB per broker (every broker holds a full replica
+# at replication factor 3 with exactly 3 brokers), more than this host's
+# whole data disk. Cut down here to what real full-scale volume can
+# actually afford to keep; the low-volume topics keep the long default,
+# since nothing about their size demands otherwise.
+#
 # The cdc.* topics are NOT listed here: Debezium creates them itself, one
 # per PostgreSQL table (see d-infra-debezium).
 #
-# name	partitions	key	purpose
-driver_location	12	driver_id	where each driver is, every few seconds
-rider_location	12	rider_id	where each rider's phone is during a trip
-trip_requests	6	trip_id	a passenger asks for a ride
-trip_lifecycle	6	trip_id	every status change of a trip, up to the final fare
-city_hotspots	3	zone_id	demand score per city zone, published by city-service
-segment_traffic_updates	3	zone_id	a real congestion-factor update, published by city-service
+# name	partitions	retention_hours	key	purpose
+driver_location	12	6	driver_id	where each driver is, every few seconds
+rider_location	12	12	rider_id	where each rider's phone is during a trip
+trip_requests	6	-	trip_id	a passenger asks for a ride
+trip_lifecycle	6	-	trip_id	every status change of a trip, up to the final fare
+city_hotspots	3	-	zone_id	demand score per city zone, published by city-service
+segment_traffic_updates	3	-	zone_id	a real congestion-factor update, published by city-service
