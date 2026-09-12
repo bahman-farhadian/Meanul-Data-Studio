@@ -12,7 +12,7 @@
 CREATE TABLE IF NOT EXISTS nus.driver_utilization_hourly_local ON CLUSTER nus_cluster
 (
     hour          DateTime('UTC'),
-    driver_id     FixedString(10),
+    driver_id     FixedString(11),
     -- Ticks where the driver reported anything but offline - the
     -- denominator for "what share of online time was spent on a trip".
     online_ticks  UInt64,

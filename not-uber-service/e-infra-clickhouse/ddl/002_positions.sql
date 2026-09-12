@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
     -- length prefix would only cost more to store and compare for no
     -- benefit. A row that does not fit this width is a bug upstream, not
     -- something the warehouse should quietly accept.
-    driver_id     FixedString(10),
+    driver_id     FixedString(11),
     trip_id       Nullable(FixedString(21)),
     -- Enum, not LowCardinality(String): status is a closed set already
     -- enforced by the Avro schema (DriverStatus) and by Postgres's own
@@ -65,7 +65,7 @@ CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
 (
     -- rider_id is a passenger id (psg-NNNNNN) - see driver_positions above
     -- for why FixedString, not String.
-    rider_id      FixedString(10),
+    rider_id      FixedString(11),
     trip_id       Nullable(FixedString(21)),
     lat           Float64,
     lon           Float64,
