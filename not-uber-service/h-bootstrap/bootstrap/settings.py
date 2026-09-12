@@ -15,6 +15,13 @@ class Settings:
     # --- how much to seed ------------------------------------------------
     driver_count: int
     passenger_count: int
+    # Generating a driver/passenger record is pure CPU work (Faker's
+    # name/phone/plate generation, mostly) - real processes, not threads,
+    # since Python's GIL would otherwise serialize it regardless of thread
+    # count. Matches BOOTSTRAP_CPUS by default: spawning more OS processes
+    # than the container's own cgroup quota allows just adds contention,
+    # not speed.
+    people_generation_workers: int
     history_days: int
     trips_per_day: int
     # How many position reports to keep per historical trip. Real devices
@@ -65,6 +72,7 @@ def load() -> Settings:
         # your own .env for a smaller dev machine.
         driver_count=config.integer("SEED_DRIVERS", 106_000),
         passenger_count=config.integer("SEED_PASSENGERS", 1_500_000),
+        people_generation_workers=config.integer("PEOPLE_GENERATION_WORKERS", 10),
         history_days=config.integer("HISTORY_DAYS", 7),
         trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 655_000),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
