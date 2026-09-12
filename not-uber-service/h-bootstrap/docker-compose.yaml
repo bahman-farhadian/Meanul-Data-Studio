@@ -42,7 +42,7 @@ services:
     # A one-shot must not come back after it finishes. Anything else would
     # mean re-running the whole preparation on every container restart.
     restart: "no"
-    cpus: ${BOOTSTRAP_CPUS:-10}
+    cpus: ${BOOTSTRAP_CPUS:-20}
     # The routable graph is now a pg_restore of an already-built dump, not a
     # from-scratch topology build (h-bootstrap/lion-prepare/ does that part,
     # outside this container, once). Kept generous anyway - too small a
@@ -96,7 +96,7 @@ services:
       # Real OS processes generating driver/passenger records - pure CPU
       # work (Faker), so this matches BOOTSTRAP_CPUS above, not a thread
       # count.
-      PEOPLE_GENERATION_WORKERS: ${PEOPLE_GENERATION_WORKERS:-10}
+      PEOPLE_GENERATION_WORKERS: ${PEOPLE_GENERATION_WORKERS:-20}
       HISTORY_DAYS: ${HISTORY_DAYS:-7}
       HISTORY_TRIPS_PER_DAY: ${HISTORY_TRIPS_PER_DAY:-655000}
       HISTORY_POSITIONS_PER_TRIP: ${HISTORY_POSITIONS_PER_TRIP:-8}
@@ -104,7 +104,7 @@ services:
       # work (zone-weight/OD-share lookups, distance decay), so this
       # matches BOOTSTRAP_CPUS too, same reasoning as
       # PEOPLE_GENERATION_WORKERS above.
-      HISTORY_GENERATION_WORKERS: ${HISTORY_GENERATION_WORKERS:-10}
+      HISTORY_GENERATION_WORKERS: ${HISTORY_GENERATION_WORKERS:-20}
       HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-18}
       # Real, road-snapped points precomputed per zone before assigning
       # driver/passenger home locations and historical pickups/dropoffs -

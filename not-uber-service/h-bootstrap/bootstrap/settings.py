@@ -80,10 +80,10 @@ def load() -> Settings:
         # your own .env for a smaller dev machine.
         driver_count=config.integer("SEED_DRIVERS", 106_000),
         passenger_count=config.integer("SEED_PASSENGERS", 1_500_000),
-        people_generation_workers=config.integer("PEOPLE_GENERATION_WORKERS", 10),
+        people_generation_workers=config.integer("PEOPLE_GENERATION_WORKERS", 20),
         history_days=config.integer("HISTORY_DAYS", 7),
         trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 655_000),
-        history_generation_workers=config.integer("HISTORY_GENERATION_WORKERS", 10),
+        history_generation_workers=config.integer("HISTORY_GENERATION_WORKERS", 20),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
         history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 18),
         road_point_pool_size=config.integer("ROAD_POINT_POOL_SIZE", 300),
