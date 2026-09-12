@@ -29,6 +29,7 @@ A repeated OD pair at the same hour does take the same literal streets again
 
 import hashlib
 import random
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
@@ -110,6 +111,41 @@ ROUTE_GEOMETRY_SQL = """
      WHERE gid = ANY(%(gids)s)
 """
 
+# How many times a single route()-path query gets tried before this call
+# gives up. A dead connection (confirmed live: both a clean statement_timeout
+# cancellation and a backend dying underneath the query show up here) is
+# usually transient - postgres.py's own pool discards the broken connection
+# and hands out a fresh one on the very next checkout, so a retry against
+# that fresh connection frequently succeeds where the first attempt didn't.
+ROUTE_QUERY_ATTEMPTS = 3
+# A short pause before each retry, not zero: if a whole node just OOM-killed
+# and is still "the database system is in recovery mode" (confirmed live to
+# last a few seconds), retrying instantly just hits the same still-recovering
+# node again. This gives HAProxy's own health check a real chance to have
+# already failed it over to the other replica by the next attempt.
+ROUTE_RETRY_DELAY_S = 0.5
+
+
+def _query_with_retry(fetch, sql: str, params: dict, what: str, **log_extra):
+    """Run one route()-path query, retrying past a transient connection
+    failure before this specific trip is given up on. Raises the last
+    psycopg.OperationalError if every attempt fails - the caller treats
+    that the same as no path found, not a crash (see route()'s docstring)."""
+    last_exc: psycopg.OperationalError | None = None
+    for attempt in range(1, ROUTE_QUERY_ATTEMPTS + 1):
+        try:
+            with postgres.read_connection() as conn:
+                return fetch(conn, sql, params)
+        except psycopg.OperationalError as exc:
+            last_exc = exc
+            if attempt < ROUTE_QUERY_ATTEMPTS:
+                log.warning(
+                    f"{what} failed, retrying",
+                    extra={**log_extra, "attempt": attempt, "of": ROUTE_QUERY_ATTEMPTS, "error": str(exc)},
+                )
+                time.sleep(ROUTE_RETRY_DELAY_S)
+    raise last_exc
+
 
 def route(
     from_lat: float, from_lon: float, to_lat: float, to_lon: float, period: str
@@ -147,34 +183,33 @@ def route(
     edges_sql = EDGES_SQL_TEMPLATE.format(period=period)
 
     try:
-        with postgres.read_connection() as conn:
-            rows = postgres.fetch_all(
-                conn,
-                KSP_SQL,
-                {
-                    "from_lat": from_lat, "from_lon": from_lon,
-                    "to_lat": to_lat, "to_lon": to_lon,
-                    "edges_sql": edges_sql,
-                    "k": K_ROUTES,
-                },
-            )
+        rows = _query_with_retry(
+            postgres.fetch_all,
+            KSP_SQL,
+            {
+                "from_lat": from_lat, "from_lon": from_lon,
+                "to_lat": to_lat, "to_lon": to_lon,
+                "edges_sql": edges_sql,
+                "k": K_ROUTES,
+            },
+            "pgr_ksp call",
+            from_lat=from_lat, from_lon=from_lon,
+            to_lat=to_lat, to_lon=to_lon, period=period,
+        )
     except psycopg.OperationalError as exc:
-        # Broader than QueryCanceled on purpose: confirmed live that
-        # whatever kills a backend under this call does it faster than the
-        # statement_timeout ever gets a chance to fire (the OOM killer, not
-        # a slow query) - it surfaces here as the connection itself dying
-        # mid-call ("server closed the connection unexpectedly"), not a
-        # clean cancellation. The pool discards and replaces the broken
-        # connection on its own; this call just can't use its result.
-        # Logged with the exact coordinates and the real exception text so
-        # a repeat is reproducible, and treated the same as no path found
-        # rather than crashing the whole run over one trip.
+        # Confirmed live that both failure modes land here: a clean
+        # statement_timeout cancellation, and a backend dying underneath
+        # the query entirely ("server closed the connection unexpectedly").
+        # Every one of ROUTE_QUERY_ATTEMPTS already failed by the time this
+        # runs - logged with the exact coordinates and the real exception
+        # text so a repeat is reproducible, and treated the same as no
+        # path found rather than crashing the whole run over one trip.
         log.error(
-            "pgr_ksp call failed - treating as no route found",
+            "pgr_ksp call failed after retries - treating as no route found",
             extra={
                 "from_lat": from_lat, "from_lon": from_lon,
                 "to_lat": to_lat, "to_lon": to_lon, "period": period,
-                "error": str(exc),
+                "attempts": ROUTE_QUERY_ATTEMPTS, "error": str(exc),
             },
         )
         return None
@@ -206,17 +241,21 @@ def route(
     chosen = candidates[chosen_id]
 
     try:
-        with postgres.read_connection() as conn:
-            geo_row = postgres.fetch_one(
-                conn, ROUTE_GEOMETRY_SQL, {"gids": chosen["gids"]}
-            )
+        geo_row = _query_with_retry(
+            postgres.fetch_one,
+            ROUTE_GEOMETRY_SQL,
+            {"gids": chosen["gids"]},
+            "route geometry lookup",
+            from_lat=from_lat, from_lon=from_lon,
+            to_lat=to_lat, to_lon=to_lon, period=period,
+        )
     except psycopg.OperationalError as exc:
         log.error(
-            "route geometry lookup failed - treating as no route found",
+            "route geometry lookup failed after retries - treating as no route found",
             extra={
                 "from_lat": from_lat, "from_lon": from_lon,
                 "to_lat": to_lat, "to_lon": to_lon, "period": period,
-                "gids": len(chosen["gids"]), "error": str(exc),
+                "gids": len(chosen["gids"]), "attempts": ROUTE_QUERY_ATTEMPTS, "error": str(exc),
             },
         )
         return None
