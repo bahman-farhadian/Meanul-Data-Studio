@@ -33,29 +33,3 @@ Currently pending real data: deploying at the current commit specifically
 to measure driver-service/passenger-service CPU utilization and actual
 throughput against the theoretical target before deciding.
 
-## Not yet done: people.seed()'s Faker calls are the next real bottleneck
-
-Confirmed live: with the road-point-pooling fix in place, bootstrap's
-people-seeding step still pegs one full CPU core (100% in `docker stats`)
-for several minutes with zero database activity in between - `pg_stat_
-activity` showed nothing from bootstrap, no locks, no new log lines,
-while the container was genuinely working the whole time, not hung.
-This is `people.seed()` (h-bootstrap/bootstrap/people.py) building
-~106,000 driver + ~1,500,000 passenger records in memory before a single
-INSERT runs - roughly 3.3 million Faker calls total (`faker.name()`,
-`faker.msisdn()`, `faker.license_plate()`), all in one Python thread.
-
-Threading will not help here the way it did for the database round
-trips: Faker generation is pure CPU work, not I/O, so the GIL serializes
-it across threads regardless of how many are started. Real speedup
-needs genuine multiprocessing (e.g. `concurrent.futures.
-ProcessPoolExecutor`, splitting the driver/passenger ranges across
-BOOTSTRAP_CPUS-many worker processes, each with its own Faker instance
-seeded deterministically from its own range) - the same class of fix as
-history.py's own ThreadPoolExecutor for routing calls, except processes
-instead of threads because this bottleneck is CPU-bound, not I/O-bound.
-
-Keep Faker itself: the realism it buys (real-looking names/phone numbers/
-plates, not "user_000123") is the whole reason people.py uses it over a
-cheaper synthetic generator - the fix is parallelizing the existing
-calls, not replacing them.
