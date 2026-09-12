@@ -57,6 +57,22 @@ def _load_od_shares() -> dict[tuple[str, str], float]:
     return _OD_SHARES
 
 
+def preload() -> None:
+    """Force both caches to load now, instead of on whichever call happens
+    to be first.
+
+    Only useful to a caller about to fork worker processes (h-bootstrap's
+    history.generate()): a forked child inherits whatever is already
+    cached at fork time, so calling this first means every worker shares
+    the one real load instead of each independently querying on its own
+    first zone_weight()/od_share() call - and, more importantly, all from
+    the exact same snapshot rather than whichever replica each worker's
+    own first query happens to land on.
+    """
+    _load_zone_weights()
+    _load_od_shares()
+
+
 def zone_weight(zone_id: str, hour: int, day_of_week: int) -> float:
     """How busy this zone actually was at this hour on this day of the
     week, in a real month of trips - 1.0 is average, the same semantic

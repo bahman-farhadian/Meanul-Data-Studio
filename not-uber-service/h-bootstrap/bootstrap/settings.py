@@ -24,6 +24,14 @@ class Settings:
     people_generation_workers: int
     history_days: int
     trips_per_day: int
+    # Deciding one historical trip's pickup/dropoff/outcome before routing
+    # is pure CPU work too (zone-weight and OD-share lookups, distance
+    # decay - a handful of per-zone loops, run once per trip) - real
+    # processes for the same reason people_generation_workers is. Separate
+    # from history_routing_workers on purpose: that one is an I/O-bound
+    # thread pool waiting on Postgres, this one is CPU-bound and needs
+    # real cores, not just concurrent connections.
+    history_generation_workers: int
     # How many position reports to keep per historical trip. Real devices
     # report every few seconds; storing that for a whole week would be tens
     # of millions of rows for data nobody looks at closely.
@@ -75,6 +83,7 @@ def load() -> Settings:
         people_generation_workers=config.integer("PEOPLE_GENERATION_WORKERS", 10),
         history_days=config.integer("HISTORY_DAYS", 7),
         trips_per_day=config.integer("HISTORY_TRIPS_PER_DAY", 655_000),
+        history_generation_workers=config.integer("HISTORY_GENERATION_WORKERS", 10),
         positions_per_trip=config.integer("HISTORY_POSITIONS_PER_TRIP", 8),
         history_routing_workers=config.integer("HISTORY_ROUTING_WORKERS", 18),
         road_point_pool_size=config.integer("ROAD_POINT_POOL_SIZE", 300),
