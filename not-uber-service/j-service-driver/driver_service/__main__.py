@@ -79,7 +79,7 @@ def load_roster(
         lat = row.get("last_lat")
         lon = row.get("last_lon")
         if lat is None or lon is None:
-            lat, lon = routing.random_road_point_in_zone(grid, home, rng)
+            lat, lon = routing.pooled_road_point_in_zone(grid, home, rng)
         vehicle_raw = redis.get(redis_client.vehicle_key(driver_id))
         vehicle_type = "economy"
         if vehicle_raw:
@@ -245,6 +245,8 @@ def main() -> int:
     shift_change_chance = config.number("DRIVER_SHIFT_CHANGE_CHANCE", 0.01)
     db_sync_seconds = config.number("DRIVER_DB_SYNC_SECONDS", 30.0)
     hotspot_refresh_seconds = config.number("DRIVER_HOTSPOT_REFRESH_SECONDS", 60.0)
+    road_point_pool_size = config.integer("ROAD_POINT_POOL_SIZE", 300)
+    road_point_pool_workers = config.integer("ROAD_POINT_POOL_WORKERS", 8)
 
     # Four connections, not one: this service owns driver:*/vehicle:*/the
     # geo sets (DB_DRIVER), but also reads hotspot scores to decide where an
@@ -275,6 +277,17 @@ def main() -> int:
     # assignment, hotspot scoring, and wander targets, for the whole run.
     zone_ids = routing.servicable_zone_ids()
 
+    # random_road_point_in_zone's own snapping step is a real database
+    # round trip - the initial "start with the intended share already
+    # online" loop below calls it once per online driver (up to ~63,600 at
+    # full scale), and shift changes/idle re-targeting call it again
+    # continuously, every tick, for as long as this process runs. Built
+    # once here instead; see nus_common.routing.build_road_point_pools's
+    # own docstring for the full story (confirmed directly in
+    # h-bootstrap: this was most of what made a scale-sized seeding step
+    # take tens of minutes with the host otherwise idle).
+    routing.build_road_point_pools(grid, road_point_pool_size, road_point_pool_workers)
+
     drivers = load_roster(redis_driver, grid, rng, zone_ids)
     if not drivers:
         log.error("driver keys appeared but none could be read")
@@ -286,7 +299,7 @@ def main() -> int:
     for driver in drivers.values():
         if rng.random() < online_share:
             driver.set_status(IDLE)
-            driver.head_towards(*routing.random_road_point_in_zone(grid, driver.home_zone_id, rng))
+            driver.head_towards(*routing.pooled_road_point_in_zone(grid, driver.home_zone_id, rng))
 
     producer = AvroTopicProducer(TOPIC)
     consumer = AvroTopicConsumer(
@@ -328,7 +341,7 @@ def main() -> int:
                 if rng.random() < shift_change_chance:
                     if driver.status == OFFLINE:
                         driver.set_status(IDLE)
-                        driver.head_towards(*routing.random_road_point_in_zone(grid, driver.home_zone_id, rng))
+                        driver.head_towards(*routing.pooled_road_point_in_zone(grid, driver.home_zone_id, rng))
                         session_starts.append((driver.driver_id, grid.zone_of(driver.lat, driver.lon)))
                     elif driver.status == IDLE:
                         driver.set_status(OFFLINE)
@@ -342,7 +355,7 @@ def main() -> int:
                 # to, pulled towards whichever zone is busy right now.
                 if driver.status == IDLE and driver.arrived():
                     target_zone = pick_target_zone(zone_scores, zone_ids, rng)
-                    driver.head_towards(*routing.random_road_point_in_zone(grid, target_zone, rng))
+                    driver.head_towards(*routing.pooled_road_point_in_zone(grid, target_zone, rng))
 
                 driver.move(tick_seconds, speed_kmh, rng)
 
