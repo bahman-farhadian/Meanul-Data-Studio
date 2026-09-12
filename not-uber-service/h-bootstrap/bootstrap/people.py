@@ -61,6 +61,14 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     # unsnapped-point fallback for as long as it exists.
     zone_ids = routing.servicable_zone_ids()
 
+    # A home point per driver/passenger used to mean a real database round
+    # trip each (nearest_road_point) - up to ~1.6 million of them at full
+    # scale, sequential, nothing else running. Built once here instead;
+    # see zones.build_road_point_pools's own docstring for the full story.
+    zones.build_road_point_pools(
+        settings.road_point_pool_size, settings.history_routing_workers, seed_value
+    )
+
     drivers = []
     vehicles = []
     for number in range(1, settings.driver_count + 1):
@@ -69,7 +77,7 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
         makes, seats = VEHICLE_MAKES[vehicle_type]
         make, model = rng.choice(makes)
         home = rng.choice(zone_ids)
-        lat, lon = zones.random_road_point_in_zone(home, rng)
+        lat, lon = zones.pooled_road_point_in_zone(home, rng)
         drivers.append(
             {
                 "driver_id": this_driver_id,
