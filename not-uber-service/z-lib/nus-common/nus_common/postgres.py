@@ -50,6 +50,19 @@ def _pool(port: int, size: int) -> ConnectionPool:
         # one that died while the proxy moved to a new leader.
         check=ConnectionPool.check_connection,
         open=True,
+        # pgr_ksp (nus_common.routing.route, called continuously by
+        # dispatch-service for live trips and by h-bootstrap's historical
+        # routing burst) is a pgRouting/Boost Graph Library function -  it
+        # manages its own memory outside Postgres's tracked allocator.
+        # Confirmed live: pg_log_backend_memory_contexts() showed a few KB
+        # of Postgres-tracked memory on a backend whose OS-level RSS had
+        # grown to hundreds of MB, and a real run OOM-killed a replica at
+        # ~15GB for a single backend within about 40 minutes. The pool's
+        # own 3600s default gave a connection a full hour before recycling
+        # - far longer than that. Recycling every 5 minutes bounds the
+        # worst case regardless of what pgr_ksp leaks internally, for
+        # every caller of this pool, not just bootstrap's own burst.
+        max_lifetime=300.0,
     )
 
 
