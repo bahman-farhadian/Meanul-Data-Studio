@@ -272,10 +272,16 @@ def main() -> int:
         delay_seconds=5.0,
         shutdown=shutdown,
     )
-    # Computed once, here: a zone whose own centroid cannot reach a real
-    # road (see routing.servicable_zone_ids()) is excluded from home-zone
-    # assignment, hotspot scoring, and wander targets, for the whole run.
-    zone_ids = routing.servicable_zone_ids()
+    # grid.all_zone_ids(), not routing.servicable_zone_ids(): the latter is
+    # a second, independent read-replica query against the same
+    # city_zones WHERE servicable condition grid already read - confirmed
+    # live (h-bootstrap) to disagree under replication lag, since the two
+    # queries can land on different replicas. grid is what every point
+    # lookup below actually uses, so deriving zone_ids from it instead
+    # makes the two impossible to disagree. Computed once, here, for
+    # home-zone assignment, hotspot scoring, and wander targets, for the
+    # whole run.
+    zone_ids = grid.all_zone_ids()
 
     # random_road_point_in_zone's own snapping step is a real database
     # round trip - the initial "start with the intended share already

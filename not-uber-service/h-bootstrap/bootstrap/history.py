@@ -154,7 +154,15 @@ def _map_available() -> bool:
 def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     """Invent the whole week and return it, ready to be written."""
     rng = random.Random(seed_value)
-    zone_ids = routing.servicable_zone_ids()
+    # zones.all_zone_ids() (grid().all_zone_ids()), not
+    # routing.servicable_zone_ids() - see people.py's own seed() for why:
+    # two independent read-replica queries against the same "servicable"
+    # condition can disagree under replication lag, and grid() is what
+    # every point-picking call below actually uses, so deriving zone_ids
+    # from it instead of a second query makes the two impossible to
+    # disagree. By the time this runs, people.seed() has already loaded
+    # and cached the grid - this is not a new database call.
+    zone_ids = zones.all_zone_ids()
 
     now = datetime.now(tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
     week = GeneratedWeek()

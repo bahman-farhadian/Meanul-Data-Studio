@@ -27,6 +27,7 @@ ZONES_SQL = """
            ST_Y(centroid) AS lat, ST_X(centroid) AS lon
       FROM city_zones
      WHERE servicable
+     ORDER BY zone_id
 """
 
 
