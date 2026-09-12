@@ -1,0 +1,92 @@
+# o-service-archiver — Prunes trips out of PostgreSQL once they are safely archived in ClickHouse
+#
+# Two stages. The first installs the dependencies; the second is what runs,
+# and carries neither uv nor a compiler.
+#
+# IMPORTANT: the build context is not-uber-service/, not this directory. The
+# image needs the shared package in z-lib/, and it keeps the same layout as
+# the repository so the path dependency in pyproject.toml resolves the same
+# way in both places.
+#
+#   docker build -f o-service-archiver/Dockerfile .     <- from not-uber-service/
+
+ARG PYTHON_IMAGE=python:3.13.15-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
+
+# uv is copied out of its own published image rather than installed with pip:
+# one binary, one pinned version, and no dependency resolution to do first.
+FROM ${UV_IMAGE} AS uv
+
+# --------------------------------------------------------------------------
+# Build stage
+# --------------------------------------------------------------------------
+FROM ${PYTHON_IMAGE} AS build
+COPY --from=uv /uv /usr/local/bin/uv
+
+WORKDIR /app/o-service-archiver
+
+# The shared package first: it changes less often than the service, so this
+# layer survives most rebuilds.
+COPY z-lib/nus-common /app/z-lib/nus-common
+COPY o-service-archiver/pyproject.toml o-service-archiver/uv.lock /app/o-service-archiver/
+
+# --frozen: install exactly what uv.lock says. A build must never quietly
+# pick up a newer version of anything.
+#
+# The cache mount is what makes a rebuild survive a network outage: uv keeps
+# its downloads there, so changing application code re-runs this step against
+# the cache instead of reaching for the index.
+# hatchling is the one thing uv.lock cannot pin: it is a build-system
+# requirement, resolved against the index on every build, so `--frozen` does
+# not cover it. On a slow or intermittent link that single request is what
+# stalls — uv's default is a 30 second timeout and three tries, which is not
+# enough when one file takes two minutes. The cache mount below means it is
+# fetched once and then read from disk.
+ENV UV_LINK_MODE=copy \
+    UV_HTTP_TIMEOUT=180 \
+    UV_HTTP_RETRIES=5 \
+    UV_CONCURRENT_DOWNLOADS=4
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev --no-install-project
+
+# The application code comes AFTER the dependency install, so editing it
+# cannot invalidate the layer above. With the source copied before it, a
+# one-line change re-resolved every dependency — which fails outright on a
+# host that has no route to the index at that moment.
+COPY o-service-archiver/archiver_service /app/o-service-archiver/archiver_service
+RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
+    uv sync --frozen --no-dev
+
+# --------------------------------------------------------------------------
+# Runtime stage
+# --------------------------------------------------------------------------
+FROM ${PYTHON_IMAGE}
+
+ARG PYTHON_IMAGE
+LABEL org.opencontainers.image.title="nus/archiver-service" \
+      org.opencontainers.image.description="Prunes trips out of PostgreSQL once they are safely archived in ClickHouse" \
+      org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.base.name="${PYTHON_IMAGE}"
+
+# Same paths as the build stage: a virtual environment records where it
+# lives, so moving it would break it.
+COPY --from=build /app /app
+
+WORKDIR /app/o-service-archiver
+ENV PATH="/app/o-service-archiver/.venv/bin:${PATH}" \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+# Run as a normal user. Nothing here needs root, and a container that cannot
+# become root is one less thing to worry about.
+RUN useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
+ && chown -R nus:nus /app
+USER nus
+
+# Fail the build rather than ship an image whose entrypoint cannot import
+# itself — a broken path or a missed COPY would otherwise only show up as a
+# crash loop after deployment.
+RUN python -c "import archiver_service, nus_common; print('nus/archiver-service imports cleanly')"
+
+CMD ["python", "-m", "archiver_service"]

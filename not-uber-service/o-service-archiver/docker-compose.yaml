@@ -1,0 +1,73 @@
+# o-service-archiver — keeps PostgreSQL's trips table down to what is
+# still transactional.
+#
+# The OLTP/OLAP split this whole project is built on cuts both ways: a
+# trip past ARCHIVER_RETENTION_HOURS old is not something dispatch,
+# driver-service or passenger-service will ever touch again, and it is
+# already durable history in ClickHouse's trip_events (fed continuously by
+# clickhouse-sink from the same trip_lifecycle events every trip already
+# publishes - nothing here triggers or waits on that, it only assumes it
+# already happened by the time a trip is this old).
+#
+# Postgres only, on purpose: no Kafka, no Redis. There is nothing here for
+# another service to consume - this deletes rows, it does not announce
+# anything about them.
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: o-service-archiver
+
+services:
+  archiver-service:
+    build:
+      # Builds install packages, which needs egress from the build container.
+      # Defaults to the host's own network: a tunnel between here and this
+      # host usually cannot see a build's forwarded container traffic, even
+      # while the host's own connections work fine. Set BUILD_NETWORK=default
+      # if this host has no such gap.
+      network: ${BUILD_NETWORK:-host}
+      context: ..
+      dockerfile: o-service-archiver/Dockerfile
+      args:
+        PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
+        UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
+    image: nus/archiver-service:${NUS_VERSION:-0.1.0}
+    container_name: archiver-service
+    restart: unless-stopped
+    cpus: ${ARCHIVER_SERVICE_CPUS:-0.5}
+    mem_limit: ${ARCHIVER_SERVICE_MEM:-512m}
+    memswap_limit: ${ARCHIVER_SERVICE_MEM:-512m}
+    depends_on:
+      redis-1:
+        condition: service_healthy
+      sentinel-1:
+        condition: service_healthy
+      pg-1:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+
+      REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
+      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
+
+      PG_HOST: ${PG_HOST:-lb-a}
+      PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
+      PG_READ_PORT: ${PG_READ_PORT:-5433}
+      PG_DATABASE: ${PG_DATABASE:-nus}
+      PG_USER: ${PG_USER:-postgres}
+      PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
+
+      ARCHIVER_TICK_MINUTES: ${ARCHIVER_TICK_MINUTES:-15.0}
+      ARCHIVER_RETENTION_HOURS: ${ARCHIVER_RETENTION_HOURS:-24}
+      ARCHIVER_BATCH_SIZE: ${ARCHIVER_BATCH_SIZE:-5000}
+      ARCHIVER_MAX_BATCHES_PER_TICK: ${ARCHIVER_MAX_BATCHES_PER_TICK:-20}
+    networks:
+      - backbone
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone
