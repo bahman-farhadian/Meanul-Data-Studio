@@ -45,6 +45,7 @@ include k-service-passenger/Makefile
 include l-service-dispatch/Makefile
 include m-service-city/Makefile
 include n-service-clickhouse-sink/Makefile
+include o-service-archiver/Makefile
 
 # How long to wait for a group of containers to report healthy. ClickHouse and
 # Superset have a 40-60s start_period of their own, so this is generous.
@@ -67,7 +68,7 @@ PIECE_D  := debezium-connect
 PIECE_E  := ch-keeper-1 ch-keeper-2 ch-keeper-3 ch-s1r1 ch-s1r2 ch-s2r1 ch-s2r2
 PIECE_F  := grafana
 PIECE_G  := superset
-SERVICES := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink
+SERVICES := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink archiver-service
 INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F) $(PIECE_G)
 # Everything the bring-up waits on. Debezium Connect is started with the rest
 # but deliberately not waited for: it takes minutes to scan its plugins, and
