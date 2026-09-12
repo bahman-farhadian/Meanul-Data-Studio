@@ -542,9 +542,9 @@ volume-quotas: ## Cap disk usage per data directory with XFS project quotas (run
 	fi; \
 	projid=100; \
 	for entry in \
-		"nus-kafka-data-1:90g" "nus-kafka-data-2:90g" "nus-kafka-data-3:90g" \
+		"nus-kafka-data-1:96g" "nus-kafka-data-2:96g" "nus-kafka-data-3:96g" \
 		"nus-ch-data-s1r1:110g" "nus-ch-data-s1r2:110g" "nus-ch-data-s2r1:110g" "nus-ch-data-s2r2:110g" \
-		"nus-pgdata-1:25g" "nus-pgdata-2:25g" "nus-pgdata-3:25g"; \
+		"nus-pgdata-1:24g" "nus-pgdata-2:24g" "nus-pgdata-3:24g"; \
 	do \
 		dir=$${entry%%:*}; size=$${entry##*:}; path="$$root/$$dir"; \
 		mkdir -p "$$path"; \
