@@ -53,7 +53,7 @@ log = get_logger(__name__)
 # How often the routing phase logs "done X of Y, ETA Z" - the one part of
 # bootstrap that can otherwise run for hours with nothing in the log to say
 # how far along it is (confirmed live).
-PROGRESS_LOG_INTERVAL_S = 30.0
+PROGRESS_LOG_INTERVAL_S = 1.0
 
 # How busy each hour of the day is, relative to the others. Two peaks: people
 # going to work and people going home, with a smaller late-evening bump.
