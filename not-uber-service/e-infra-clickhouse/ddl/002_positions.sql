@@ -43,9 +43,17 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
 ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
 PARTITION BY toYYYYMM(event_date)
 ORDER BY (driver_id, event_time)
--- Position history is huge and loses value quickly. Three months is plenty
--- for the dashboards; the trip record keeps what matters for longer.
-TTL event_date + INTERVAL 90 DAY;
+-- Position history is huge and loses value quickly - the trip record
+-- keeps what matters for longer (trip_events, 365 days). Three months
+-- was the original call, before real fleet scale (~106,000 drivers) was
+-- actually flowing: at that volume this table alone is on the order of
+-- 15-20GB/day per ClickHouse node, and 90 days of it would be several
+-- times this host's entire data disk. Three days is what real-time
+-- driver-side debugging actually needs (Grafana's own live view reads
+-- Redis, not this) and fits real disk with room to spare - re-check
+-- against actual observed growth after a day of real traffic rather
+-- than trusting this estimate forever.
+TTL event_date + INTERVAL 3 DAY;
 
 CREATE TABLE IF NOT EXISTS nus.driver_positions ON CLUSTER nus_cluster
 AS nus.driver_positions_local
@@ -70,7 +78,12 @@ CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
 ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
 PARTITION BY toYYYYMM(event_date)
 ORDER BY (rider_id, event_time)
-TTL event_date + INTERVAL 90 DAY;
+-- Only a travelling rider reports at all (passenger-service), and only
+-- for the length of one trip - real volume here is tiny next to
+-- driver_positions regardless of fleet size, so this can afford to keep
+-- more history for the same reason driver_positions can't; still cut
+-- down from 90 days for consistency with its paired table above.
+TTL event_date + INTERVAL 7 DAY;
 
 CREATE TABLE IF NOT EXISTS nus.rider_positions ON CLUSTER nus_cluster
 AS nus.rider_positions_local
