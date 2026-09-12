@@ -2,20 +2,29 @@
 
 This is the one place in the stack that asks pgRouting a question, and it is
 the most expensive query anywhere in the pipeline. A single pgr_dijkstra call
-ran roughly 50-150ms; pgr_ksp (K_ROUTES candidate routes instead of one) costs
-real, measured multiples of that - about 3.5-4.5x on a synthetic benchmark
-graph, confirmed live against this stack's actual pgRouting 4.0.1 - because a
-repeated OD pair always taking the literal same streets was worse than the
-extra cost. It is shared: dispatch-service calls it once per live trip, and
-h-bootstrap calls it once per historical trip while inventing a seeded week,
-so a pickup and dropoff picked at random are never priced without first
-checking they are actually connected by a real road.
+ran roughly 50-150ms.
+
+K_ROUTES was briefly raised above 1 so a repeated OD pair would not always
+take the literal same streets - real route diversity. That was reverted:
+pgr_ksp's own K-shortest-paths search (Yen's algorithm, via the Boost Graph
+Library) is a documented, severe memory problem for K>1 on a real, large
+graph - https://github.com/pgRouting/pgrouting/issues/1319 reports k=1 at
+~100MB/1s versus k=2+ exploding past 100GB, on a graph of comparable size to
+this project's own (270k roads/200k vertices there, 172k/110k here) - and
+that is exactly what a real run here hit: a backend OOM-killed at ~15GB,
+confirmed via pg_log_backend_memory_contexts to be memory entirely outside
+Postgres's own tracked allocator, i.e. inside pgRouting's own C++ internals,
+not anything work_mem/shared_buffers could bound. It is shared: dispatch-
+service calls it once per live trip, and h-bootstrap calls it once per
+historical trip while inventing a seeded week, so a pickup and dropoff
+picked at random are never priced without first checking they are actually
+connected by a real road.
 
 The cost of a road segment is its travel time multiplied by how congested it
 is at this time of day. That is what makes the answer change between rush
-hour and three in the morning: the same two points, a different best path -
-and now, the same two points at the same hour can still take one of a few
-different real streets, the way real traffic actually distributes.
+hour and three in the morning: the same two points, a different best path.
+A repeated OD pair at the same hour does take the same literal streets again
+- the honest tradeoff of reverting K_ROUTES to 1.
 """
 
 import hashlib
@@ -36,19 +45,18 @@ _road_point_pools: dict[str, list[tuple[float, float]]] = {}
 # as text must come from a fixed list, never from anything a caller made up.
 PERIODS = {"night", "morning", "afternoon", "evening"}
 
-# How many distinct candidate routes pgr_ksp considers per trip. A real
-# trip between two points has several reasonable routes, not one - K=3
-# gives real diversity without pgr_ksp's cost (it runs roughly K
-# single-source shortest-path passes internally, confirmed live against
-# this stack's actual pgRouting 4.0.1) growing unreasonably.
-K_ROUTES = 3
+# How many distinct candidate routes pgr_ksp considers per trip. Fixed at 1
+# on purpose - see this module's own docstring: pgr_ksp for K>1 is a
+# documented, severe memory problem (pgRouting issue #1319), confirmed to be
+# the real cause of a backend OOM-kill on this project's own graph. K=1 is
+# functionally pgr_dijkstra through the same call, not K-shortest-paths -
+# the safe case that same issue confirms stays around 100MB/1s.
+K_ROUTES = 1
 
-# How the one actually driven is picked among the K candidates - pgr_ksp's
-# own path_id ordering is cheapest-first (confirmed live), so this still
-# favors the traffic-cheapest route most of the time, without a repeated
-# OD pair always taking the literal same streets forever the way a single
-# pgr_dijkstra call did. Shorter than K_ROUTES is handled by using as many
-# of these as candidates actually came back.
+# How the one actually driven is picked among the K candidates. At K_ROUTES=1
+# this trivially always picks the only candidate - kept, not deleted, so
+# restoring route diversity later (a fixed pgr_ksp, or a different K-shortest-
+# paths approach) is a one-line K_ROUTES change, not rebuilding this too.
 ROUTE_CHOICE_WEIGHTS = [60, 25, 15]
 
 # The edge list pgRouting walks over. pgRouting takes this as a complete
@@ -113,19 +121,19 @@ def route(
     at the nearest place a car can be.
 
     None means the two points are not connected in the imported map - usually
-    a point outside the imported area - or that this specific call's own
-    connection died underneath it (confirmed live: some pgr_ksp call for a
-    still-unidentified reason can exhaust a node's memory fast enough that
-    postgres.py's own statement_timeout never gets a chance to cancel it
-    first - the backend is just gone). Either failure is logged as an
-    error with the exact coordinates, so a repeat is reproducible instead
-    of another multi-hour hunt, and either way the caller treats it as "no
+    a point outside the imported area - or, on a stack still running with
+    K_ROUTES>1 somehow, that this specific call's own connection died
+    underneath it (pgRouting issue #1319 - see this module's own docstring).
+    That failure is logged as an error with the exact coordinates, so a
+    repeat is reproducible, and either way the caller treats it as "no
     driver found" for this one trip rather than crashing the whole run.
 
     Up to K_ROUTES candidate routes are computed (pgr_ksp), and one is
-    picked with ROUTE_CHOICE_WEIGHTS favoring the cheaper ones - not always
-    the single cheapest, the way one pgr_dijkstra call always was. The pick
-    is seeded from this call's own inputs rather than a shared random.Random:
+    picked with ROUTE_CHOICE_WEIGHTS - at the current K_ROUTES=1 this is
+    always the one candidate pgr_ksp returns, functionally a plain
+    pgr_dijkstra call. The pick is seeded from this call's own inputs
+    rather than a shared random.Random, kept for when K_ROUTES is
+    eventually restored above 1:
     this runs inside h-bootstrap's own ThreadPoolExecutor for the historical
     week (see history.py), where a shared generator would make which route
     gets picked depend on thread-scheduling order, breaking the same-seed-
