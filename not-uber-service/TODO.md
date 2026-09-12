@@ -1,14 +1,17 @@
 # Known issues to come back to
 
-## Not yet done: XFS project/user quota on Dionysus
+## Not yet done: Postgres's trips table has no retention/archival policy
 
-The host's three XFS filesystems (`/data-root`, `/data-root/lssd`,
-`/data-root/sssd`) are all mounted `pquota` (confirmed via `/etc/fstab`),
-but nothing in this project sets or enforces a project/user quota on any
-of the bind-mounted data directories under them. Real disk-usage limits
-per volume (`xfs_quota` project quotas keyed to `NUS_VOLUME_ROOT`'s
-subdirectories) would catch a runaway table or log before it fills the
-host, which nothing currently does.
+Confirmed while sizing `make volume-quotas`: `trips` (route geometry
+included) grows for as long as the stack runs live, with nothing ever
+pruning or archiving it - unlike ClickHouse's own tables, which all
+have a TTL. At real scale this is a real, if slower, version of the
+same problem driver_location/driver_positions had: `pgdata-1/2/3`'s
+XFS quota (25G each) is a safety net against it filling the disk, not
+a fix - once hit, writes to `trips` start failing instead of the table
+growing further. Needs a real decision (archive completed trips into
+ClickHouse then prune Postgres? cap total retained trips? something
+else?), not something to pick unilaterally.
 
 ## Not yet done: replica scaling for cache-updater and clickhouse-sink
 
