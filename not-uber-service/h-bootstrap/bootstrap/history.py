@@ -33,6 +33,7 @@ logged as such.
 """
 
 import random
+import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -48,6 +49,11 @@ from bootstrap import people, zones
 from bootstrap.settings import Settings
 
 log = get_logger(__name__)
+
+# How often the routing phase logs "done X of Y, ETA Z" - the one part of
+# bootstrap that can otherwise run for hours with nothing in the log to say
+# how far along it is (confirmed live).
+PROGRESS_LOG_INTERVAL_S = 30.0
 
 # How busy each hour of the day is, relative to the others. Two peaks: people
 # going to work and people going home, with a smaller late-evening bump.
@@ -208,15 +214,45 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
                 week.trip_events.extend(chunk_events)
 
     if map_available:
+        routed = []
+        total = len(to_route)
+        # pool.map() itself gives no visibility until every result is in -
+        # confirmed live, a real run can sit here for hours with nothing in
+        # the log to say how far along it is. A heartbeat every
+        # PROGRESS_LOG_INTERVAL_S, not every N trips: routing throughput can
+        # itself vary a lot (a retried call, a node recovering), so a fixed
+        # trip-count interval would log in bursts instead of steadily - a
+        # time interval keeps the drumbeat even regardless of trip volume or
+        # momentary slowdowns, and a slowing ETA between updates is itself a
+        # useful signal, not just the number.
+        started = time.monotonic()
+        last_logged = started
         with ThreadPoolExecutor(max_workers=settings.history_routing_workers) as pool:
-            routed = list(
+            for done, result in enumerate(
                 pool.map(
                     lambda s: routing.route(
                         s.pickup_lat, s.pickup_lon, s.dropoff_lat, s.dropoff_lon, s.period
                     ),
                     to_route,
-                )
-            )
+                ),
+                start=1,
+            ):
+                routed.append(result)
+                now = time.monotonic()
+                if now - last_logged >= PROGRESS_LOG_INTERVAL_S or done == total:
+                    elapsed_s = now - started
+                    rate = done / elapsed_s if elapsed_s > 0 else 0.0
+                    remaining = int((total - done) / rate) if rate > 0 else None
+                    log.info(
+                        "routing progress",
+                        extra={
+                            "done": done, "of": total,
+                            "pct": round(100 * done / total, 1),
+                            "elapsed_s": round(elapsed_s),
+                            "eta_s": remaining,
+                        },
+                    )
+                    last_logged = now
     else:
         routed = [None] * len(to_route)
 
