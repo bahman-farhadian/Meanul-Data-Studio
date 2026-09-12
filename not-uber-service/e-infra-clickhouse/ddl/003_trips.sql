@@ -14,8 +14,8 @@ CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
     -- FixedString: it's TLC's own variable-width LocationID, not a format
     -- this codebase controls.
     trip_id                    FixedString(21),
-    rider_id                   FixedString(10),
-    driver_id                  Nullable(FixedString(10)),
+    rider_id                   FixedString(11),
+    driver_id                  Nullable(FixedString(11)),
     status                     Enum8(
                                    'requested' = 1, 'matched' = 2, 'accepted' = 3,
                                    'en_route_pickup' = 4, 'in_progress' = 5, 'completed' = 6,

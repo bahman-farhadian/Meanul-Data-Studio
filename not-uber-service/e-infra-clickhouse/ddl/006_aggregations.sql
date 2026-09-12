@@ -60,8 +60,8 @@ ENGINE = Distributed(nus_cluster, nus, trip_duration_percentiles_hourly_local, c
 CREATE TABLE IF NOT EXISTS nus.active_entities_hourly_local ON CLUSTER nus_cluster
 (
     hour         DateTime('UTC'),
-    driver_state AggregateFunction(uniq, FixedString(10)),
-    rider_state  AggregateFunction(uniq, FixedString(10))
+    driver_state AggregateFunction(uniq, FixedString(11)),
+    rider_state  AggregateFunction(uniq, FixedString(11))
 )
 ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
 PARTITION BY toYYYYMM(hour)
