@@ -1,5 +1,8 @@
 # Known issues to come back to
 
+(Future major-version ideas - unrelated to this version's open work -
+live in FUTURE_ROADMAP.md, deliberately kept out of this file.)
+
 ## Not yet done: replica scaling for cache-updater and clickhouse-sink
 
 Both services already share `KAFKA_GROUP_ID` across instances rather than
