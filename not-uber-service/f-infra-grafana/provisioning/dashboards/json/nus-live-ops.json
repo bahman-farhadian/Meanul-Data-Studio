@@ -48,7 +48,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT status, count() AS trips\nFROM (\n    SELECT trip_id, argMax(status, event_time) AS status\n    FROM nus.trip_events\n    WHERE event_time >= now() - INTERVAL 15 MINUTE\n    GROUP BY trip_id\n)\nWHERE status IN ('requested', 'matched', 'accepted', 'en_route_pickup', 'in_progress')\nGROUP BY status\n",
+          "rawSql": "SELECT status, count() AS trips\nFROM (\n    SELECT trip_id, argMax(status, event_time) AS status\n    FROM nus.trip_events\n    WHERE event_time >= now() - INTERVAL 6 HOUR\n    GROUP BY trip_id\n)\nWHERE status IN ('requested', 'matched', 'accepted', 'en_route_pickup', 'in_progress')\nGROUP BY status\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -63,7 +63,7 @@
             "lastNotNull"
           ],
           "fields": "/.*/",
-          "values": false
+          "values": true
         },
         "colorMode": "background",
         "graphMode": "none",
@@ -372,7 +372,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    trip_id,\n    argMax(driver_id, event_time) AS driver_id,\n    argMax(rider_id, event_time) AS rider_id,\n    argMax(pickup_zone_id, event_time) AS pickup_zone,\n    argMax(dropoff_zone_id, event_time) AS dropoff_zone,\n    argMax(predicted_duration_s, event_time) AS predicted_s,\n    argMax(fare_estimate, event_time) AS fare_estimate,\n    max(event_time) AS last_event\nFROM nus.trip_events\nWHERE event_time >= now() - INTERVAL 30 MINUTE\nGROUP BY trip_id\nHAVING argMax(status, event_time) = 'in_progress'\nORDER BY last_event DESC\nLIMIT 100\n",
+          "rawSql": "SELECT\n    trip_id,\n    argMax(driver_id, event_time) AS driver_id,\n    argMax(rider_id, event_time) AS rider_id,\n    argMax(pickup_zone_id, event_time) AS pickup_zone,\n    argMax(dropoff_zone_id, event_time) AS dropoff_zone,\n    argMax(predicted_duration_s, event_time) AS predicted_s,\n    argMax(fare_estimate, event_time) AS fare_estimate,\n    max(event_time) AS last_event\nFROM nus.trip_events\nWHERE event_time >= now() - INTERVAL 6 HOUR\nGROUP BY trip_id\nHAVING argMax(status, event_time) = 'in_progress'\nORDER BY last_event DESC\nLIMIT 100\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }

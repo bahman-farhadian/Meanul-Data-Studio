@@ -54,6 +54,55 @@ def distributed_tables() -> set[str]:
     return names
 
 
+def _check_live_ops_open_trips(dash: dict) -> list[str]:
+    """trip_events rows are status changes, not heartbeats.
+
+    A current in_progress trip whose last event is older than a short
+    minute window must still appear. The lookback has to be hours, then
+    argMax(status). The stat panel must show every GROUP BY status row
+    (values=true), not collapse to lastNotNull of one series.
+    """
+    errors: list[str] = []
+    by_title = {p.get("title"): p for p in dash.get("panels") or []}
+
+    open_panel = by_title.get("Open trips by last status")
+    if open_panel is None:
+        return ["nus-live-ops missing panel 'Open trips by last status'"]
+    sql = (open_panel.get("targets") or [{}])[0].get("rawSql") or ""
+    if not re.search(r"INTERVAL\s+\d+\s+HOUR", sql, re.I):
+        errors.append(
+            "Open trips lookback must be INTERVAL n HOUR: "
+            "trip_events are status changes, not heartbeats"
+        )
+    if re.search(r"INTERVAL\s+\d+\s+MINUTE", sql, re.I):
+        errors.append("Open trips lookback must not use INTERVAL n MINUTE on trip_events")
+    if "argMax(status" not in sql:
+        errors.append("Open trips must take last status via argMax(status, event_time)")
+    values = (
+        (open_panel.get("options") or {})
+        .get("reduceOptions", {})
+        .get("values")
+    )
+    if values is not True:
+        errors.append(
+            "Open trips stat panel must set reduceOptions.values=true "
+            "so each status is a stat, not lastNotNull of one count"
+        )
+
+    inprog = by_title.get("In-progress trips")
+    if inprog is None:
+        errors.append("nus-live-ops missing panel 'In-progress trips'")
+    else:
+        sql = (inprog.get("targets") or [{}])[0].get("rawSql") or ""
+        if not re.search(r"INTERVAL\s+\d+\s+HOUR", sql, re.I):
+            errors.append("In-progress trips lookback must be INTERVAL n HOUR")
+        if re.search(r"INTERVAL\s+\d+\s+MINUTE", sql, re.I):
+            errors.append("In-progress trips lookback must not use INTERVAL n MINUTE")
+        if "HAVING" not in sql or "argMax(status" not in sql:
+            errors.append("In-progress trips must HAVING argMax(status, event_time)")
+    return errors
+
+
 def check() -> list[str]:
     errors: list[str] = []
     allowed = distributed_tables()
@@ -122,6 +171,10 @@ def check() -> list[str]:
             "no historical rollup among "
             + ", ".join(sorted(HISTORICAL_ANY))
         )
+
+    live_ops = JSON_DIR / "nus-live-ops.json"
+    if live_ops.is_file():
+        errors.extend(_check_live_ops_open_trips(json.loads(live_ops.read_text())))
 
     history = JSON_DIR / "nus-history.json"
     if history.is_file():

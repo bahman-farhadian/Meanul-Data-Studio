@@ -146,7 +146,7 @@ SELECT status, count() AS trips
 FROM (
     SELECT trip_id, argMax(status, event_time) AS status
     FROM nus.trip_events
-    WHERE event_time >= now() - INTERVAL 15 MINUTE
+    WHERE event_time >= now() - INTERVAL 6 HOUR
     GROUP BY trip_id
 )
 WHERE status IN ({OPEN_STATUSES})
@@ -155,7 +155,7 @@ GROUP BY status
             0, 0, 16, 6,
             extra={
                 "options": {
-                    "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/.*/", "values": False},
+                    "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/.*/", "values": True},
                     "colorMode": "background",
                     "graphMode": "none",
                     "justifyMode": "auto",
@@ -329,7 +329,7 @@ SELECT
     argMax(fare_estimate, event_time) AS fare_estimate,
     max(event_time) AS last_event
 FROM nus.trip_events
-WHERE event_time >= now() - INTERVAL 30 MINUTE
+WHERE event_time >= now() - INTERVAL 6 HOUR
 GROUP BY trip_id
 HAVING argMax(status, event_time) = 'in_progress'
 ORDER BY last_event DESC
