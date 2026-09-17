@@ -14,6 +14,10 @@ from pathlib import Path
 DS = {"type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse"}
 PLUGIN = "4.21.2"
 OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
+# Grafana 12's "default" basemap is MapTiler, which watermarks
+# "API KEY REQUIRED" with no key. OSM tiles are fetched by the
+# browser, not the Grafana container (which has no internet).
+OSM_BASEMAP = {"type": "osm", "name": "OpenStreetMap", "config": {}}
 
 # ClickHouse plugin: format 0 = time series, 1 = table (stat/table/geomap).
 FMT_TS, FMT_TABLE = 0, 1
@@ -295,7 +299,7 @@ GROUP BY driver_id
                         "mouseWheelZoom": True,
                         "showAttribution": True,
                     },
-                    "basemap": {"type": "default", "name": "Basemap"},
+                    "basemap": OSM_BASEMAP,
                     "layers": [
                         {
                             "type": "markers",
@@ -409,7 +413,7 @@ ORDER BY event_time
                 "options": {
                     "view": {"id": "fit", "zoom": 12},
                     "controls": {"showZoom": True, "mouseWheelZoom": True},
-                    "basemap": {"type": "default", "name": "Basemap"},
+                    "basemap": OSM_BASEMAP,
                     "layers": [
                         {
                             "type": "markers",
@@ -536,7 +540,7 @@ ORDER BY event_time
                 "options": {
                     "view": {"id": "fit", "zoom": 12},
                     "controls": {"showZoom": True, "mouseWheelZoom": True},
-                    "basemap": {"type": "default", "name": "Basemap"},
+                    "basemap": OSM_BASEMAP,
                     "layers": [
                         {
                             "type": "markers",

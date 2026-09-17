@@ -55,6 +55,9 @@ services:
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/nus-live-ops.json
+      # Default geomap layer is MapTiler ("API KEY REQUIRED" with no key).
+      # OSM is loaded by the browser, not by this container.
+      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"osm","name":"OpenStreetMap"}'
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana

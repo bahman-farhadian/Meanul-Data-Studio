@@ -193,6 +193,14 @@ def check() -> list[str]:
     if live_ops.is_file():
         errors.extend(_check_live_ops_open_trips(json.loads(live_ops.read_text())))
 
+    for path in JSON_DIR.glob("*.json"):
+        blob = path.read_text()
+        if '"type": "geomap"' in blob and '"type": "osm"' not in blob:
+            errors.append(
+                f"{path.name}: geomap must use OSM tiles, not Grafana's "
+                "default MapTiler (API KEY REQUIRED)"
+            )
+
     history = JSON_DIR / "nus-history.json"
     if history.is_file():
         blob = history.read_text()

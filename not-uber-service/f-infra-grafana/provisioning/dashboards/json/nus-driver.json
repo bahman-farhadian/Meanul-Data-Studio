@@ -123,8 +123,9 @@
           "mouseWheelZoom": true
         },
         "basemap": {
-          "type": "default",
-          "name": "Basemap"
+          "type": "osm",
+          "name": "OpenStreetMap",
+          "config": {}
         },
         "layers": [
           {
