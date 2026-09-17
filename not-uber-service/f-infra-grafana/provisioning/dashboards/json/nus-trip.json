@@ -115,27 +115,52 @@
       },
       "options": {
         "view": {
-          "id": "fit",
-          "zoom": 12
+          "allLayers": true,
+          "id": "coords",
+          "lat": 40.75,
+          "lon": -73.98,
+          "zoom": 11
         },
         "controls": {
           "showZoom": true,
-          "mouseWheelZoom": true
+          "mouseWheelZoom": true,
+          "showAttribution": true
         },
         "basemap": {
-          "type": "osm",
-          "name": "OpenStreetMap",
-          "config": {}
+          "type": "xyz",
+          "name": "CARTO Dark",
+          "config": {
+            "url": "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+            "attribution": "\u00a9 OpenStreetMap \u00a9 CARTO"
+          }
         },
         "layers": [
           {
             "type": "markers",
             "name": "Rider",
+            "config": {
+              "style": {
+                "size": {
+                  "fixed": 7,
+                  "min": 3,
+                  "max": 12
+                },
+                "color": {
+                  "fixed": "dark-green"
+                },
+                "opacity": 0.9,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                }
+              }
+            },
             "location": {
               "mode": "coords",
               "latitude": "lat",
               "longitude": "lon"
-            }
+            },
+            "tooltip": true
           }
         ]
       }

@@ -14,10 +14,58 @@ from pathlib import Path
 DS = {"type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse"}
 PLUGIN = "4.21.2"
 OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
-# Grafana 12's "default" basemap is MapTiler, which watermarks
-# "API KEY REQUIRED" with no key. OSM tiles are fetched by the
-# browser, not the Grafana container (which has no internet).
-OSM_BASEMAP = {"type": "osm", "name": "OpenStreetMap", "config": {}}
+# Grafana 12 default geomap is MapTiler (API KEY REQUIRED). The built-in
+# `osm` layer type rendered a blank canvas on 12.4. XYZ CARTO tiles are
+# fetched by the browser (same path MapTiler used) and need no key.
+CARTO_XYZ = {
+    "type": "xyz",
+    "name": "CARTO Dark",
+    "config": {
+        "url": "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
+        "attribution": "© OpenStreetMap © CARTO",
+    },
+}
+
+
+def geomap_options(layer_name: str, *, lat: float = 40.75, lon: float = -73.98, zoom: int = 11) -> dict:
+    return {
+        "view": {
+            "allLayers": True,
+            "id": "coords",
+            "lat": lat,
+            "lon": lon,
+            "zoom": zoom,
+        },
+        "controls": {
+            "showZoom": True,
+            "mouseWheelZoom": True,
+            "showAttribution": True,
+        },
+        "basemap": CARTO_XYZ,
+        "layers": [
+            {
+                "type": "markers",
+                "name": layer_name,
+                "config": {
+                    "style": {
+                        "size": {"fixed": 7, "min": 3, "max": 12},
+                        "color": {"fixed": "dark-green"},
+                        "opacity": 0.9,
+                        "symbol": {
+                            "mode": "fixed",
+                            "fixed": "img/icons/marker/circle.svg",
+                        },
+                    }
+                },
+                "location": {
+                    "mode": "coords",
+                    "latitude": "lat",
+                    "longitude": "lon",
+                },
+                "tooltip": True,
+            }
+        ],
+    }
 
 # ClickHouse plugin: format 0 = time series, 1 = table (stat/table/geomap).
 FMT_TS, FMT_TABLE = 0, 1
@@ -286,37 +334,7 @@ WHERE event_time >= now() - INTERVAL 2 MINUTE
 GROUP BY driver_id
 """,
             0, 22, 14, 12,
-            extra={
-                "options": {
-                    "view": {
-                        "id": "coords",
-                        "lat": 40.75,
-                        "lon": -73.98,
-                        "zoom": 11,
-                    },
-                    "controls": {
-                        "showZoom": True,
-                        "mouseWheelZoom": True,
-                        "showAttribution": True,
-                    },
-                    "basemap": OSM_BASEMAP,
-                    "layers": [
-                        {
-                            "type": "markers",
-                            "name": "Drivers",
-                            "config": {
-                                "showLegend": True,
-                                "size": {"fixed": 6, "min": 2, "max": 10},
-                            },
-                            "location": {
-                                "mode": "coords",
-                                "latitude": "lat",
-                                "longitude": "lon",
-                            },
-                        }
-                    ],
-                }
-            },
+            extra={"options": geomap_options("Drivers")},
         ),
         panel(
             8,
@@ -409,24 +427,7 @@ WHERE driver_id = '${driver_id}'
 ORDER BY event_time
 """,
             0, 4, 12, 12,
-            extra={
-                "options": {
-                    "view": {"id": "fit", "zoom": 12},
-                    "controls": {"showZoom": True, "mouseWheelZoom": True},
-                    "basemap": OSM_BASEMAP,
-                    "layers": [
-                        {
-                            "type": "markers",
-                            "name": "Trail",
-                            "location": {
-                                "mode": "coords",
-                                "latitude": "lat",
-                                "longitude": "lon",
-                            },
-                        }
-                    ],
-                }
-            },
+            extra={"options": geomap_options("Trail")},
         ),
         panel(
             3,
@@ -536,24 +537,7 @@ WHERE trip_id = '${trip_id}'
 ORDER BY event_time
 """,
             0, 10, 12, 10,
-            extra={
-                "options": {
-                    "view": {"id": "fit", "zoom": 12},
-                    "controls": {"showZoom": True, "mouseWheelZoom": True},
-                    "basemap": OSM_BASEMAP,
-                    "layers": [
-                        {
-                            "type": "markers",
-                            "name": "Rider",
-                            "location": {
-                                "mode": "coords",
-                                "latitude": "lat",
-                                "longitude": "lon",
-                            },
-                        }
-                    ],
-                }
-            },
+            extra={"options": geomap_options("Rider")},
         ),
         panel(
             3,

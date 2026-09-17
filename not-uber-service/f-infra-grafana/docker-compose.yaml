@@ -55,9 +55,9 @@ services:
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/nus-live-ops.json
-      # Default geomap layer is MapTiler ("API KEY REQUIRED" with no key).
-      # OSM is loaded by the browser, not by this container.
-      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"osm","name":"OpenStreetMap"}'
+      # MapTiler needs a key; Grafana 12's osm type rendered a blank map.
+      # CARTO XYZ is loaded by the browser, no key.
+      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"CARTO Dark","config":{"url":"https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png","attribution":"© OpenStreetMap © CARTO"}}'
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
