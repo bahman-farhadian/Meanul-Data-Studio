@@ -48,6 +48,7 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
+      SIM_TIMEZONE: ${SIM_TIMEZONE:-America/New_York}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092,kafka-2:9092,kafka-3:9092}

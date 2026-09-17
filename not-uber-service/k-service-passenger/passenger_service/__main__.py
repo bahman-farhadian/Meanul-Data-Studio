@@ -20,7 +20,7 @@ import time
 
 from nus_common import config, demand_calibration, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
-from nus_common.geo import to_millis, utc_now
+from nus_common.geo import in_sim_tz, to_millis, utc_now
 from nus_common.ids import new_trip_id
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
@@ -147,19 +147,19 @@ def main() -> int:
             started = time.monotonic()
             now = utc_now()
             event_time = to_millis(now)
+            local = in_sim_tz(now)
 
-            # Real TLC-trip-record weight for the current wall-clock hour
-            # and day of week (nus_common.demand_calibration) - the same
-            # calibration bootstrap's historical week reads, so live
-            # traffic continues the same real pattern rather than
-            # contradicting it. Computed once per tick, not once per
-            # request within it - the hour does not change mid-tick.
+            # Real TLC-trip-record weight for the simulation-local hour
+            # and day of week (SIM_TIMEZONE, default America/New_York),
+            # not UTC. The calibration was built from NYC-local TLC
+            # timestamps; indexing it by UTC hour put JFK's morning peak
+            # at the wrong wall-clock time.
             zone_weights = [
-                demand_calibration.zone_weight(zid, now.hour, now.weekday()) for zid in zone_ids
+                demand_calibration.zone_weight(zid, local.hour, local.weekday()) for zid in zone_ids
             ]
 
             # --- 1. new ride requests ----------------------------------
-            count = requests_this_tick(base_per_minute, now.hour, tick_seconds, rng)
+            count = requests_this_tick(base_per_minute, local.hour, tick_seconds, rng)
             new_trips = []
             for _ in range(count):
                 rider_id = rng.choice(rider_ids)

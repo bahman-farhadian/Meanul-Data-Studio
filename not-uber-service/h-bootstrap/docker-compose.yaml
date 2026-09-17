@@ -65,6 +65,7 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
+      SIM_TIMEZONE: ${SIM_TIMEZONE:-America/New_York}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       # PostgreSQL, through the entry tier - never a pg-* container by name.

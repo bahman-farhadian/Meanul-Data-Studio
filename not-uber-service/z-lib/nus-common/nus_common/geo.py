@@ -5,7 +5,9 @@ same question, and two different answers would quietly disagree in the data.
 """
 
 import math
+import os
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 EARTH_RADIUS_KM = 6371.0
 
@@ -91,12 +93,36 @@ def _linestring_coords(wkt: str) -> list[tuple[float, float]]:
     return coords
 
 
+def sim_zoneinfo() -> ZoneInfo:
+    """The timezone the demand curve is indexed in.
+
+    Every stored timestamp is still UTC (TZ=UTC on the containers). This is
+    only how "what hour is it for the generators" is answered. SIM_TIMEZONE
+    comes from the process environment; America/New_York is the NYC default
+    in .env.example. An unknown name falls back to UTC rather than crashing
+    a tick loop.
+    """
+    name = os.environ.get("SIM_TIMEZONE") or "UTC"
+    try:
+        return ZoneInfo(name)
+    except ZoneInfoNotFoundError:
+        return ZoneInfo("UTC")
+
+
+def in_sim_tz(moment: datetime) -> datetime:
+    """The same instant, in SIM_TIMEZONE."""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(sim_zoneinfo())
+
+
 def day_period(moment: datetime) -> str:
     """Which six-hour part of the day a moment belongs to.
 
-    The moment is read in UTC, like every timestamp in the stack.
+    Read in SIM_TIMEZONE so "morning" is New York morning when that is
+    the configured zone, not UTC morning. Stored timestamps stay UTC.
     """
-    hour = moment.astimezone(timezone.utc).hour
+    hour = in_sim_tz(moment).hour
     if hour < 6:
         return "night"
     if hour < 12:

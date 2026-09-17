@@ -41,7 +41,7 @@ from datetime import datetime, timedelta, timezone
 import psycopg
 
 from nus_common import demand_calibration, postgres, redis_client, routing
-from nus_common.geo import day_period, distance_km, points_along_linestring
+from nus_common.geo import day_period, distance_km, in_sim_tz, points_along_linestring
 from nus_common.ids import new_trip_id
 from nus_common.logging import get_logger
 
@@ -180,7 +180,8 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     # od_share() call would each independently query Postgres.
     demand_calibration.preload()
 
-    now = datetime.now(tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
+    now_utc = datetime.now(tz=timezone.utc).replace(minute=0, second=0, microsecond=0)
+    now_local = in_sim_tz(now_utc).replace(minute=0, second=0, microsecond=0)
     week = GeneratedWeek()
 
     map_available = _map_available()
@@ -202,7 +203,15 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     workers = settings.history_generation_workers
     to_route: list[_TripSpec] = []
     for day_offset in range(settings.history_days, 0, -1):
-        day_start = now - timedelta(days=day_offset)
+        # Midnight of that calendar day. `now - N days` keeps now's hour,
+        # so _pick_hour() 0-23 was an offset from e.g. 08:00 and
+        # HOUR_WEIGHTS[17] (evening peak) landed at 01:00 UTC.
+        # Confirmed on the first Dionysus seed: profile hour_utc peaked
+        # at 01-03 and was empty at 08. zone_weight() takes a clock hour
+        # too, so the same offset poisoned the TLC calibration lookup.
+        day_start = (now_local - timedelta(days=day_offset)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
         chunk_args = [
             (settings, seed_value, zone_ids, day_start, day_offset, start, end)
             for start, end in _chunks(settings.trips_per_day, workers)
@@ -275,7 +284,7 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
 
         _finish_trip(spec, route_km, predicted_s, route_wkt, rng, settings, week)
 
-    _hotspot_history(settings, rng, zone_ids, now, week)
+    _hotspot_history(settings, rng, zone_ids, now_utc, week)
 
     log.info(
         "history generated",
@@ -409,6 +418,7 @@ def _no_driver_rows(spec: _TripSpec) -> tuple[dict, list]:
     outcome, as plain data rather than appended to a GeneratedWeek
     directly, so a process pool worker can produce these too."""
     ended_at = spec.requested_at + timedelta(minutes=3)
+    score = min(HOUR_WEIGHTS[spec.hour] / 2.0, 1.0)
     row = _trip_row(
         trip_id=spec.trip_id, rider=spec.rider, driver=None, status="no_driver_found",
         pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
@@ -419,7 +429,8 @@ def _no_driver_rows(spec: _TripSpec) -> tuple[dict, list]:
         requested_at=spec.requested_at, ended_at=ended_at,
     )
     event = _event_row(spec.trip_id, spec.rider, None, "no_driver_found", spec.pickup_zone,
-                        spec.dropoff_zone, None, None, None, None, None, None, ended_at)
+                        spec.dropoff_zone, None, None, None, None, None, None, ended_at,
+                        hotspot_score=score)
     return row, event
 
 
@@ -441,7 +452,8 @@ def _finish_trip(
     week: GeneratedWeek,
 ) -> None:
     """Turn a routed trip spec into trip/event/position rows."""
-    surge = _surge_from_score(min(HOUR_WEIGHTS[spec.hour] / 2.0, 1.2))
+    score = min(HOUR_WEIGHTS[spec.hour] / 2.0, 1.0)
+    surge = _surge_from_score(score)
     estimate = round(
         (settings.base_fare + settings.per_km * route_km
          + settings.per_minute * predicted_s / 60) * surge,
@@ -473,13 +485,17 @@ def _finish_trip(
         )
         week.trip_events.append(
             _event_row(spec.trip_id, spec.rider, spec.driver, spec.outcome, spec.pickup_zone,
-                       spec.dropoff_zone, route_km, predicted_s, None, surge, estimate, None, ended)
+                       spec.dropoff_zone, route_km, predicted_s, None, surge, estimate, None, ended,
+                       hotspot_score=score)
         )
         return
 
     # A completed trip. The real duration drifts from the prediction, which is
-    # the whole point of storing both.
-    actual_s = max(int(predicted_s * rng.triangular(0.75, 1.6, 1.05)), 120)
+    # the whole point of storing both. Floor is 30s, not 120: a 0.17 km
+    # routed trip predicts ~14s, and a 120s floor made every short trip
+    # look like a large overrun (confirmed on the first Dionysus seed:
+    # predicted min 14, actual min 120).
+    actual_s = max(int(predicted_s * rng.triangular(0.75, 1.6, 1.05)), 30)
     started_at = spec.requested_at + timedelta(minutes=rng.randint(2, 8))
     ended_at = started_at + timedelta(seconds=actual_s)
     final = round(
@@ -504,7 +520,8 @@ def _finish_trip(
     )
     week.trip_events.append(
         _event_row(spec.trip_id, spec.rider, spec.driver, "completed", spec.pickup_zone,
-                   spec.dropoff_zone, route_km, predicted_s, actual_s, surge, estimate, final, ended_at)
+                   spec.dropoff_zone, route_km, predicted_s, actual_s, surge, estimate, final, ended_at,
+                   hotspot_score=score)
     )
     # Same bidirectional pattern dispatch-service uses for live trips
     # (l-service-dispatch/dispatch_service/ratings.py) - a completed trip
@@ -554,8 +571,9 @@ def _hotspot_history(
     for hours_ago in range(settings.history_days * 24, 0, -1):
         moment = now - timedelta(hours=hours_ago)
         period = day_period(moment)
+        local = in_sim_tz(moment)
         for zid in zone_ids:
-            real_weight = demand_calibration.zone_weight(zid, moment.hour, moment.weekday())
+            real_weight = demand_calibration.zone_weight(zid, local.hour, local.weekday())
             score = round(min(real_weight / 2.5, 1.0) * rng.uniform(0.8, 1.2), 3)
             score = min(score, 1.0)
             waiting = int(score * rng.randint(5, 40))
@@ -596,17 +614,22 @@ def _trip_row(**kwargs) -> dict:
 
 
 def _event_row(trip_id, rider, driver, status, zone, dropoff_zone, route_km,
-               predicted_s, actual_s, surge, estimate, final, moment) -> list:
+               predicted_s, actual_s, surge, estimate, final, moment,
+               hotspot_score: float | None = None) -> list:
     """One row for the ClickHouse trip_events table.
 
     The column order matches warehouse.TRIP_EVENT_COLUMNS.
     """
     delta = None if (actual_s is None or predicted_s is None) else actual_s - predicted_s
     longer = None if delta is None else int(delta > 0)
+    # Same 0.6 cut the live sink uses (HOTSPOT_SCORE_THRESHOLD). Seeded
+    # rows used to leave both columns NULL, so every hotspot dashboard
+    # on history was empty (confirmed: has_hotspot_score = 0 / 2000).
+    is_hotspot = None if hotspot_score is None else int(hotspot_score >= 0.6)
     return [
         trip_id, rider, driver, status, zone, dropoff_zone,
         route_km, predicted_s, actual_s, delta, longer,
-        surge, None, None, estimate, final, moment,
+        surge, hotspot_score, is_hotspot, estimate, final, moment,
     ]
 
 

@@ -36,6 +36,8 @@ class ActiveTrip:
     pickup_lon: float
     dropoff_lat: float
     dropoff_lon: float
+    driver_lat: float
+    driver_lon: float
     pickup_zone_id: str
     dropoff_zone_id: str
 

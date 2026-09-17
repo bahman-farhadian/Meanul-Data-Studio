@@ -77,21 +77,28 @@ DRIVER_CANCEL_REASONS = ["rider_no_show", "driver_too_far", "vehicle_issue"]
 PASSENGER_CANCEL_REASONS = ["changed_mind", "found_alternative", "wait_too_long"]
 
 
-def find_driver(redis, lat: float, lon: float, radius_km: float, vehicle_type: str) -> str | None:
+def find_driver(
+    redis, lat: float, lon: float, radius_km: float, vehicle_type: str
+) -> tuple[str, float, float] | None:
     """The nearest free driver of the requested tier, or None if nobody is close enough.
 
-    Redis keeps one geo set per vehicle tier, updated by driver-service every
-    few seconds - searching only the requested tier's set is what stops an
-    economy rider being matched to an XL car (or the reverse). Nothing here
-    touches PostgreSQL.
+    Returns (driver_id, lon, lat) so the pickup-leg timer can use the real
+    driver-to-pickup distance, not the trip length. Redis keeps one geo set
+    per vehicle tier, updated by driver-service every few seconds - searching
+    only the requested tier's set is what stops an economy rider being
+    matched to an XL car (or the reverse). Nothing here touches PostgreSQL.
     """
     found = redis.geosearch(
         redis_client.geo_available_drivers_key(vehicle_type),
         longitude=lon, latitude=lat,
         radius=radius_km, unit="km",
         sort="ASC", count=1,
+        withcoord=True,
     )
-    return found[0] if found else None
+    if not found:
+        return None
+    member, (driver_lon, driver_lat) = found[0]
+    return str(member), float(driver_lon), float(driver_lat)
 
 
 def announce(producer: AvroTopicProducer, trip: ActiveTrip, status: str,
@@ -340,10 +347,11 @@ def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProduce
     # during a rolling deploy should still be matchable.
     vehicle_type = request.get("requested_vehicle_type") or "economy"
 
-    driver_id = find_driver(redis_driver, pickup_lat, pickup_lon, search_radius_km, vehicle_type)
-    if driver_id is None:
+    matched = find_driver(redis_driver, pickup_lat, pickup_lon, search_radius_km, vehicle_type)
+    if matched is None:
         _no_driver(producer, request, trip_id, zone_id, now)
         return None
+    driver_id, driver_lon, driver_lat = matched
 
     # The expensive part: a real path over the street network, weighted by
     # how congested each segment is at this time of day.
@@ -365,6 +373,7 @@ def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProduce
         driver_id=driver_id,
         pickup_lat=pickup_lat, pickup_lon=pickup_lon,
         dropoff_lat=dropoff_lat, dropoff_lon=dropoff_lon,
+        driver_lat=driver_lat, driver_lon=driver_lon,
         pickup_zone_id=zone_id,
         dropoff_zone_id=dropoff_zone_id,
         route_km=route_km,
@@ -460,14 +469,18 @@ def _write_status(trip: ActiveTrip, status: str, actual_duration_s: int | None,
 
 
 def _pickup_seconds(trip: ActiveTrip, rng: random.Random) -> int:
-    """Roughly how long the driver needs to reach the rider.
+    """How long the driver needs to reach the rider.
 
-    A straight-line estimate on purpose. Routing the pickup leg as well would
-    double the most expensive step in the pipeline to answer a question
-    nobody reports on.
+    Straight-line, on purpose: routing the pickup leg would double the
+    most expensive step in the pipeline. The distance is driver-to-pickup
+    (from the GEO match), not pickup-to-dropoff. Using the trip length
+    (capped at 4 km) kept drivers in en_route_pickup for up to ~17 min
+    while passenger-service only counted in_progress as "travelling" —
+    confirmed live: free drivers fell 444→215 while travelling_now sat
+    at 25.
     """
-    km = distance_km(trip.pickup_lat, trip.pickup_lon, trip.dropoff_lat, trip.dropoff_lon)
-    return max(int(min(km, 4.0) / 20.0 * 3600 * rng.uniform(0.7, 1.4)), 60)
+    km = distance_km(trip.driver_lat, trip.driver_lon, trip.pickup_lat, trip.pickup_lon)
+    return max(int(km / 25.0 * 3600 * rng.uniform(0.7, 1.3)), 30)
 
 
 if __name__ == "__main__":
