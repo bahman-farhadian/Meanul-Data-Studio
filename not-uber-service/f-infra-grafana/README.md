@@ -72,7 +72,9 @@ newer copy in the rebuilt image.
 | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | `admin` / — (required) | The Grafana login. |
 | `CH_USER` / `CH_PASSWORD` | `nus` / — (required) | How Grafana logs in to ClickHouse; must match `e-infra-clickhouse/.env`. |
 | `TILESERVER_IMAGE` | `maptiler/tileserver-gl:v4.15.3` | Serves PNG tiles from `nyc.mbtiles`. |
-| `PLANETILER_IMAGE` | `ghcr.io/onthegomap/planetiler:0.8.4` | Builds `nyc.mbtiles` (`make tiles-prepare`). |
+| `JAVA_JRE_IMAGE` | `eclipse-temurin:21-jre-jammy` | Runs Planetiler (Docker Hub, not ghcr). |
+| `PLANETILER_JAR_URL` | GitHub `v0.8.4` | The Planetiler jar `make tiles-prepare` fetches. |
+| `GEOFABRIK_NY_PBF_URL` | Geofabrik `us/new-york` | OSM extract for the map. |
 
 ## Standalone quickstart
 
