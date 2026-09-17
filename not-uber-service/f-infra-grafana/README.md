@@ -75,6 +75,7 @@ newer copy in the rebuilt image.
 | `JAVA_JRE_IMAGE` | `eclipse-temurin:21-jre-jammy` | Runs Planetiler (Docker Hub, not ghcr). |
 | `PLANETILER_JAR_URL` | GitHub `v0.8.4` | The Planetiler jar `make tiles-prepare` fetches. |
 | `GEOFABRIK_NY_PBF_URL` | Geofabrik `us/new-york` | OSM extract for the map. |
+| `WATER_POLYGONS_URL` / `NATURAL_EARTH_URL` / `LAKE_CENTERLINES_URL` | osmdata / naciscdn / acalcutt | Host-curl extras. Planetiler itself does not download. |
 
 ## Standalone quickstart
 
@@ -105,7 +106,10 @@ In the browser, open <http://localhost:3000>, go to
 **Connections → Data sources → ClickHouse** and press **Save & test**. It
 should report success. Maps use **self-hosted OSM** at `/tiles/styles/nus/{z}/{x}/{y}.png` (same
 origin as Grafana; HAProxy forwards to `nus-tiles`). No MapTiler key.
-Build the MBTiles once with `make tiles-prepare`.
+Build the MBTiles once with `make tiles-prepare`. That target is idempotent:
+existing PBF/jar/extras/`nyc.mbtiles` are kept. `make destroy` keeps
+`nus-tiles-data`; `make nuke` is what deletes it. Planetiler runs with
+`--download=false` (MapTiler's CDN does not resolve in the JRE container).
 
 Dashboards are under **Dashboards → NUS**. On a running full stack, after
 `make tiles-prepare` has written `nyc.mbtiles`:

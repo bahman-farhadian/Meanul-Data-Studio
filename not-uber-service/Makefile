@@ -773,8 +773,9 @@ down: ## Remove the containers, KEEP the data volumes
 
 .PHONY: destroy
 destroy: ## Remove the containers AND DESTROY every data volume
-	@printf "$(R)$(B)This deletes the databases, the cache, the topics, the warehouse\n"
-	@printf "and the downloaded street map.$(X)\n"
+	@printf "$(R)$(B)This deletes the databases, the cache, the topics and the warehouse.$(X)\n"
+	@printf "  LION and OSM tiles (nus-lion-data, nus-tiles-data) are kept.\n"
+	@printf "  $(C)make nuke$(X) is what removes those downloads.\n"
 	@read -r -p "Type 'destroy' to confirm: " a; [ "$$a" = destroy ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) down -v
 	@$(MAKE) --no-print-directory _rm-data-tree
