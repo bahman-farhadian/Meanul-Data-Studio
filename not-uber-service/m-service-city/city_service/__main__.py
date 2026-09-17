@@ -20,6 +20,8 @@ import sys
 import time
 from collections import defaultdict
 
+from psycopg.errors import OperationalError, QueryCanceled
+
 from nus_common import config, postgres, redis_client
 from nus_common.citygrid import CityGrid
 from nus_common.geo import day_period, to_millis, utc_now
@@ -98,38 +100,48 @@ def main() -> int:
 
     try:
         while not shutdown.requested:
-            # Read for a moment, then do the periodic work. The timeout is
-            # what stops this becoming a busy loop when the city is quiet.
-            handled = 0
-            while handled < 5000:
-                message = consumer.poll_once(timeout=0.2 if handled == 0 else 0.0)
-                if message is None:
+            try:
+                # Read for a moment, then do the periodic work. The timeout is
+                # what stops this becoming a busy loop when the city is quiet.
+                handled = 0
+                while handled < 5000:
+                    message = consumer.poll_once(timeout=0.2 if handled == 0 else 0.0)
+                    if message is None:
+                        break
+                    handled += 1
+                    topic, _, value = message
+                    if not value:
+                        continue
+
+                    if topic == "driver_location":
+                        _note_driver(zones, grid, value)
+                    elif topic == "trip_lifecycle":
+                        _note_trip(zones, waiting_zone, value)
+                    # rider_location is watched but not counted: a rider's phone
+                    # says where a trip already under way is, which the driver's
+                    # device already told us more accurately.
+
+                now_monotonic = time.monotonic()
+
+                if now_monotonic - last_score >= score_seconds:
+                    published += _publish_scores(
+                        zones, grid, redis, producer, hotspot_ttl, hotspot_threshold
+                    )
+                    consumer.commit()
+                    last_score = now_monotonic
+
+                if now_monotonic - last_traffic >= traffic_minutes * 60:
+                    _update_traffic(zones, traffic_producer)
+                    last_traffic = now_monotonic
+            except Exception:
+                # Confirmed live: a single QueryCanceled on UPDATE_TRAFFIC
+                # (statement_timeout=30s vs ST_Intersects over 172k ways)
+                # killed the process. Docker restarted it five times in
+                # three hours. The picture rebuilds from the streams; a
+                # dead container does not.
+                log.exception("tick failed; continuing")
+                if shutdown.wait(1.0):
                     break
-                handled += 1
-                topic, _, value = message
-                if not value:
-                    continue
-
-                if topic == "driver_location":
-                    _note_driver(zones, grid, value)
-                elif topic == "trip_lifecycle":
-                    _note_trip(zones, waiting_zone, value)
-                # rider_location is watched but not counted: a rider's phone
-                # says where a trip already under way is, which the driver's
-                # device already told us more accurately.
-
-            now_monotonic = time.monotonic()
-
-            if now_monotonic - last_score >= score_seconds:
-                published += _publish_scores(
-                    zones, grid, redis, producer, hotspot_ttl, hotspot_threshold
-                )
-                consumer.commit()
-                last_score = now_monotonic
-
-            if now_monotonic - last_traffic >= traffic_minutes * 60:
-                _update_traffic(zones, traffic_producer)
-                last_traffic = now_monotonic
 
     finally:
         producer.flush()
@@ -251,23 +263,38 @@ def _update_traffic(zones: dict[str, ZoneCounter], traffic_producer: AvroTopicPr
     now = utc_now()
 
     with postgres.write_connection() as conn:
-        for zone_id, counter in zones.items():
+        # Pool default is 30s (routing runaway ceiling). One zone's
+        # ST_Intersects against 172k ways can exceed that once every
+        # zone has speed samples. Commit per zone so a timeout does not
+        # roll back the zones that already succeeded.
+        for zone_id, counter in list(zones.items()):
             factor = counter.congestion_factor()
             if factor is None:
                 continue
-            with conn.cursor() as cur:
-                cur.execute(
-                    UPDATE_TRAFFIC,
-                    {
-                        "zone_id": zone_id,
-                        "period": period,
-                        "factor": factor,
-                        "samples": counter.speed_samples,
-                        "smoothing": SMOOTHING,
-                    },
+            try:
+                with conn.cursor() as cur:
+                    cur.execute("SET LOCAL statement_timeout = '120s'")
+                    cur.execute(
+                        UPDATE_TRAFFIC,
+                        {
+                            "zone_id": zone_id,
+                            "period": period,
+                            "factor": factor,
+                            "samples": counter.speed_samples,
+                            "smoothing": SMOOTHING,
+                        },
+                    )
+                    segments_updated = cur.rowcount
+                    updated += segments_updated
+                conn.commit()
+            except (QueryCanceled, OperationalError) as err:
+                conn.rollback()
+                log.warning(
+                    "traffic update skipped",
+                    extra={"zone_id": zone_id, "error": str(err)},
                 )
-                segments_updated = cur.rowcount
-                updated += segments_updated
+                counter.reset_speeds()
+                continue
             traffic_producer.send(
                 key=zone_id,
                 value={
@@ -280,7 +307,6 @@ def _update_traffic(zones: dict[str, ZoneCounter], traffic_producer: AvroTopicPr
                 },
             )
             counter.reset_speeds()
-        conn.commit()
 
     log.info("traffic factors updated", extra={"segments": updated, "period": period})
 

@@ -3,6 +3,13 @@
 (Future major-version ideas - unrelated to this version's open work -
 live in FUTURE_ROADMAP.md, deliberately kept out of this file.)
 
+## Data quality on the current live run (Dionysus, 2026-09-17)
+
+Seed and live path both produce. CDC slot `nus_debezium` is active.
+`trip_events` newest is current. Remaining connector fix (not a destroy):
+exclude `nus.trips.route` from Debezium — PostGIS geometry cannot be
+converted. Apply with `make cdc-register` on the running stack.
+
 ## Not yet done: replica scaling for cache-updater and clickhouse-sink
 
 Both services already share `KAFKA_GROUP_ID` across instances rather than
@@ -15,6 +22,11 @@ wired into `make up` or verified live: needs a real run to confirm
 rebalancing behaves, and `make ps`/`make logs`/`make errors` need a look
 to make sure they still make sense against N containers under one
 service name instead of one.
+
+Measured on Dionysus 2026-09-17 at the current seed (800 drivers, 40
+requests/min): clickhouse-sink 2.9% CPU / 56 MiB, cache-updater 0.6% /
+57 MiB. Leave them at one replica. Revisit only if `driver_location`
+lag grows at full TLC scale (106k drivers), not at this seed.
 
 ## Not yet done: sharding driver-service/passenger-service for real multi-core use
 
@@ -32,7 +44,6 @@ by hash across N replicas, each instance only handling its own slice).
 Worth doing only after confirming the config-propagation fix and the
 vertical CPU bump this round aren't already enough on their own.
 
-Currently pending real data: deploying at the current commit specifically
-to measure driver-service/passenger-service CPU utilization and actual
-throughput against the theoretical target before deciding.
-
+Measured on the same run: driver-service 0.13% CPU / 74 MiB,
+passenger-service 0.13% / 118 MiB. One process is enough. Revisit only
+at full TLC scale.

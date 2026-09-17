@@ -94,7 +94,8 @@ gate nothing that isn't already open one layer down.
 | `plugin.name` | `pgoutput` | PostgreSQL's built-in logical decoding output. Nothing extra to install in the database image. |
 | `slot.name` / `publication.name` | `nus_debezium` / `nus_pub` | Named on purpose, so an operator can find and drop them by hand. |
 | `publication.autocreate.mode` | `filtered` | Debezium publishes only the listed tables, not everything. This keeps the huge OSM routing tables out of Kafka. |
-| `table.include.list` | drivers, passengers, trips, city_zones | The tables the cache actually needs. |
+| `table.include.list` | drivers, passengers, trips, city_zones, vehicles, trip_ratings, driver_sessions | OLTP tables the cache and the warehouse need. Routing graph tables stay out. |
+| `column.exclude.list` | `nus.trips.route` | PostGIS `geometry`. Debezium cannot convert it (`Failed to properly convert data value for 'nus.trips.route' of type geometry`, confirmed on the second Dionysus run). The cache and sink never read the line. |
 | `snapshot.mode` | `initial` | Read what is already there once, then stream. This is what fills the cache after seeding. |
 | `tombstones.on.delete` | `true` | A delete leaves a null-valued message, which becomes a Redis `DEL` and lets Kafka compact the key away. |
 | `decimal.handling.mode` | `double` | Fares arrive as plain numbers instead of encoded decimals, so consumers need no special decoding. |
