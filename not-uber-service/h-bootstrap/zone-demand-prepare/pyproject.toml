@@ -1,0 +1,18 @@
+[project]
+name = "zone-demand-prepare"
+version = "0.1.0"
+description = "Throwaway one-shot: TLC trip records to demand-calibration CSVs"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas==2.3.2",
+    "pyarrow==21.0.0",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+# This is a script, not an installed package. uv sync --no-install-project
+# is enough; prepare.py is copied in after the wheels.
+[tool.uv]
+package = false

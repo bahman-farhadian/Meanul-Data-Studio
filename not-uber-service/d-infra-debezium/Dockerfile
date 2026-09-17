@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Kafka Connect with the Debezium PostgreSQL connector, plus Confluent's
 # Avro converter.
 #

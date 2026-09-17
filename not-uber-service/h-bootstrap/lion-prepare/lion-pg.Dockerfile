@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # The throwaway database `make lion-prepare` builds the routable graph in.
 #
 # postgis/postgis bundles PostGIS but not pgRouting (confirmed directly,

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Grafana with the ClickHouse data source already inside the image.
 #
 # Grafana can also download plugins at start time, but then every restart

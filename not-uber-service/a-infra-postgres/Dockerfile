@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Patroni-managed PostgreSQL node for the not-uber-service OLTP cluster.
 #
 # Three things are added to the official image: PostGIS and pgRouting, so
@@ -8,13 +9,17 @@
 # Patroni is installed into its own virtualenv rather than into the system
 # interpreter. The base image's Python belongs to the distribution, and pip
 # writing into it is exactly how a later apt upgrade breaks a working node.
+#
+# Versions are exact. `pip install 'patroni~=4.0'` would take a newer 4.0.x
+# on the next rebuild; that is the opposite of a pinned image.
 
 ARG PG_IMAGE=postgres:18.6
 FROM ${PG_IMAGE}
 
 ARG PG_IMAGE
 ARG PG_MAJOR=18
-ARG PATRONI_VERSION=4.0
+ARG PATRONI_VERSION=4.0.11
+ARG PSYCOPG_VERSION=3.3.4
 
 LABEL org.opencontainers.image.title="nus/patroni-postgres" \
       org.opencontainers.image.description="PostgreSQL with PostGIS, pgRouting and Patroni, for the not-uber-service OLTP cluster" \
@@ -32,10 +37,9 @@ RUN apt-get update \
         "postgresql-${PG_MAJOR}-postgis-3" \
         "postgresql-${PG_MAJOR}-pgrouting" \
  && python3 -m venv /opt/patroni \
- && /opt/patroni/bin/pip install --no-cache-dir --upgrade pip \
  && /opt/patroni/bin/pip install --no-cache-dir \
-        "patroni[etcd3]~=${PATRONI_VERSION}" \
-        "psycopg[binary]~=3.2" \
+        "patroni[etcd3]==${PATRONI_VERSION}" \
+        "psycopg[binary]==${PSYCOPG_VERSION}" \
  && ln -s /opt/patroni/bin/patroni /usr/local/bin/patroni \
  && ln -s /opt/patroni/bin/patronictl /usr/local/bin/patronictl \
  && apt-get clean \

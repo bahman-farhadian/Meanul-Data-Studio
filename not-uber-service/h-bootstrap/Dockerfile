@@ -1,8 +1,13 @@
+# syntax=docker/dockerfile:1
 # h-bootstrap — the one-shot that prepares the stack.
 #
-# Built in two stages. The first installs the Python dependencies; the second
-# is the image that actually runs, and carries only what is needed at run
-# time. That keeps uv and the build tooling out of the final image.
+# Built in two stages. The first installs third-party wheels from uv.lock;
+# the second is the image that actually runs, and carries only what is
+# needed at run time. That keeps uv and the build tooling out of the final
+# image.
+#
+# Layer order is the cache contract: lockfiles first, application source
+# after. Editing a .py file must not re-resolve PyPI.
 #
 # IMPORTANT: the build context is not-uber-service/, not this directory,
 # because the image needs the shared package in z-lib/ as well. The layout
@@ -26,34 +31,25 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app/h-bootstrap
 
-# The shared package first: it changes less often than the component, so
-# Docker reuses this layer on most rebuilds.
-COPY z-lib/nus-common /app/z-lib/nus-common
+# Metadata only. nus-common's Python source is copied after the wheel
+# install, so a change to routing.py does not invalidate this layer.
+COPY z-lib/nus-common/pyproject.toml /app/z-lib/nus-common/pyproject.toml
 COPY h-bootstrap/pyproject.toml h-bootstrap/uv.lock /app/h-bootstrap/
 
 # --frozen: install exactly what uv.lock says. A build must never quietly
 # pick up a newer version of anything.
 #
-# The cache mount is what makes a rebuild survive a network outage: uv keeps
-# its downloads there, so changing application code re-runs this step against
-# the cache instead of reaching for the index.
-# hatchling is the one thing uv.lock cannot pin: it is a build-system
-# requirement, resolved against the index on every build, so `--frozen` does
-# not cover it. On a slow or intermittent link that single request is what
-# stalls — uv's default is a 30 second timeout and three tries, which is not
-# enough when one file takes two minutes. The cache mount below means it is
-# fetched once and then read from disk.
+# --no-install-project / --no-install-local skip this service and the path
+# dependency until their source is in the image. hatchling is pinned in
+# [build-system], so this layer does not float to whatever PyPI has today.
 ENV UV_LINK_MODE=copy \
     UV_HTTP_TIMEOUT=180 \
     UV_HTTP_RETRIES=5 \
     UV_CONCURRENT_DOWNLOADS=4
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
-    uv sync --frozen --no-dev --no-install-project
+    uv sync --frozen --no-dev --no-install-project --no-install-local
 
-# The application code comes AFTER the dependency install, so editing it
-# cannot invalidate the layer above. With the source copied before it, a
-# one-line change re-resolved every dependency — which fails outright on a
-# host that has no route to the index at that moment.
+COPY z-lib/nus-common /app/z-lib/nus-common
 COPY h-bootstrap/bootstrap /app/h-bootstrap/bootstrap
 # The migrations are data the container reads at run time, not code, so it is
 # easy to forget them here — and the failure comes much later, from inside a
@@ -77,27 +73,27 @@ LABEL org.opencontainers.image.title="nus/bootstrap" \
 # postgresql-client: pg_restore, to load the routable graph h-bootstrap/
 # lion-prepare/ already built on the host - this container never builds the
 # graph itself, only restores it.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
-        postgresql-client \
-        ca-certificates \
- && apt-get clean \
- && rm -rf /var/lib/apt/lists/*
-
-# Same paths as the build stage: a virtual environment records where it
-# lives, so moving it would break it.
-COPY --from=build /app /app
-
-# Run as a normal user, like the six services do. Nothing here needs root.
+#
+# useradd and the apt packages live in this layer, before the application
+# copy, so a Python change does not re-run apt-get.
 #
 # /data/lion is created HERE, owned by that user, because it is a mount
 # point for a named volume: Docker seeds an empty named volume from the
 # image's directory at that path, ownership included. Without this the
 # volume would be created root-owned and reading the precomputed graph
 # dump would fail with a permission error.
-RUN useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        postgresql-client \
+        ca-certificates \
+        tzdata \
+ && apt-get clean \
+ && rm -rf /var/lib/apt/lists/* \
+ && useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
  && mkdir -p /data/lion \
- && chown -R nus:nus /app /data
+ && chown -R nus:nus /data
+
+COPY --from=build --chown=nus:nus /app /app
 
 WORKDIR /app/h-bootstrap
 ENV PATH="/app/h-bootstrap/.venv/bin:${PATH}" \

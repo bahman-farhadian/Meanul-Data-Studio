@@ -86,6 +86,8 @@ services:
       network: ${BUILD_NETWORK:-host}
       context: ../..
       dockerfile: h-bootstrap/lion-prepare/Dockerfile
+      args:
+        DEBIAN_IMAGE: ${DEBIAN_IMAGE:-debian:trixie-20260824-slim}
     depends_on:
       lion-pg:
         condition: service_healthy

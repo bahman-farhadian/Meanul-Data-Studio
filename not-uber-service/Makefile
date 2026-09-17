@@ -24,6 +24,11 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 COMPOSE  := docker compose
+# Required for RUN --mount=type=cache in the Python Dockerfiles. Compose v2
+# uses BuildKit by default; this makes the contract explicit so a host that
+# has DOCKER_BUILDKIT=0 in its environment cannot silently drop the cache.
+export DOCKER_BUILDKIT := 1
+export COMPOSE_DOCKER_CLI_BUILD := 1
 NETWORK  := nus-backbone
 ENV_FILE := .env
 EXAMPLE  := .env.example
@@ -436,6 +441,8 @@ pull: ## Pull every pinned image (a moved or withdrawn tag surfaces here)
 .PHONY: build
 build: ## Build the eleven images this repository defines
 	$(call say,Building images)
+	@printf "  Layer cache is the contract: lockfiles first, source after.\n"
+	@printf "  Never --no-cache, never --pull — $(C)make pull$(X) is the registry step.\n"
 	@$(COMPOSE) build
 
 .PHONY: config
@@ -687,11 +694,20 @@ profile: ## Profile the generated data — every dimension, range and null rate
 			| awk -v g="$$g" 'NR>1 && $$6 != "-" {lag+=$$6; n++} END{if(n) printf "  %-24s partitions=%d total_lag=%d\n", g, n, lag}' || true; \
 	done
 	$(call say,Redis — what the services put in the cache)
+	@printf "  %-12s %s\n" "db" "keys"
+	@i=0; for name in system driver passenger trip demand; do \
+		n=$$($(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
+			-n $$i DBSIZE 2>/dev/null | tr -d '\r'); \
+		printf "  %-12s %s\n" "$$i $$name" "$$n"; \
+		i=$$((i+1)); \
+	done
 	@$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
 		--scan --count 1000 2>/dev/null \
 		| sed -E 's/[0-9a-f-]{8,}.*//; s/[0-9]+$$//' | sort | uniq -c | sort -rn | head -20 \
 		| awk '{printf "  %8s  %s*\n", $$1, $$2}' || true
 	@printf "  bootstrap flag: %s\n" "$$($(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning get system:bootstrap:done 2>/dev/null | tr -d '\r')"
+	@printf "  SCAN above is db 0 only. driver:* lives in db 1; 0 keys there means\n"
+	@printf "  cache-updater has not applied cdc.drivers and the fleet will not start.\n"
 
 .PHONY: logs
 logs: ## Follow logs:  make logs  |  make logs SVC=dispatch-service

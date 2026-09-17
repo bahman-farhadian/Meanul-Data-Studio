@@ -31,6 +31,7 @@ x-superset-build: &superset-build
   args:
     SUPERSET_IMAGE: ${SUPERSET_IMAGE:-apache/superset:6.1.0}
     CLICKHOUSE_CONNECT_VERSION: ${CLICKHOUSE_CONNECT_VERSION:-1.7.2}
+    PSYCOPG2_VERSION: ${PSYCOPG2_VERSION:-2.9.12}
 
 x-superset-env: &superset-env
   TZ: ${TZ:-UTC}

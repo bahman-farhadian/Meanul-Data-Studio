@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Superset with the ClickHouse driver installed.
 #
 # The base image ships drivers for the common databases but not for
