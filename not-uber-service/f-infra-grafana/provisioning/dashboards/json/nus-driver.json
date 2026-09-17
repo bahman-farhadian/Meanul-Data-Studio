@@ -70,7 +70,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    argMax(status, event_time) AS status,\n    argMax(lat, event_time) AS lat,\n    argMax(lon, event_time) AS lon,\n    argMax(speed_kmh, event_time) AS speed_kmh,\n    argMax(trip_id, event_time) AS trip_id\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n",
+          "rawSql": "SELECT\n    argMax(status, event_time) AS status,\n    argMax(lat, event_time) AS lat,\n    argMax(lon, event_time) AS lon,\n    argMax(speed_kmh, event_time) AS speed_kmh,\n    argMax(trip_id, event_time) AS trip_id\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\nSETTINGS prefer_column_name_to_alias = 1\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -104,7 +104,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT event_time, lat, lon, status, speed_kmh, trip_id\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time\n",
+          "rawSql": "SELECT event_time, lat, lon, status, speed_kmh, trip_id\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time\nSETTINGS prefer_column_name_to_alias = 1\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -162,7 +162,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time DESC\nLIMIT 500\n",
+          "rawSql": "SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time DESC\nLIMIT 500\nSETTINGS prefer_column_name_to_alias = 1\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -196,7 +196,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT event_time AS time, speed_kmh\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY time\n",
+          "rawSql": "SELECT event_time AS time, speed_kmh\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -230,7 +230,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM nus.driver_utilization_hourly\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM nus.driver_utilization_hourly\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }

@@ -25,6 +25,13 @@ FORBIDDEN = re.compile(
     r"\b(kafka|redis|postgres|postgresql|cdc\.[a-z_]+|information_schema)\b",
     re.IGNORECASE,
 )
+# ClickHouse prefers SELECT aliases over table columns in WHERE (code 184
+# when the alias is an aggregate). Never name an output column event_time
+# or computed_at.
+ALIAS_SHADOWS_COLUMN = re.compile(
+    r"(?is)(?:max|min|argMax|argMin|anyLast|any)\s*\([^;]*?\)\s+AS\s+"
+    r"(event_time|computed_at|hour)\b"
+)
 # nus.foo after FROM/JOIN, not after a function name.
 TABLE_REF = re.compile(
     r"(?i)(?:FROM|JOIN)\s+(?:nus\.)?([a-z][a-z0-9_]*)"
@@ -141,6 +148,11 @@ def check() -> list[str]:
                 sql = target.get("rawSql") or ""
                 if FORBIDDEN.search(sql):
                     errors.append(f"{uid} forbids non-ClickHouse store in: {sql[:80]!r}")
+                if ALIAS_SHADOWS_COLUMN.search(sql):
+                    errors.append(
+                        f"{uid} panel {panel.get('id')}: aggregate AS event_time/"
+                        f"computed_at/hour shadows the column in WHERE (ClickHouse 184)"
+                    )
                 if re.search(r"nus\.[a-z0-9_]+_local\b", sql):
                     errors.append(f"{uid} queries a *_local table: {sql[:80]!r}")
                 for name in TABLE_REF.findall(sql):

@@ -20,12 +20,19 @@ FMT_TS, FMT_TABLE = 0, 1
 
 
 def target(sql: str, ref: str = "A", timeseries: bool = False) -> dict:
+    body = sql.strip().rstrip(";")
+    # ClickHouse (default prefer_column_name_to_alias=0) binds WHERE
+    # event_time to a SELECT alias. max(event_time) AS event_time then
+    # raises code 184. Prefer the table column; also never alias
+    # aggregates to the column name (see check-dashboards.py).
+    if "prefer_column_name_to_alias" not in body:
+        body += "\nSETTINGS prefer_column_name_to_alias = 1"
     return {
         "datasource": DS,
         "editorType": "sql",
         "format": FMT_TS if timeseries else FMT_TABLE,
         "queryType": "timeseries" if timeseries else "table",
-        "rawSql": sql.strip() + "\n",
+        "rawSql": body + "\n",
         "refId": ref,
         "pluginVersion": PLUGIN,
     }
@@ -276,7 +283,7 @@ SELECT
     argMax(lat, event_time) AS lat,
     argMax(lon, event_time) AS lon,
     argMax(status, event_time) AS status,
-    max(event_time) AS event_time
+    max(event_time) AS last_seen
 FROM nus.driver_positions
 WHERE event_time >= now() - INTERVAL 2 MINUTE
 GROUP BY driver_id
@@ -342,21 +349,6 @@ LIMIT 100
             "Fleet last status (2 minutes)",
             "table",
             """
-SELECT
-    argMax(status, event_time) AS status,
-    count() AS drivers
-FROM nus.driver_positions
-WHERE event_time >= now() - INTERVAL 2 MINUTE
-GROUP BY driver_id
-""",
-            0, 34, 24, 8,
-        ),
-    ],
-)
-
-# Fleet last status as grouped count - the SQL above groups by driver then
-# we need an outer group. Fix panel 9.
-LIVE_OPS["panels"][8]["targets"][0]["rawSql"] = """
 SELECT status, count() AS drivers
 FROM (
     SELECT driver_id, argMax(status, event_time) AS status
@@ -365,7 +357,11 @@ FROM (
     GROUP BY driver_id
 )
 GROUP BY status
-""".strip() + "\n"
+""",
+            0, 34, 24, 8,
+        ),
+    ],
+)
 
 # ---------------------------------------------------------------------------
 # Driver inspector
@@ -617,7 +613,7 @@ SELECT
     argMax(available_drivers, computed_at) AS available_drivers,
     argMax(surge_multiplier, computed_at) AS surge_multiplier,
     argMax(period, computed_at) AS period,
-    max(computed_at) AS computed_at
+    max(computed_at) AS last_computed
 FROM nus.hotspot_history
 WHERE computed_at >= now() - INTERVAL 10 MINUTE
 GROUP BY zone_id
