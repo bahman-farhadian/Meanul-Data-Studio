@@ -65,7 +65,14 @@ postgresql:
   pg_hba:
     - local all all trust
     - host all all 0.0.0.0/0 scram-sha-256
+    # Physical streaming between Patroni members.
     - host replication replicator 0.0.0.0/0 scram-sha-256
+    # Logical decoding for Debezium (d-infra-debezium). Replication
+    # connections match `database = replication`, not `all`, so the line
+    # above does not cover the postgres superuser the connector logs in as.
+    # Without this, CREATE_REPLICATION_SLOT dies as an I/O/EOF on the
+    # JDBC replication connection rather than a clear pg_hba error.
+    - host replication postgres 0.0.0.0/0 scram-sha-256
   authentication:
     superuser:
       username: postgres

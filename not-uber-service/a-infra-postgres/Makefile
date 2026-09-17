@@ -76,6 +76,17 @@ _wait-haproxy-pg-settled: ## Wait past the post-recreation flap, not just pg-1/2
 	printf "              check manually: make verify-pg\n"; \
 	exit 1
 
+.PHONY: pg-allow-cdc
+pg-allow-cdc: ## Allow Debezium's postgres user a logical replication connection
+	$(call say,Patroni pg_hba: replication for postgres)
+	@$(COMPOSE) exec -T pg-1 curl -sfS \
+		-u "$(call getenv,PATRONI_REST_USER,patroni):$(call getenv,PATRONI_REST_PASSWORD)" \
+		-X PATCH -H "Content-Type: application/json" \
+		--data-raw '{"postgresql":{"pg_hba":["local all all trust","host all all 0.0.0.0/0 scram-sha-256","host replication replicator 0.0.0.0/0 scram-sha-256","host replication postgres 0.0.0.0/0 scram-sha-256"]}}' \
+		http://localhost:8008/config >/dev/null
+	@$(COMPOSE) exec -T pg-1 patronictl -c /etc/patroni/patroni.yml reload nus-pg --force >/dev/null
+	$(call ok,pg_hba reloaded — postgres may open a logical replication slot)
+
 .PHONY: verify-pg
 verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 	$(call say,PostgreSQL)

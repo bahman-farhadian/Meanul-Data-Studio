@@ -155,7 +155,7 @@ verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
 	@printf "  bootstrap marker: "
 	@$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
 		get system:bootstrap:done 2>/dev/null || printf "(not set)\n"
-	@$(COMPOSE) exec -T pg-1 psql -U postgres -t -c \
+	@$(COMPOSE) exec -T pg-1 psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -t -c \
 		"SELECT 'drivers      ' || count(*) FROM drivers UNION ALL \
 		 SELECT 'passengers   ' || count(*) FROM passengers UNION ALL \
 		 SELECT 'trips        ' || count(*) FROM trips UNION ALL \
@@ -164,5 +164,11 @@ verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
 		 SELECT 'seg. traffic ' || count(*) FROM segment_traffic;" 2>/dev/null | sed 's/^ */  /' || true
 	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
 		--query "SELECT 'trip_events ' || toString(count()) FROM nus.trip_events" 2>/dev/null | sed 's/^/  /' || true
+	@printf "  redis dbsize driver/passenger/trip/demand: "
+	@for n in 1 2 3 4; do \
+		$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
+			-n $$n DBSIZE 2>/dev/null | tr -d '\r'; printf " "; \
+	done; printf "\n"
 	@printf "\n  Trips should be roughly HISTORY_DAYS x HISTORY_TRIPS_PER_DAY, and 'ways'\n"
 	@printf "  in the hundreds of thousands. 'ways' at 0 means the map import did not run.\n"
+	@printf "  Redis db 1 (drivers) still 0 after CDC means cache-updater has nothing to apply.\n"
