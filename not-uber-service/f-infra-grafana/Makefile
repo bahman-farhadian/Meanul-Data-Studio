@@ -13,4 +13,8 @@
 grafana-health: ## Grafana answers on its health endpoint
 	$(call say,Grafana)
 	@$(COMPOSE) exec -T grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
-	@printf "\n  Empty panels are fine before bootstrap; an error is not.\n"
+	@printf "\n  Provisioned dashboards live under Connections → Dashboards → NUS.\n"
+
+.PHONY: grafana-check
+grafana-check: ## Dashboards query only ClickHouse Distributed tables
+	@python3 f-infra-grafana/check-dashboards.py

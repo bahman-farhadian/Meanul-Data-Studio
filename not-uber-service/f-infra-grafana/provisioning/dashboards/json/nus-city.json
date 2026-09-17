@@ -1,0 +1,219 @@
+{
+  "uid": "nus-city",
+  "title": "NUS / City now",
+  "description": "Zone demand, surge, congestion. Scores near 0 at the small seed are expected.",
+  "tags": [
+    "nus",
+    "live",
+    "city"
+  ],
+  "timezone": "America/New_York",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "liveNow": true,
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": [
+      {
+        "name": "zone_id",
+        "label": "Zone",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "nus-clickhouse"
+        },
+        "definition": "SELECT DISTINCT toString(zone_id) FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 300",
+        "query": "SELECT DISTINCT toString(zone_id) FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 300",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "hide": 0,
+        "regex": "",
+        "skipUrlSync": false,
+        "options": []
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Latest demand by zone",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    zone_id,\n    argMax(demand_score, computed_at) AS demand_score,\n    argMax(open_requests, computed_at) AS open_requests,\n    argMax(available_drivers, computed_at) AS available_drivers,\n    argMax(surge_multiplier, computed_at) AS surge_multiplier,\n    argMax(period, computed_at) AS period,\n    max(computed_at) AS computed_at\nFROM nus.hotspot_history\nWHERE computed_at >= now() - INTERVAL 10 MINUTE\nGROUP BY zone_id\nORDER BY demand_score DESC\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Demand score (selected zone)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT computed_at AS time, demand_score, surge_multiplier\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "Open requests vs free drivers (selected zone)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT computed_at AS time, open_requests, available_drivers\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Congestion factor (selected zone)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT computed_at AS time, congestion_factor, speed_samples, segments_updated\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "links": [
+    {
+      "title": "Live ops",
+      "type": "link",
+      "url": "/d/nus-live-ops",
+      "keepTime": true
+    },
+    {
+      "title": "Driver",
+      "type": "link",
+      "url": "/d/nus-driver",
+      "keepTime": true
+    },
+    {
+      "title": "Trip",
+      "type": "link",
+      "url": "/d/nus-trip",
+      "keepTime": true
+    },
+    {
+      "title": "City",
+      "type": "link",
+      "url": "/d/nus-city",
+      "keepTime": true
+    },
+    {
+      "title": "History",
+      "type": "link",
+      "url": "/d/nus-history",
+      "keepTime": true
+    }
+  ]
+}

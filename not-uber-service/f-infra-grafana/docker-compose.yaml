@@ -4,10 +4,10 @@
 # events arriving, where demand is. Superset (piece g) is the slower,
 # analytical view. Both read the same ClickHouse cluster.
 #
-# The ClickHouse connection is provisioned from files in this directory, so
-# a rebuilt container comes back exactly the same. This piece only brings
-# the service up and connects it - no dashboard content lives here;
-# dashboard provisioning is a separate, later piece of its own.
+# The ClickHouse connection and the NUS dashboards are provisioned from
+# files in this directory, so a rebuilt container comes back exactly the
+# same. Dashboards query the warehouse (nus.* Distributed tables), not
+# Kafka, Redis, or Postgres.
 #
 # Standalone test:
 #   docker network create nus-backbone
@@ -54,6 +54,7 @@ services:
       # into any file in this repository.
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/nus-live-ops.json
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
@@ -67,9 +68,8 @@ services:
       - backbone
 
 volumes:
-  # Grafana's own small database: users, stars, and dashboards created in the
-  # browser. The provisioned files above are the source of truth for anything
-  # that must survive a rebuild.
+  # Grafana's own small database: users and stars. Provisioned dashboards
+  # come from the bind-mounted files, not this volume.
   grafana-data:
     name: nus-grafana-data
     driver: local

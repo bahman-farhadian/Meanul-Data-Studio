@@ -1,0 +1,17 @@
+# File provider: Grafana loads every JSON next to this file on start and
+# every 30s after that. The compose bind-mount already maps this directory
+# to /etc/grafana/provisioning, the same way datasources/ is mapped.
+apiVersion: 1
+
+providers:
+  - name: nus
+    orgId: 1
+    folder: NUS
+    folderUid: nus
+    type: file
+    disableDeletion: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: false
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

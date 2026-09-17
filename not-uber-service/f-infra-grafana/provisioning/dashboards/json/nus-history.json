@@ -1,0 +1,333 @@
+{
+  "uid": "nus-history",
+  "title": "NUS / ClickHouse history",
+  "description": "Hourly and daily rollups. SummingMergeTree panels use sum(); percentiles use quantileMerge(); distinct counts use uniqMerge().",
+  "tags": [
+    "nus",
+    "history"
+  ],
+  "timezone": "America/New_York",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "1m",
+  "liveNow": false,
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Completed trips and revenue (hourly, sum across shards)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Daily completed trips and revenue (sum)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    toDateTime(day) AS time,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.trip_stats_daily\nWHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)\nGROUP BY day\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 3,
+      "title": "Trip duration p50 / p95 (quantileMerge)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    quantileMerge(0.5)(p50_state) AS p50_s,\n    quantileMerge(0.95)(p95_state) AS p95_s\nFROM nus.trip_duration_percentiles_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Driver utilization (busy / online ticks, sum)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM nus.driver_utilization_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Distinct drivers and riders (uniqMerge)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    uniqMerge(driver_state) AS drivers,\n    uniqMerge(rider_state) AS riders\nFROM nus.active_entities_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 6,
+      "title": "Overrun share of completed trips (hourly, sum)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(overrun_trips) / sum(completed_trips) AS overrun_share\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(completed_trips) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 7,
+      "title": "Top pickup zones today (daily rollup, sum)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue,\n    sum(route_km_total) AS route_km\nFROM nus.trip_stats_daily\nWHERE day = today()\nGROUP BY pickup_zone_id\nORDER BY completed_trips DESC\nLIMIT 20\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 8,
+      "title": "Origin-destination (daily, sum)",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    dropoff_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.od_matrix_daily\nWHERE day = today()\nGROUP BY pickup_zone_id, dropoff_zone_id\nORDER BY completed_trips DESC\nLIMIT 30\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "links": [
+    {
+      "title": "Live ops",
+      "type": "link",
+      "url": "/d/nus-live-ops",
+      "keepTime": true
+    },
+    {
+      "title": "Driver",
+      "type": "link",
+      "url": "/d/nus-driver",
+      "keepTime": true
+    },
+    {
+      "title": "Trip",
+      "type": "link",
+      "url": "/d/nus-trip",
+      "keepTime": true
+    },
+    {
+      "title": "City",
+      "type": "link",
+      "url": "/d/nus-city",
+      "keepTime": true
+    },
+    {
+      "title": "History",
+      "type": "link",
+      "url": "/d/nus-history",
+      "keepTime": true
+    }
+  ]
+}

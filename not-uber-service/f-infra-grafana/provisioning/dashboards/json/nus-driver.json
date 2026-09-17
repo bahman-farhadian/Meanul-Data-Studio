@@ -1,0 +1,277 @@
+{
+  "uid": "nus-driver",
+  "title": "NUS / Driver inspector",
+  "description": "Lookup one driver_id: trail, status, speed, utilization.",
+  "tags": [
+    "nus",
+    "live",
+    "driver"
+  ],
+  "timezone": "America/New_York",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "liveNow": true,
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-3h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": [
+      {
+        "name": "driver_id",
+        "label": "Driver",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "nus-clickhouse"
+        },
+        "definition": "SELECT DISTINCT toString(driver_id) FROM nus.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
+        "query": "SELECT DISTINCT toString(driver_id) FROM nus.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "hide": 0,
+        "regex": "",
+        "skipUrlSync": false,
+        "options": []
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Latest position",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    argMax(status, event_time) AS status,\n    argMax(lat, event_time) AS lat,\n    argMax(lon, event_time) AS lon,\n    argMax(speed_kmh, event_time) AS speed_kmh,\n    argMax(trip_id, event_time) AS trip_id\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Map trail",
+      "type": "geomap",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 12,
+        "x": 0,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT event_time, lat, lon, status, speed_kmh, trip_id\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "view": {
+          "id": "fit",
+          "zoom": 12
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true
+        },
+        "basemap": {
+          "type": "default",
+          "name": "Basemap"
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Trail",
+            "location": {
+              "mode": "coords",
+              "latitude": "lat",
+              "longitude": "lon"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "title": "Status over time",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 12,
+        "x": 12,
+        "y": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time DESC\nLIMIT 500\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 4,
+      "title": "Speed",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT event_time AS time, speed_kmh\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 5,
+      "title": "Hourly utilization (busy / online ticks)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM nus.driver_utilization_hourly\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "links": [
+    {
+      "title": "Live ops",
+      "type": "link",
+      "url": "/d/nus-live-ops",
+      "keepTime": true
+    },
+    {
+      "title": "Driver",
+      "type": "link",
+      "url": "/d/nus-driver",
+      "keepTime": true
+    },
+    {
+      "title": "Trip",
+      "type": "link",
+      "url": "/d/nus-trip",
+      "keepTime": true
+    },
+    {
+      "title": "City",
+      "type": "link",
+      "url": "/d/nus-city",
+      "keepTime": true
+    },
+    {
+      "title": "History",
+      "type": "link",
+      "url": "/d/nus-history",
+      "keepTime": true
+    }
+  ]
+}

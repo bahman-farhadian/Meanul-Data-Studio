@@ -1,0 +1,209 @@
+{
+  "uid": "nus-trip",
+  "title": "NUS / Trip inspector",
+  "description": "Status walk, rider trail, fares for one trip_id.",
+  "tags": [
+    "nus",
+    "live",
+    "trip"
+  ],
+  "timezone": "America/New_York",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "liveNow": true,
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": [
+      {
+        "name": "trip_id",
+        "label": "Trip",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-clickhouse-datasource",
+          "uid": "nus-clickhouse"
+        },
+        "definition": "SELECT DISTINCT toString(trip_id) FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
+        "query": "SELECT DISTINCT toString(trip_id) FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
+        "refresh": 2,
+        "sort": 1,
+        "includeAll": false,
+        "multi": false,
+        "current": {},
+        "hide": 0,
+        "regex": "",
+        "skipUrlSync": false,
+        "options": []
+      }
+    ]
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Status walk",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    event_time,\n    status,\n    driver_id,\n    rider_id,\n    pickup_zone_id,\n    dropoff_zone_id,\n    route_km,\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    surge_multiplier,\n    hotspot_score,\n    is_hotspot_trip,\n    fare_estimate,\n    fare_final\nFROM nus.trip_events\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    },
+    {
+      "id": 2,
+      "title": "Rider positions",
+      "type": "geomap",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT event_time, lat, lon, accuracy_m, zone_id\nFROM nus.rider_positions\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {
+        "view": {
+          "id": "fit",
+          "zoom": 12
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true
+        },
+        "basemap": {
+          "type": "default",
+          "name": "Basemap"
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Rider",
+            "location": {
+              "mode": "coords",
+              "latitude": "lat",
+              "longitude": "lon"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": 3,
+      "title": "Predicted vs actual duration (completed row)",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    fare_estimate,\n    fare_final\nFROM nus.trip_events\nWHERE trip_id = '${trip_id}'\n  AND status = 'completed'\nORDER BY event_time DESC\nLIMIT 1\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "options": {}
+    }
+  ],
+  "links": [
+    {
+      "title": "Live ops",
+      "type": "link",
+      "url": "/d/nus-live-ops",
+      "keepTime": true
+    },
+    {
+      "title": "Driver",
+      "type": "link",
+      "url": "/d/nus-driver",
+      "keepTime": true
+    },
+    {
+      "title": "Trip",
+      "type": "link",
+      "url": "/d/nus-trip",
+      "keepTime": true
+    },
+    {
+      "title": "City",
+      "type": "link",
+      "url": "/d/nus-city",
+      "keepTime": true
+    },
+    {
+      "title": "History",
+      "type": "link",
+      "url": "/d/nus-history",
+      "keepTime": true
+    }
+  ]
+}

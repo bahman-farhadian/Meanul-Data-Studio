@@ -1,30 +1,41 @@
 # f-infra-grafana — the live view
 
-Grafana is meant to answer **"what is happening right now"**: trips
-finishing, position events arriving, where demand is. Superset (piece `g`)
-is the slower analytical view. Both read the same ClickHouse cluster. At
-this stage this piece only brings the tool up and connects it — see below.
+Grafana is meant to answer **"what is happening right now"** and to chart
+the ClickHouse rollups: trips finishing, position events arriving, where
+demand is, hourly/daily stats. Superset (piece `g`) is a separate SQL Lab
+tool; it is not used by these dashboards. Both *can* read the same
+ClickHouse cluster. This piece brings Grafana up, connects it, and
+provisions the NUS dashboards from files.
 
 Reached through the entry tier on **port 3000** (`lb-a`) or **13000**
 (`lb-b`). Grafana itself publishes no host port.
 
 ## What this piece does
 
-Brings up the Grafana container and connects it to ClickHouse. Nothing else.
-The connection is provisioned from a file in this directory every time
-Grafana starts, so a rebuilt container comes back identical to the one it
-replaced. The data source is **read-only in the browser** — the file is the
-truth. The ClickHouse password is read from the environment at start
-(`$CH_PASSWORD` in the data source file), so no password is written into
-any file in this repository.
+Brings up the Grafana container, connects it to ClickHouse, and loads the
+dashboards under `provisioning/dashboards/json/`. The connection and the
+dashboards are provisioned from files every time Grafana starts, so a
+rebuilt container comes back identical to the one it replaced. The data
+source is **read-only in the browser** — the file is the truth. The
+ClickHouse password is read from the environment at start (`$CH_PASSWORD`
+in the data source file), so no password is written into any file in this
+repository.
 
-**Dashboard provisioning is not part of this piece.** A dashboard was
-designed and built earlier (two of them, live + fleet) and is still findable
-in git history — `git log --diff-filter=D -- f-infra-grafana/` — but is not
-coming back into this directory. Dashboard content depends on tables,
-materialized views and data-generation logic (pieces `h` onward) not yet
-verified correct, so it becomes its own separate piece once that is done,
-not something bolted back onto infrastructure.
+Queries go only to the `nus` ClickHouse database (datasource uid
+`nus-clickhouse`). They use Distributed table names, never Kafka, Redis,
+or Postgres.
+
+| Dashboard | uid | What it shows |
+| --- | --- | --- |
+| Live operations | `nus-live-ops` | Open trips, ingest, last driver map, freshness |
+| Driver inspector | `nus-driver` | One `driver_id`: trail, status, utilization |
+| Trip inspector | `nus-trip` | One `trip_id`: status walk, rider trail, fares |
+| City now | `nus-city` | Zone demand, surge, congestion |
+| ClickHouse history | `nus-history` | Hourly/daily rollups, percentiles, utilization |
+
+`python3 f-infra-grafana/check-dashboards.py` (or `make grafana-check`)
+asserts every panel uses that datasource and only names tables declared
+in `e-infra-clickhouse/ddl/`.
 
 ## The plugin is baked into the image
 
@@ -45,6 +56,9 @@ newer copy in the rebuilt image.
 | `docker-compose.yaml` | The `grafana` service. |
 | `Dockerfile` | Grafana with the ClickHouse plugin baked in. |
 | `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `nus-lb-a`. |
+| `provisioning/dashboards/provider.yaml` | File provider; Grafana watches the JSON directory. |
+| `provisioning/dashboards/json/*.json` | The five NUS dashboards. |
+| `check-dashboards.py` | Static check: datasource uid and ClickHouse table names. |
 | `.env.example` | Template for the untracked `.env` (image pins, logins). |
 
 ## Environment variables (`.env`)
@@ -84,8 +98,12 @@ docker compose exec grafana wget -qO- \
 
 In the browser, open <http://localhost:3000>, go to
 **Connections → Data sources → ClickHouse** and press **Save & test**. It
-should report success. There is nothing else to check yet — no dashboard is
-provisioned by this piece.
+should report success. Dashboards are under **Dashboards → NUS**. On a
+running full stack, recreate Grafana only:
+
+```bash
+docker compose up -d grafana
+```
 
 ## Teardown
 
