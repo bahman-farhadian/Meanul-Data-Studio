@@ -70,7 +70,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    zone_id,\n    argMax(demand_score, computed_at) AS demand_score,\n    argMax(open_requests, computed_at) AS open_requests,\n    argMax(available_drivers, computed_at) AS available_drivers,\n    argMax(surge_multiplier, computed_at) AS surge_multiplier,\n    argMax(period, computed_at) AS period,\n    max(computed_at) AS last_computed\nFROM nus.hotspot_history\nWHERE computed_at >= now() - INTERVAL 10 MINUTE\nGROUP BY zone_id\nORDER BY demand_score DESC\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    zone_id,\n    demand_score,\n    open_requests,\n    available_drivers,\n    surge_multiplier,\n    period,\n    last_computed\nFROM (\n    SELECT\n        zone_id,\n        argMax(demand_score, computed_at) AS demand_score,\n        argMax(open_requests, computed_at) AS open_requests,\n        argMax(available_drivers, computed_at) AS available_drivers,\n        argMax(surge_multiplier, computed_at) AS surge_multiplier,\n        argMax(period, computed_at) AS period,\n        max(computed_at) AS last_computed\n    FROM nus.hotspot_history\n    WHERE computed_at >= now() - INTERVAL 10 MINUTE\n    GROUP BY zone_id\n) AS latest\nORDER BY demand_score DESC\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -104,7 +104,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, demand_score, surge_multiplier\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT computed_at AS time, demand_score, surge_multiplier\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -138,7 +138,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, open_requests, available_drivers\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT computed_at AS time, open_requests, available_drivers\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -172,7 +172,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, congestion_factor, speed_samples, segments_updated\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT computed_at AS time, congestion_factor, speed_samples, segments_updated\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }

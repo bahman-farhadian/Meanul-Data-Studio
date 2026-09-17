@@ -153,6 +153,11 @@ def check() -> list[str]:
                         f"{uid} panel {panel.get('id')}: aggregate AS event_time/"
                         f"computed_at/hour shadows the column in WHERE (ClickHouse 184)"
                     )
+                if "prefer_column_name_to_alias" in sql:
+                    errors.append(
+                        f"{uid} panel {panel.get('id')}: prefer_column_name_to_alias "
+                        "makes ORDER BY alias match the raw column (ClickHouse 215)"
+                    )
                 if re.search(r"nus\.[a-z0-9_]+_local\b", sql):
                     errors.append(f"{uid} queries a *_local table: {sql[:80]!r}")
                 for name in TABLE_REF.findall(sql):

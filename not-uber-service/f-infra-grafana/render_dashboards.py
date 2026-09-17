@@ -20,19 +20,12 @@ FMT_TS, FMT_TABLE = 0, 1
 
 
 def target(sql: str, ref: str = "A", timeseries: bool = False) -> dict:
-    body = sql.strip().rstrip(";")
-    # ClickHouse (default prefer_column_name_to_alias=0) binds WHERE
-    # event_time to a SELECT alias. max(event_time) AS event_time then
-    # raises code 184. Prefer the table column; also never alias
-    # aggregates to the column name (see check-dashboards.py).
-    if "prefer_column_name_to_alias" not in body:
-        body += "\nSETTINGS prefer_column_name_to_alias = 1"
     return {
         "datasource": DS,
         "editorType": "sql",
         "format": FMT_TS if timeseries else FMT_TABLE,
         "queryType": "timeseries" if timeseries else "table",
-        "rawSql": body + "\n",
+        "rawSql": sql.strip() + "\n",
         "refId": ref,
         "pluginVersion": PLUGIN,
     }
@@ -608,15 +601,25 @@ CITY = dashboard(
             """
 SELECT
     zone_id,
-    argMax(demand_score, computed_at) AS demand_score,
-    argMax(open_requests, computed_at) AS open_requests,
-    argMax(available_drivers, computed_at) AS available_drivers,
-    argMax(surge_multiplier, computed_at) AS surge_multiplier,
-    argMax(period, computed_at) AS period,
-    max(computed_at) AS last_computed
-FROM nus.hotspot_history
-WHERE computed_at >= now() - INTERVAL 10 MINUTE
-GROUP BY zone_id
+    demand_score,
+    open_requests,
+    available_drivers,
+    surge_multiplier,
+    period,
+    last_computed
+FROM (
+    SELECT
+        zone_id,
+        argMax(demand_score, computed_at) AS demand_score,
+        argMax(open_requests, computed_at) AS open_requests,
+        argMax(available_drivers, computed_at) AS available_drivers,
+        argMax(surge_multiplier, computed_at) AS surge_multiplier,
+        argMax(period, computed_at) AS period,
+        max(computed_at) AS last_computed
+    FROM nus.hotspot_history
+    WHERE computed_at >= now() - INTERVAL 10 MINUTE
+    GROUP BY zone_id
+) AS latest
 ORDER BY demand_score DESC
 """,
             0, 0, 24, 10,

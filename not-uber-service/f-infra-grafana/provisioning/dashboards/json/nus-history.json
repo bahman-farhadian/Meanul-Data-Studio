@@ -48,7 +48,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -82,7 +82,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    toDateTime(day) AS time,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.trip_stats_daily\nWHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)\nGROUP BY day\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    toDateTime(day) AS time,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.trip_stats_daily\nWHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)\nGROUP BY day\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -116,7 +116,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    quantileMerge(0.5)(p50_state) AS p50_s,\n    quantileMerge(0.95)(p95_state) AS p95_s\nFROM nus.trip_duration_percentiles_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    hour AS time,\n    quantileMerge(0.5)(p50_state) AS p50_s,\n    quantileMerge(0.95)(p95_state) AS p95_s\nFROM nus.trip_duration_percentiles_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -150,7 +150,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM nus.driver_utilization_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM nus.driver_utilization_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -184,7 +184,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    uniqMerge(driver_state) AS drivers,\n    uniqMerge(rider_state) AS riders\nFROM nus.active_entities_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    hour AS time,\n    uniqMerge(driver_state) AS drivers,\n    uniqMerge(rider_state) AS riders\nFROM nus.active_entities_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -218,7 +218,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(overrun_trips) / sum(completed_trips) AS overrun_share\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(completed_trips) > 0\nORDER BY time\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(overrun_trips) / sum(completed_trips) AS overrun_share\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(completed_trips) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -252,7 +252,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue,\n    sum(route_km_total) AS route_km\nFROM nus.trip_stats_daily\nWHERE day = today()\nGROUP BY pickup_zone_id\nORDER BY completed_trips DESC\nLIMIT 20\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue,\n    sum(route_km_total) AS route_km\nFROM nus.trip_stats_daily\nWHERE day = today()\nGROUP BY pickup_zone_id\nORDER BY completed_trips DESC\nLIMIT 20\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -286,7 +286,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    pickup_zone_id,\n    dropoff_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.od_matrix_daily\nWHERE day = today()\nGROUP BY pickup_zone_id, dropoff_zone_id\nORDER BY completed_trips DESC\nLIMIT 30\nSETTINGS prefer_column_name_to_alias = 1\n",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    dropoff_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.od_matrix_daily\nWHERE day = today()\nGROUP BY pickup_zone_id, dropoff_zone_id\nORDER BY completed_trips DESC\nLIMIT 30\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
