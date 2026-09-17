@@ -9,7 +9,7 @@
   ],
   "timezone": "America/New_York",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 10,
   "refresh": "10s",
   "liveNow": true,
   "editable": false,
@@ -128,10 +128,10 @@
         },
         "basemap": {
           "type": "xyz",
-          "name": "CARTO Dark",
+          "name": "NUS OSM",
           "config": {
-            "url": "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-            "attribution": "\u00a9 OpenStreetMap \u00a9 CARTO"
+            "url": "/tiles/styles/nus/{z}/{x}/{y}.png",
+            "attribution": "\u00a9 OpenStreetMap"
           }
         },
         "layers": [

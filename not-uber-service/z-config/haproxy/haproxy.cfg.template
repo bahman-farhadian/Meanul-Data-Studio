@@ -237,13 +237,35 @@ listen ch_native
     server nus-ch-s2r1 nus-ch-s2r1:9000 check
     server nus-ch-s2r2 nus-ch-s2r2:9000 check
 
-# Grafana (f-infra-grafana) ---------------------------------------------------
-# A single backend, so this is only an entry point, not load balancing: it
-# gives Grafana one address that stays the same whichever proxy is in use.
+# Grafana (f-infra-grafana) + self-hosted OSM tiles ---------------------------
+# Same origin as Grafana so the browser never talks to MapTiler. /tiles/ is
+# stripped and sent to tileserver-gl. HTTP mode is required for the path
+# split; timeout tunnel keeps Grafana websockets alive.
 
-listen grafana
+frontend grafana_fe
     bind :3000
+    mode http
+    option httplog
+    option http-keep-alive
+    timeout tunnel 1h
+    acl is_tiles path_beg /tiles/
+    http-request replace-path ^/tiles/(.*) /\1 if is_tiles
+    use_backend tiles if is_tiles
+    default_backend grafana_be
+
+backend grafana_be
+    mode http
+    option http-keep-alive
+    timeout tunnel 1h
     server nus-grafana nus-grafana:3000 check
+
+backend tiles
+    mode http
+    timeout server 60s
+    option httpchk
+    http-check send meth GET uri /
+    http-check expect status 200
+    server nus-tiles nus-tiles:8080 check
 
 # Superset (g-infra-superset) -------------------------------------------------
 # One backend again: the proxy is the single address, not a balancer. The

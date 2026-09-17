@@ -86,7 +86,7 @@ services:
         own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1 nus-kafka-data-2 nus-kafka-data-3
         # Grafana runs as 472 with group 0; Superset as 1000.
         own 472:0 nus-grafana-data
-        own 1000:1000 nus-superset-home
+        own 1000:1000 nus-superset-home nus-tiles-data
         # h-bootstrap and the six services all run as the 'nus' user, 10001.
         own 10001:10001 nus-lion-data
         # ClickHouse, Keeper and etcd start as root and drop privileges

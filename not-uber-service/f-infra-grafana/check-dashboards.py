@@ -196,14 +196,14 @@ def check() -> list[str]:
     for path in JSON_DIR.glob("*.json"):
         blob = path.read_text()
         if '"type": "geomap"' in blob:
-            if "basemaps.cartocdn.com" not in blob or '"type": "xyz"' not in blob:
+            if "/tiles/styles/nus/" not in blob or '"type": "xyz"' not in blob:
                 errors.append(
-                    f"{path.name}: geomap must use CARTO XYZ tiles "
-                    "(MapTiler needs a key; Grafana 12 osm type was blank)"
+                    f"{path.name}: geomap must use same-origin /tiles/styles/nus "
+                    "(self-hosted OSM; no MapTiler key)"
                 )
-            if '"type": "default"' in blob or '"type": "osm"' in blob:
+            if "maptiler" in blob.lower() or "cartocdn.com" in blob:
                 errors.append(
-                    f"{path.name}: geomap must not use MapTiler default or osm type"
+                    f"{path.name}: geomap must not call a third-party tile CDN"
                 )
 
     history = JSON_DIR / "nus-history.json"

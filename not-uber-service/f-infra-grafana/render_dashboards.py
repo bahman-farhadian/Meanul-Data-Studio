@@ -14,15 +14,14 @@ from pathlib import Path
 DS = {"type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse"}
 PLUGIN = "4.21.2"
 OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
-# Grafana 12 default geomap is MapTiler (API KEY REQUIRED). The built-in
-# `osm` layer type rendered a blank canvas on 12.4. XYZ CARTO tiles are
-# fetched by the browser (same path MapTiler used) and need no key.
-CARTO_XYZ = {
+# Same-origin OSM raster from nus-tiles (HAProxy /tiles/ → tileserver-gl).
+# No MapTiler, no API key, no third-party CDN.
+LOCAL_XYZ = {
     "type": "xyz",
-    "name": "CARTO Dark",
+    "name": "NUS OSM",
     "config": {
-        "url": "https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png",
-        "attribution": "© OpenStreetMap © CARTO",
+        "url": "/tiles/styles/nus/{z}/{x}/{y}.png",
+        "attribution": "© OpenStreetMap",
     },
 }
 
@@ -41,7 +40,7 @@ def geomap_options(layer_name: str, *, lat: float = 40.75, lon: float = -73.98, 
             "mouseWheelZoom": True,
             "showAttribution": True,
         },
-        "basemap": CARTO_XYZ,
+        "basemap": LOCAL_XYZ,
         "layers": [
             {
                 "type": "markers",
@@ -149,7 +148,7 @@ def dashboard(
         "tags": tags,
         "timezone": "America/New_York",
         "schemaVersion": 39,
-        "version": 1,
+        "version": 10,
         "refresh": refresh,
         "liveNow": live,
         "editable": False,

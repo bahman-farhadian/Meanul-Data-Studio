@@ -1,0 +1,83 @@
+{
+  "version": 8,
+  "name": "nus-osm",
+  "sources": {
+    "nyc": {
+      "type": "vector",
+      "url": "mbtiles://nyc.mbtiles"
+    }
+  },
+  "layers": [
+    {
+      "id": "background",
+      "type": "background",
+      "paint": { "background-color": "#1b1e2b" }
+    },
+    {
+      "id": "landcover",
+      "type": "fill",
+      "source": "nyc",
+      "source-layer": "landcover",
+      "paint": { "fill-color": "#22263a" }
+    },
+    {
+      "id": "landuse",
+      "type": "fill",
+      "source": "nyc",
+      "source-layer": "landuse",
+      "paint": { "fill-color": "#252a40" }
+    },
+    {
+      "id": "park",
+      "type": "fill",
+      "source": "nyc",
+      "source-layer": "park",
+      "paint": { "fill-color": "#1d3a2a" }
+    },
+    {
+      "id": "water",
+      "type": "fill",
+      "source": "nyc",
+      "source-layer": "water",
+      "paint": { "fill-color": "#0d2137" }
+    },
+    {
+      "id": "waterway",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "waterway",
+      "paint": { "line-color": "#0d2137", "line-width": 0.8 }
+    },
+    {
+      "id": "building",
+      "type": "fill",
+      "source": "nyc",
+      "source-layer": "building",
+      "paint": { "fill-color": "#2a3048", "fill-opacity": 0.8 }
+    },
+    {
+      "id": "boundary",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "boundary",
+      "paint": { "line-color": "#3d4560", "line-width": 0.6 }
+    },
+    {
+      "id": "transportation",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "paint": {
+        "line-color": "#6b7394",
+        "line-width": [
+          "interpolate",
+          ["linear"],
+          ["zoom"],
+          10, 0.4,
+          14, 1.4,
+          16, 3
+        ]
+      }
+    }
+  ]
+}

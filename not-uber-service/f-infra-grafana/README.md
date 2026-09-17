@@ -53,7 +53,8 @@ newer copy in the rebuilt image.
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | The `grafana` service. |
+| `docker-compose.yaml` | The `grafana` and `tiles` services. |
+| `tiles/` | Self-hosted OSM raster (Planetiler MBTiles + tileserver-gl). |
 | `Dockerfile` | Grafana with the ClickHouse plugin baked in. |
 | `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `nus-lb-a`. |
 | `provisioning/dashboards/provider.yaml` | File provider; Grafana watches the JSON directory. |
@@ -70,6 +71,8 @@ newer copy in the rebuilt image.
 | `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` | `4.21.2` | Plugin version baked into the image. |
 | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | `admin` / — (required) | The Grafana login. |
 | `CH_USER` / `CH_PASSWORD` | `nus` / — (required) | How Grafana logs in to ClickHouse; must match `e-infra-clickhouse/.env`. |
+| `TILESERVER_IMAGE` | `maptiler/tileserver-gl:v4.15.3` | Serves PNG tiles from `nyc.mbtiles`. |
+| `PLANETILER_IMAGE` | `ghcr.io/onthegomap/planetiler:0.8.4` | Builds `nyc.mbtiles` (`make tiles-prepare`). |
 
 ## Standalone quickstart
 
@@ -98,11 +101,17 @@ docker compose exec grafana wget -qO- \
 
 In the browser, open <http://localhost:3000>, go to
 **Connections → Data sources → ClickHouse** and press **Save & test**. It
-should report success. Dashboards are under **Dashboards → NUS**. On a
-running full stack, recreate Grafana only:
+should report success. Maps use **self-hosted OSM** at `/tiles/styles/nus/{z}/{x}/{y}.png` (same
+origin as Grafana; HAProxy forwards to `nus-tiles`). No MapTiler key.
+Build the MBTiles once with `make tiles-prepare`.
+
+Dashboards are under **Dashboards → NUS**. On a running full stack, after
+`make tiles-prepare` has written `nyc.mbtiles`:
 
 ```bash
-docker compose up -d grafana
+make lb-config
+docker compose up -d tiles
+docker compose up -d --force-recreate lb-a lb-b grafana
 ```
 
 ## Teardown

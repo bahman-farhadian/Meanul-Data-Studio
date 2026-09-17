@@ -1,0 +1,21 @@
+{
+  "options": {
+    "paths": {
+      "root": "/config",
+      "styles": "/config/styles",
+      "mbtiles": "/data"
+    },
+    "serveStaticMaps": false,
+    "maxSize": 2048
+  },
+  "styles": {
+    "nus": {
+      "style": "nus.json"
+    }
+  },
+  "data": {
+    "nyc": {
+      "mbtiles": "nyc.mbtiles"
+    }
+  }
+}

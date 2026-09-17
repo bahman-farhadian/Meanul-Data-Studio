@@ -236,6 +236,7 @@ prepare: ## Pull, build and prepare the street map — the only step needing net
 	@$(MAKE) --no-print-directory tlc-trips-fetch
 	@$(MAKE) --no-print-directory lion-prepare
 	@$(MAKE) --no-print-directory zone-demand-prepare
+	@$(MAKE) --no-print-directory tiles-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
 	@printf "  Every image is built and the routable graph is on disk, ready to restore.\n\n"
 
@@ -799,18 +800,21 @@ _rm-data-tree:
 	else \
 		case "$$root" in /|/root|/home|/usr|/etc|/var|/boot|/data-root) \
 			printf "  $(R)REFUSED$(X) NUS_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
-		if [ "$(RM_MAP)" = 1 ]; then keep=""; else keep="nus-lion-data"; fi; \
+		if [ "$(RM_MAP)" = 1 ]; then keep=""; else keep="nus-lion-data nus-tiles-data"; fi; \
 		before=0; after=0; \
 		for d in $$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null); do \
-			[ -n "$$keep" ] && [ "$$(basename "$$d")" = "$$keep" ] && continue; \
+			base=$$(basename "$$d"); \
+			[ -n "$$keep" ] && echo " $$keep " | grep -q " $$base " && continue; \
 			before=$$((before+1)); rm -rf "$$d" 2>/dev/null || true; \
 			[ -d "$$d" ] && after=$$((after+1)) || true; done; \
 		[ -z "$$keep" ] && rmdir "$$root" 2>/dev/null || true; \
 		if [ "$$after" -eq 0 ]; then \
 			printf "  $(G)removed$(X) %s data directories under %s\n" "$$before" "$$root"; \
-			[ -n "$$keep" ] && [ -d "$$root/$$keep" ] && \
-				printf "  $(G)kept$(X)    %s (%s) — the street map, so the next bootstrap need not refetch it\n" \
-					"$$keep" "$$(du -sh "$$root/$$keep" 2>/dev/null | cut -f1)" || true; \
+			for k in $$keep; do \
+				[ -d "$$root/$$k" ] && \
+					printf "  $(G)kept$(X)    %s (%s) — refetch is not needed on the next bootstrap\n" \
+						"$$k" "$$(du -sh "$$root/$$k" 2>/dev/null | cut -f1)"; \
+			done; \
 		else \
 			printf "  $(R)FAIL$(X)    %s of %s data directories could NOT be removed under %s\n" "$$after" "$$before" "$$root"; \
 			printf "              The containers write as their own users, so these files are\n"; \
