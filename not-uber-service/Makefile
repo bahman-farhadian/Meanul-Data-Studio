@@ -581,11 +581,13 @@ verify-dash: grafana-health superset-health ## Grafana and Superset answer, with
 .PHONY: verify-positions
 verify-positions: ## Live positions follow streets, not the chord between two points
 	$(call say,Positions)
+	@docker inspect driver-service --format '  driver-service  started {{.State.StartedAt}}' 2>/dev/null || printf '  driver-service  not running\n'
+	@docker inspect dispatch-service --format '  dispatch-service started {{.State.StartedAt}}' 2>/dev/null || printf '  dispatch-service not running\n'
 	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/check-positions.sql
 	@$(COMPOSE) exec -T pg-1 psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -c \
-		"SELECT round(avg(ST_Length(route::geography))/1000,2) AS route_km, round(avg(ST_Distance(pickup_point::geography, dropoff_point::geography))/1000,2) AS chord_km FROM trips WHERE route IS NOT NULL AND ended_at > now() - interval '1 hour';"
+		"SELECT round((avg(ST_Length(route::geography))/1000)::numeric, 2) AS route_km, round((avg(ST_Distance(pickup_point::geography, dropoff_point::geography))/1000)::numeric, 2) AS chord_km FROM trips WHERE route IS NOT NULL AND ended_at > now() - interval '1 hour';"
 
 # =============================================================================
 ##@ Operate

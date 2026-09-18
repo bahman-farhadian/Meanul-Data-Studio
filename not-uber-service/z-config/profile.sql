@@ -121,21 +121,24 @@ SELECT round(min(lat),4) AS lat_min, round(max(lat),4) AS lat_max,
 FROM nus.driver_positions;
 
 SELECT '=== 10b. driver_positions — on-street vs flying ===' AS section FORMAT TSVRaw;
--- axis_share is max(|dN|,|dE|) / (|dN|+|dE|) on steps of at least 8 m.
--- Grid streets sit near 1.0; a Euclidean hop sits near 0.71. A tick is
--- ~21 m at 25 km/h, so a 25 m AND-threshold never fired (the ad-hoc
--- query that omitted FROM seq also failed to parse).
+-- axis_share: 1.0 = grid, 0.5 = 45-degree hop, ~0.7 = Euclidean lerp.
+-- both_axes_pct: steps that move N/S and E/W (cutting a block).
 WITH seq AS (
     SELECT
+        status,
         abs(lat - lagInFrame(lat, 1) OVER (PARTITION BY driver_id ORDER BY event_time)) * 111000 AS dn,
         abs(lon - lagInFrame(lon, 1) OVER (PARTITION BY driver_id ORDER BY event_time)) * 85000 AS de
     FROM nus.driver_positions
     WHERE event_time >= now() - INTERVAL 15 MINUTE
 )
 SELECT
+    status,
     countIf(dn + de > 8) AS steps,
-    round(avgIf(greatest(dn, de) / (dn + de), dn + de > 8), 3) AS axis_share
-FROM seq;
+    round(avgIf(greatest(dn, de) / (dn + de), dn + de > 8), 3) AS axis_share,
+    round(100.0 * countIf(dn > 8 AND de > 8) / nullIf(countIf(dn + de > 8), 0), 1) AS both_axes_pct
+FROM seq
+GROUP BY status
+ORDER BY steps DESC;
 
 SELECT '=== 11. rider_positions ===' AS section FORMAT TSVRaw;
 SELECT count() AS rows, uniqExact(rider_id) AS riders, uniqExact(zone_id) AS zones,
