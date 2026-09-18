@@ -218,15 +218,14 @@ def main() -> int:
                     continue
 
                 trip = assign(
-                    request, redis_driver, redis_demand, producer, now, period, rng, grid,
-                    search_radius_km, base_fare, per_km, per_minute,
+                    request, redis_driver, redis_demand, redis_trip, producer, now, period, rng, grid,
+                    search_radius_km, base_fare, per_km, per_minute, active_ttl,
                 )
                 if trip is None:
                     unmatched += 1
                     continue
 
                 active[trip.trip_id] = trip
-                store_live_state(redis_trip, trip, now, active_ttl)
                 matched += 1
 
             if taken:
@@ -275,6 +274,12 @@ def main() -> int:
                 elif status == "cancelled_by_passenger":
                     cancellation_reason = rng.choice(PASSENGER_CANCEL_REASONS)
 
+                if status not in FINISHED:
+                    # Redis before Kafka: driver-service used to consume
+                    # matched/in_progress with an empty trip_active key, skip
+                    # follow(), then ignore later events as same-leg — the
+                    # car kept walking the idle chord (axis_share 0.71).
+                    store_live_state(redis_trip, trip, now, active_ttl)
                 announce(producer, trip, status, now, actual_duration_s, fare_final)
                 _write_status(
                     trip, status, actual_duration_s, fare_final, cancellation_reason,
@@ -288,8 +293,6 @@ def main() -> int:
                     # go, so nothing keeps reading a finished trip.
                     active.pop(trip.trip_id, None)
                     redis_trip.delete(redis_client.trip_active_key(trip.trip_id))
-                else:
-                    store_live_state(redis_trip, trip, now, active_ttl)
 
                 log.debug(
                     "trip moved on",
@@ -328,10 +331,10 @@ def main() -> int:
     return 0
 
 
-def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProducer, now: datetime,
-           period: str, rng: random.Random, grid: CityGrid,
+def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: AvroTopicProducer,
+           now: datetime, period: str, rng: random.Random, grid: CityGrid,
            search_radius_km: float, base_fare: float, per_km: float,
-           per_minute: float) -> ActiveTrip | None:
+           per_minute: float, active_ttl: int) -> ActiveTrip | None:
     """Give one request a driver, a route and a price.
 
     Returns None when the trip cannot be served, having already recorded and
@@ -414,6 +417,7 @@ def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProduce
     # offered to this driver before driver-service notices.
     redis_driver.zrem(redis_client.geo_available_drivers_key(vehicle_type), driver_id)
 
+    store_live_state(redis_trip, trip, now, active_ttl)
     announce(producer, trip, "matched", now)
     return trip
 

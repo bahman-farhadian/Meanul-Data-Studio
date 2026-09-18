@@ -100,21 +100,22 @@ KSP_SQL = """
                %(k)s,
                directed => true
            )
+     ORDER BY path_id, path_seq
 """
 
-# Build the walkable line from vertices in path_seq order. ST_Collect of
-# edge geometries (the previous query) did not keep that order, so
-# LineMerge produced a MULTILINESTRING whose parts were walked as chords
-# — live axis_share stayed ~0.71 while ST_Length(route) was a real 7 km.
+# Edge geometries in visit order, then LineMerge. An unordered ST_Collect
+# walked as a chord (axis_share 0.71) even while SUM(length_m) was a real
+# 7 km path. Shape points on the_geom stay; a vertex-only MakeLine dropped
+# them and still let a scrambled node list cut across blocks.
 ROUTE_GEOMETRY_SQL = """
-    SELECT COALESCE((
-               SELECT SUM(length_m) / 1000.0 FROM ways WHERE gid = ANY(%(gids)s)
-           ), 0) AS route_km,
-           (
-               SELECT ST_AsText(ST_MakeLine(ARRAY_AGG(v.the_geom ORDER BY u.ord)))
-                 FROM unnest(%(nodes)s::bigint[]) WITH ORDINALITY AS u(id, ord)
-                 JOIN ways_vertices_pgr v ON v.id = u.id
+    SELECT COALESCE(SUM(w.length_m) / 1000.0, 0) AS route_km,
+           ST_AsText(
+             ST_LineMerge(
+               ST_Collect(w.the_geom ORDER BY u.ord)
+             )
            ) AS route_wkt
+      FROM unnest(%(gids)s::bigint[]) WITH ORDINALITY AS u(gid, ord)
+      JOIN ways w ON w.gid = u.gid
 """
 
 # How many times a single route()-path query gets tried before this call
@@ -224,7 +225,7 @@ def route(
         return None
 
     candidates: dict[int, dict] = {}
-    for row in rows:
+    for row in sorted(rows, key=lambda r: (int(r["path_id"]), int(r["path_seq"]))):
         candidate = candidates.setdefault(
             row["path_id"], {"gids": [], "nodes": [], "cost_s": 0.0}
         )
@@ -250,14 +251,14 @@ def route(
     chooser = random.Random(seed)
     chosen_id = chooser.choices(path_ids, weights=weights, k=1)[0]
     chosen = candidates[chosen_id]
-    if len(chosen["nodes"]) < 2 or not chosen["gids"]:
+    if not chosen["gids"]:
         return None
 
     try:
         geo_row = _query_with_retry(
             postgres.fetch_one,
             ROUTE_GEOMETRY_SQL,
-            {"gids": chosen["gids"], "nodes": chosen["nodes"]},
+            {"gids": chosen["gids"]},
             "route geometry lookup",
             from_lat=from_lat, from_lon=from_lon,
             to_lat=to_lat, to_lon=to_lon, period=period,

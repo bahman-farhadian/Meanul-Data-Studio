@@ -150,6 +150,7 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
         # back to vertex 0 every few seconds (drv-0000001 at 14:38).
         same_leg = (
             driver.trip_id == trip_id
+            and bool(driver.path)
             and (
                 (new_status == EN_ROUTE_PICKUP and driver.status == EN_ROUTE_PICKUP)
                 or (new_status == ON_TRIP and driver.status == ON_TRIP)
@@ -360,6 +361,15 @@ def main() -> int:
             for d in going_online
         ],
         day_period(utc_now()),
+    )
+    wp = sorted(len(d.path) for d in going_online)
+    log.info(
+        "idle paths ready",
+        extra={
+            "n": len(going_online),
+            "path_chord": sum(1 for n in wp if n <= 2),
+            "path_p50": wp[len(wp) // 2] if wp else 0,
+        },
     )
 
     producer = AvroTopicProducer(TOPIC)
