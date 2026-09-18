@@ -21,17 +21,17 @@ steps only work once an earlier one has happened.
 git clone <this repo> && cd Meanul-Data-Studio/not-uber-service
 make init                  # .env, the nus-backbone network, the data directories
 $EDITOR .env               # section 1: the eight passwords. Nothing else is required.
-make prepare               # pull every image, build the eleven, prepare the LION street graph
+make prepare               # pull every image, build the eleven, prepare LION + OSM tiles
                            # THE ONLY STEP THAT REACHES OUTSIDE THIS HOST
 
 # --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
                            #   volume-perms -> lb-config -> certgen
-                           #   -> infrastructure (a-g) -> topics -> ch-ddl
+                           #   -> infrastructure (a-g, including grafana+tiles) -> topics -> ch-ddl
                            #   -> superset-init -> bootstrap -> cdc-register
-                           #   -> services (i-n)
+                           #   -> services (i-o)
 make etcd-existing         # once, after the first successful start
-make verify                # prove each layer works
+make verify                # prove each layer works (includes /tiles/ through HAProxy)
 
 # --- running it -----------------------------------------------------------
 make urls                  # where to point a browser or a client
@@ -43,7 +43,7 @@ make stats                 # live usage against each limit
 # --- stopping and removing ------------------------------------------------
 make stop                  # stop the containers, keep everything
 make down                  # remove the containers, keep the data
-make destroy               # remove the data too, but KEEP the routable graph
+make destroy               # remove the data too, but KEEP LION and OSM tiles
 make clean                 # leave no trace: images, network, .env, graph and all
 ```
 
@@ -60,10 +60,20 @@ slow one on a first run (filtering and topology-building the whole dataset);
 every run after that restores its cached result in seconds. `make preflight`
 tells you when either is missing.
 
-**`make destroy` keeps the prepared graph** on purpose — it is the one piece
-of data that is slow and awkward to rebuild, and nothing else depends on its
-being fresh (NYC's street network does not change between two test runs).
-`make clean` and `make nuke` remove it along with everything else.
+**`make destroy` keeps the prepared graph and OSM tiles** on purpose — they
+are slow to rebuild, and NYC's streets do not change between two test runs.
+`make clean` and `make nuke` remove them along with everything else.
+
+**`make up` does not rebuild images.** After a code change, without
+re-downloading:
+
+```bash
+make build && make destroy && make up && make etcd-existing
+```
+
+Skip `make prepare` unless `routable-graph.dump` or `nyc.mbtiles` is missing.
+Piece f is Grafana **and** the tileserver; omitting tiles leaves Grafana maps
+at HTTP 503 (`No server is available to handle this request`).
 
 Every step of `make up` is also a target of its own, and every one is
 idempotent, so a failed run is resumed by fixing the cause and running that
@@ -73,9 +83,9 @@ step again rather than starting over.
 
 `make prepare` is the only step that reaches the internet: it pulls the
 pinned images, builds the eleven this repository defines, and downloads and
-prepares the LION routable graph. Everything after it is local — the
-containers talk to each other on `nus-backbone`, and the graph, the stack's
-single runtime download, is already on disk, ready to restore.
+prepares the LION routable graph and the OSM MBTiles for Grafana. Everything
+after it is local — the containers talk to each other on `nus-backbone`, and
+those downloads are already on disk, ready to restore.
 
 That separation matters wherever network access is restricted, intermittent,
 or only available from the host itself. Run `make prepare` where the host can
@@ -176,13 +186,13 @@ happened, which is the whole reason this is a Makefile and not one
 | 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a`/`lb-b` start, the same reason `ch-secrets` exists. |
 | 3 | `make certgen` | etcd needs its TLS material before it starts. |
 | 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until step 9. |
-| 5 | `up` pieces a–g | The rest of the infrastructure, waited on until every healthcheck passes. |
+| 5 | `up` pieces a–g | The rest of the infrastructure (Grafana **and** `nus-tiles`), waited on until every healthcheck passes. |
 | 6 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
 | 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
 | 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
 | 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, a week of history, then the `system:bootstrap:done` marker. |
 | 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. |
-| 11 | `up` pieces i–n | The six services, which were waiting on the marker. |
+| 11 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is

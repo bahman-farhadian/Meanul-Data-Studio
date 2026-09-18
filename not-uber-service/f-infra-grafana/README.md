@@ -107,18 +107,24 @@ In the browser, open <http://localhost:3000>, go to
 should report success. Maps use **self-hosted OSM** at `/tiles/styles/nus/{z}/{x}/{y}@2x.png` (same
 origin as Grafana; HAProxy `path_beg /tiles/` selects the tiles backend, which
 strips the prefix). No MapTiler key.
-Build the MBTiles once with `make tiles-prepare`. That target is idempotent:
-existing PBF/jar/extras/`nyc.mbtiles` are kept. `make destroy` keeps
-`nus-tiles-data`; `make nuke` is what deletes it. Planetiler runs with
-`--download=false` (MapTiler's CDN does not resolve in the JRE container).
 
-Dashboards are under **Dashboards → NUS**. On a running full stack, after
-`make tiles-prepare` has written `nyc.mbtiles`:
+Build the MBTiles once with `make tiles-prepare` (also part of `make prepare`).
+That target is idempotent: existing PBF/jar/extras/`nyc.mbtiles` are kept.
+`make destroy` keeps `nus-tiles-data`; `make nuke` is what deletes it.
+Planetiler runs with `--download=false` (MapTiler's CDN does not resolve in
+the JRE container).
+
+`make up` starts **grafana and tiles together** (piece f). `make verify`
+runs `tiles-health`: `nus-tiles` healthy, then GET `/tiles/styles.json` and a
+real PNG through HAProxy `:3000`. A 503 HTML page means the tiles container
+is not running — not a Grafana bug.
+
+Dashboards are under **Dashboards → NUS**. If tiles is down on a live stack
+and you must not destroy:
 
 ```bash
-make lb-config
 docker compose up -d tiles
-docker compose up -d --force-recreate lb-a lb-b grafana
+# wait until healthy, then: make tiles-health
 ```
 
 ## Teardown
