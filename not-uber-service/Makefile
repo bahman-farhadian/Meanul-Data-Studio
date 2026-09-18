@@ -588,6 +588,8 @@ verify-positions: ## Live positions follow streets, not the chord between two po
 		--output-format PrettyCompactMonoBlock < z-config/check-positions.sql
 	@$(COMPOSE) exec -T pg-1 psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -c \
 		"SELECT round((avg(ST_Length(route::geography))/1000)::numeric, 2) AS route_km, round((avg(ST_Distance(pickup_point::geography, dropoff_point::geography))/1000)::numeric, 2) AS chord_km, round(avg(ST_NPoints(route))) AS avg_vertices FROM trips WHERE route IS NOT NULL AND ended_at > now() - interval '1 hour';"
+	@$(COMPOSE) exec -T pg-1 psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" \
+		-f - < z-config/check-on-network.sql
 
 # =============================================================================
 ##@ Operate
