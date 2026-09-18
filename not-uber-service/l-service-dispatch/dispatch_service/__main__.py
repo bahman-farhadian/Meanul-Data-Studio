@@ -147,6 +147,9 @@ def store_live_state(redis, trip: ActiveTrip, now: datetime, ttl_seconds: int) -
                 "current_lat": lat, "current_lon": lon,
                 "pickup_zone_id": trip.pickup_zone_id,
                 "route_km": trip.route_km,
+                "route_wkt": trip.route_wkt,
+                "pickup_route_wkt": trip.pickup_route_wkt,
+                "pickup_route_km": trip.pickup_route_km,
                 "predicted_duration_s": trip.predicted_duration_s,
                 "surge_multiplier": trip.surge_multiplier,
                 "fare_estimate": trip.fare_estimate,
@@ -364,6 +367,8 @@ def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProduce
         return None
 
     route_km, predicted_s, route_wkt = computed
+    pickup_leg = routing.route(driver_lat, driver_lon, pickup_lat, pickup_lon, period)
+    pickup_km, pickup_s, pickup_wkt = pickup_leg if pickup_leg else (None, None, None)
     surge = pricing.surge_for(redis_demand, zone_id, period)
     estimate = pricing.fare(base_fare, per_km, per_minute, route_km, predicted_s, surge)
 
@@ -382,6 +387,10 @@ def assign(request: dict, redis_driver, redis_demand, producer: AvroTopicProduce
         fare_estimate=estimate,
         status="matched",
         next_change_at=first_change_at(now, rng),
+        route_wkt=route_wkt,
+        pickup_route_wkt=pickup_wkt,
+        pickup_route_km=pickup_km,
+        pickup_duration_s=pickup_s,
     )
 
     with postgres.write_connection() as conn:
@@ -471,14 +480,13 @@ def _write_status(trip: ActiveTrip, status: str, actual_duration_s: int | None,
 def _pickup_seconds(trip: ActiveTrip, rng: random.Random) -> int:
     """How long the driver needs to reach the rider.
 
-    Straight-line, on purpose: routing the pickup leg would double the
-    most expensive step in the pipeline. The distance is driver-to-pickup
-    (from the GEO match), not pickup-to-dropoff. Using the trip length
-    (capped at 4 km) kept drivers in en_route_pickup for up to ~17 min
-    while passenger-service only counted in_progress as "travelling" —
-    confirmed live: free drivers fell 444→215 while travelling_now sat
-    at 25.
+    Uses the pgRouting pickup-leg duration when assign() got one, so the
+    timer matches the street path the driver actually walks. Straight-line
+    fallback is only for a disconnected pickup (no path). Floor 30s so a
+    driver already on the same corner does not skip en_route_pickup.
     """
+    if trip.pickup_duration_s:
+        return max(int(trip.pickup_duration_s * rng.uniform(0.7, 1.3)), 30)
     km = distance_km(trip.driver_lat, trip.driver_lon, trip.pickup_lat, trip.pickup_lon)
     return max(int(km / 25.0 * 3600 * rng.uniform(0.7, 1.3)), 30)
 

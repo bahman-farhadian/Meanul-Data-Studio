@@ -10,10 +10,9 @@ thousand things to schedule and no closer to the truth.
 1. **Reads trip news.** It consumes `trip_lifecycle` without blocking, so a
    driver learns it has been given a trip. Where to head next comes from
    `trip:{id}:active`, the live state `dispatch-service` wrote in Redis.
-2. **Moves every online driver.** Straight-line movement towards the current
-   destination. A device reporting its position does not know about the road
-   network — the real route belongs to the trip, and dispatch computes that
-   with pgRouting.
+2. **Moves every online driver.** Along the densified pgRouting polyline
+   (pickup leg and idle wander included). Straight-line lerp cut across
+   blocks — Grafana showed it as a driver flying over the street grid.
 3. **Sends one position report per online driver** to `driver_location`,
    keyed by driver id so everything about one driver stays in order.
 4. **Keeps the free-driver list in Redis current.** Free drivers are added to

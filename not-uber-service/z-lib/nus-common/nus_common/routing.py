@@ -35,6 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 import psycopg
 
 from nus_common import config, postgres
+from nus_common.geo import points_along_linestring
 from nus_common.logging import get_logger
 
 log = get_logger(__name__)
@@ -270,6 +271,25 @@ def route(
         seconds = int(float(geo_row["route_km"]) / 25.0 * 3600)
 
     return float(geo_row["route_km"]), seconds, geo_row["route_wkt"]
+
+
+def drive_path(
+    from_lat: float, from_lon: float, to_lat: float, to_lon: float, period: str,
+    spacing_km: float = 0.04,
+) -> list[tuple[float, float]]:
+    """Densified (lat, lon) points along the real street path, start to end.
+
+    Live drivers used to lerp the two endpoints (confirmed on Grafana: the
+    trail cut across blocks). History already sampled route_wkt; this is
+    the same sampling for a live tick. If pgRouting finds no path, the
+    two endpoints are returned so the caller still has somewhere to go.
+    """
+    computed = route(from_lat, from_lon, to_lat, to_lon, period)
+    if not computed or not computed[2]:
+        return [(from_lat, from_lon), (to_lat, to_lon)]
+    km, _, wkt = computed
+    count = max(int(km / spacing_km), 8)
+    return points_along_linestring(wkt, count)
 
 
 NEAREST_ROAD_POINT_SQL = """

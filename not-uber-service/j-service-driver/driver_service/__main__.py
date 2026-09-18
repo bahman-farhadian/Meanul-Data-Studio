@@ -18,10 +18,11 @@ import json
 import random
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 
 from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
-from nus_common.geo import day_period, to_millis, utc_now
+from nus_common.geo import day_period, points_along_linestring, to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
@@ -147,16 +148,50 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
         driver.set_status(new_status, trip_id)
 
         # Where to head next comes from the live trip state dispatch wrote.
+        # The WKT is the pgRouting geometry; without it the car flies.
         active = redis.get(redis_client.trip_active_key(trip_id)) if trip_id else None
         if not active:
             continue
         trip = json.loads(active)
         if new_status == EN_ROUTE_PICKUP:
-            driver.head_towards(float(trip["pickup_lat"]), float(trip["pickup_lon"]))
+            wkt = trip.get("pickup_route_wkt")
+            km = float(trip.get("pickup_route_km") or 1.0)
+            dest_lat, dest_lon = float(trip["pickup_lat"]), float(trip["pickup_lon"])
         else:
-            driver.head_towards(float(trip["dropoff_lat"]), float(trip["dropoff_lon"]))
+            wkt = trip.get("route_wkt")
+            km = float(trip.get("route_km") or 1.0)
+            dest_lat, dest_lon = float(trip["dropoff_lat"]), float(trip["dropoff_lon"])
+        if wkt:
+            driver.follow(points_along_linestring(wkt, max(int(km / 0.04), 8)))
+        else:
+            driver.follow(
+                routing.drive_path(driver.lat, driver.lon, dest_lat, dest_lon, day_period(utc_now()))
+            )
 
     return handled
+
+
+def _follow_jobs(jobs: list[tuple[Driver, tuple[float, float]]], period: str) -> None:
+    """Compute pgRouting paths for (driver, dest) pairs and install them.
+
+    Four workers, matching the default PG_POOL_SIZE of 5 so the replica
+    pool is not exhausted. Sequential pgr_ksp for hundreds of idle
+    retargets would blow the tick.
+    """
+    if not jobs:
+        return
+
+    def _one(job: tuple[Driver, tuple[float, float]]) -> tuple[str, list[tuple[float, float]]]:
+        driver, dest = job
+        return driver.driver_id, routing.drive_path(
+            driver.lat, driver.lon, dest[0], dest[1], period
+        )
+
+    by_id = {driver.driver_id: driver for driver, _dest in jobs}
+    workers = min(4, len(jobs))
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for driver_id, path in pool.map(_one, jobs):
+            by_id[driver_id].follow(path)
 
 
 def sync_to_database(drivers: dict[str, Driver]) -> int:
@@ -301,11 +336,19 @@ def main() -> int:
     log.info("fleet loaded", extra={"drivers": len(drivers)})
 
     # Start with the intended share of the fleet already working, so the
-    # stack does not look empty for the first ten minutes.
-    for driver in drivers.values():
-        if rng.random() < online_share:
-            driver.set_status(IDLE)
-            driver.head_towards(*routing.pooled_road_point_in_zone(grid, driver.home_zone_id, rng))
+    # stack does not look empty for the first ten minutes. Paths are the
+    # real street geometry, computed in a small pool so 480 idle drivers
+    # do not each wait on a sequential pgr_ksp.
+    going_online = [d for d in drivers.values() if rng.random() < online_share]
+    for driver in going_online:
+        driver.set_status(IDLE)
+    _follow_jobs(
+        [
+            (d, routing.pooled_road_point_in_zone(grid, d.home_zone_id, rng))
+            for d in going_online
+        ],
+        day_period(utc_now()),
+    )
 
     producer = AvroTopicProducer(TOPIC)
     consumer = AvroTopicConsumer(
@@ -340,6 +383,8 @@ def main() -> int:
             busy_drivers: dict[str, list[str]] = {t: [] for t in redis_client.VEHICLE_TYPES}
             session_starts: list[tuple[str, str]] = []
             session_ends: list[str] = []
+            idle_jobs: list[tuple[Driver, tuple[float, float]]] = []
+            queued: set[str] = set()
 
             for driver in drivers.values():
                 # Drivers start and end shifts. Without this the fleet would
@@ -347,8 +392,11 @@ def main() -> int:
                 if rng.random() < shift_change_chance:
                     if driver.status == OFFLINE:
                         driver.set_status(IDLE)
-                        driver.head_towards(*routing.pooled_road_point_in_zone(grid, driver.home_zone_id, rng))
                         session_starts.append((driver.driver_id, grid.zone_of(driver.lat, driver.lon)))
+                        idle_jobs.append(
+                            (driver, routing.pooled_road_point_in_zone(grid, driver.home_zone_id, rng))
+                        )
+                        queued.add(driver.driver_id)
                     elif driver.status == IDLE:
                         driver.set_status(OFFLINE)
                         session_ends.append(driver.driver_id)
@@ -359,10 +407,17 @@ def main() -> int:
 
                 # A free driver that has arrived picks a new place to drift
                 # to, pulled towards whichever zone is busy right now.
-                if driver.status == IDLE and driver.arrived():
+                if driver.status == IDLE and driver.arrived() and driver.driver_id not in queued:
                     target_zone = pick_target_zone(zone_scores, zone_ids, rng)
-                    driver.head_towards(*routing.pooled_road_point_in_zone(grid, target_zone, rng))
+                    idle_jobs.append(
+                        (driver, routing.pooled_road_point_in_zone(grid, target_zone, rng))
+                    )
 
+            _follow_jobs(idle_jobs, day_period(now))
+
+            for driver in drivers.values():
+                if not driver.online:
+                    continue
                 driver.move(tick_seconds, speed_kmh, rng)
 
                 producer.send(

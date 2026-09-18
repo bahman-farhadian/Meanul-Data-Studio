@@ -120,6 +120,29 @@ SELECT round(min(lat),4) AS lat_min, round(max(lat),4) AS lat_max,
        countIf(speed_kmh IS NOT NULL) AS has_speed
 FROM nus.driver_positions;
 
+SELECT '=== 10b. driver_positions — on-street vs flying ===' AS section FORMAT TSVRaw;
+-- A street-following step is mostly N/S or E/W. A Euclidean hop moves both
+-- axes at once (the Grafana "flying" trail). After the live path walks
+-- pgRouting geometry, diagonal_pct should fall well below the 40%+ that
+-- straight-line interpolation produced.
+WITH seq AS (
+    SELECT
+        driver_id, lat, lon,
+        lagInFrame(lat, 1) OVER (PARTITION BY driver_id ORDER BY event_time) AS plat,
+        lagInFrame(lon, 1) OVER (PARTITION BY driver_id ORDER BY event_time) AS plon
+    FROM nus.driver_positions
+    WHERE event_time >= now() - INTERVAL 15 MINUTE
+)
+SELECT
+    countIf(plat IS NOT NULL) AS steps,
+    countIf(plat IS NOT NULL AND abs(lat - plat) * 111000 > 25 AND abs(lon - plon) * 85000 > 25) AS diagonal_steps,
+    round(
+        100.0 * countIf(plat IS NOT NULL AND abs(lat - plat) * 111000 > 25 AND abs(lon - plon) * 85000 > 25)
+        / nullIf(countIf(plat IS NOT NULL), 0),
+        1
+    ) AS diagonal_pct
+FROM seq;
+
 SELECT '=== 11. rider_positions ===' AS section FORMAT TSVRaw;
 SELECT count() AS rows, uniqExact(rider_id) AS riders, uniqExact(zone_id) AS zones,
        countIf(trip_id IS NOT NULL) AS rows_with_trip,

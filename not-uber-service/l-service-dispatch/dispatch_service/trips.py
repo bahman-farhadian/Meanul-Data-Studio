@@ -15,8 +15,10 @@ a trip changes state; __main__.py is about telling everyone that it did.
 """
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+
+from nus_common.geo import point_at_fraction, points_along_linestring
 
 # What comes after what, and how long the step normally takes in seconds.
 # The pickup drive and the trip itself are worked out per trip, so they are
@@ -51,6 +53,11 @@ class ActiveTrip:
     next_change_at: datetime
     # Set when the car actually starts moving with the rider in it.
     started_at: datetime | None = None
+    route_wkt: str | None = None
+    pickup_route_wkt: str | None = None
+    pickup_route_km: float | None = None
+    pickup_duration_s: int | None = None
+    _trip_path: list[tuple[float, float]] | None = field(default=None, repr=False)
 
     def progress(self, now: datetime) -> float:
         """How far along the journey the car is, from 0.0 to 1.0.
@@ -65,8 +72,15 @@ class ActiveTrip:
         return max(0.0, min(elapsed / self.predicted_duration_s, 1.0))
 
     def current_position(self, now: datetime) -> tuple[float, float]:
-        """Where the car is, somewhere between the two ends."""
+        """Where the car is, on the street path, not the chord between ends."""
+        if self.status != "in_progress":
+            return self.pickup_lat, self.pickup_lon
         share = self.progress(now)
+        if self._trip_path is None and self.route_wkt:
+            n = max(int((self.route_km or 1.0) / 0.04), 8)
+            self._trip_path = points_along_linestring(self.route_wkt, n)
+        if self._trip_path:
+            return point_at_fraction(self._trip_path, share)
         return (
             self.pickup_lat + (self.dropoff_lat - self.pickup_lat) * share,
             self.pickup_lon + (self.dropoff_lon - self.pickup_lon) * share,

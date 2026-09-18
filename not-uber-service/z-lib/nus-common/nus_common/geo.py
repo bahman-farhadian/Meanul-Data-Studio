@@ -36,6 +36,39 @@ def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * EARTH_RADIUS_KM * math.asin(math.sqrt(a))
 
 
+def point_at_fraction(path: list[tuple[float, float]], share: float) -> tuple[float, float]:
+    """(lat, lon) a fraction of the way along a polyline, 0.0 = start, 1.0 = end.
+
+    Distance-weighted, so a long avenue is not treated the same as a short
+    cross-street. Used by dispatch to place the car on the real route
+    instead of on the straight line between pickup and dropoff.
+    """
+    if not path:
+        raise ValueError("empty path")
+    share = max(0.0, min(float(share), 1.0))
+    if len(path) == 1 or share == 0:
+        return path[0]
+    if share >= 1:
+        return path[-1]
+
+    cumulative = [0.0]
+    for (lat1, lon1), (lat2, lon2) in zip(path, path[1:]):
+        cumulative.append(cumulative[-1] + distance_km(lat1, lon1, lat2, lon2))
+    total = cumulative[-1]
+    if total == 0:
+        return path[0]
+
+    target = total * share
+    i = 0
+    while i < len(cumulative) - 2 and cumulative[i + 1] < target:
+        i += 1
+    seg_start, seg_end = cumulative[i], cumulative[i + 1]
+    step = (target - seg_start) / (seg_end - seg_start) if seg_end > seg_start else 0.0
+    lat1, lon1 = path[i]
+    lat2, lon2 = path[i + 1]
+    return lat1 + (lat2 - lat1) * step, lon1 + (lon2 - lon1) * step
+
+
 def points_along_linestring(wkt: str, count: int) -> list[tuple[float, float]]:
     """N evenly-spaced (lat, lon) points along a route, start to end.
 

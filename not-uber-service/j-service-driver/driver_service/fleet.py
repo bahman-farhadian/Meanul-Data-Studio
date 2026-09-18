@@ -39,6 +39,10 @@ class Driver:
     target_lon: float | None = None
     speed_kmh: float = 0.0
     heading_deg: float = 0.0
+    # Street-following polyline. Empty means sit still. A single point is
+    # a hop to that coordinate (used only if pgRouting found no path).
+    path: list[tuple[float, float]] = field(default_factory=list)
+    path_i: int = 0
     # True when something changed that the database has not been told yet.
     dirty: bool = field(default=False)
 
@@ -57,48 +61,63 @@ class Driver:
             self.trip_id = trip_id
             self.dirty = True
 
+    def follow(self, path: list[tuple[float, float]]) -> None:
+        """Walk this polyline on subsequent ticks. Last point is the target."""
+        if not path:
+            return
+        self.path = list(path)
+        self.path_i = 0
+        self.target_lat, self.target_lon = self.path[-1]
+
     def head_towards(self, lat: float, lon: float) -> None:
-        self.target_lat, self.target_lon = lat, lon
+        self.follow([(lat, lon)])
 
     def arrived(self, tolerance_km: float = 0.15) -> bool:
         """True when the driver is close enough to the target to call it done."""
+        if self.path and self.path_i < len(self.path):
+            return False
         if self.target_lat is None or self.target_lon is None:
             return True
         return _distance_km(self.lat, self.lon, self.target_lat, self.target_lon) <= tolerance_km
 
     def move(self, seconds: float, speed_kmh: float, rng: random.Random) -> None:
-        """Move for one tick towards the target.
+        """Move for one tick along the current street path.
 
-        The movement is a straight line, not a route along streets. A driver
-        reporting its position does not know about the road network; the real
-        route belongs to the trip, and dispatch-service computes that one with
-        pgRouting.
+        Live positions used to lerp the two endpoints (Grafana showed the
+        trail cutting across blocks). The path is the densified pgRouting
+        geometry; this only walks it.
         """
         if not self.online or self.target_lat is None or self.target_lon is None:
             self.speed_kmh = 0.0
             return
 
-        # A little variation, so a hundred drivers do not move in lockstep.
         actual_speed = speed_kmh * rng.uniform(0.7, 1.3)
-        travel_km = actual_speed * seconds / 3600.0
+        remaining = actual_speed * seconds / 3600.0
+        waypoints = self.path if self.path else [(self.target_lat, self.target_lon)]
 
-        delta_lat = self.target_lat - self.lat
-        delta_lon = self.target_lon - self.lon
-        km_per_lon_degree = KM_PER_LAT_DEGREE * max(math.cos(math.radians(self.lat)), 0.01)
+        while remaining > 0 and self.path_i < len(waypoints):
+            tlat, tlon = waypoints[self.path_i]
+            dist = _distance_km(self.lat, self.lon, tlat, tlon)
+            if dist < 1e-6:
+                self.path_i += 1
+                continue
+            self.heading_deg = (math.degrees(math.atan2(tlon - self.lon, tlat - self.lat)) + 360) % 360
+            if dist <= remaining:
+                self.lat, self.lon = tlat, tlon
+                remaining -= dist
+                self.path_i += 1
+            else:
+                share = remaining / dist
+                self.lat += (tlat - self.lat) * share
+                self.lon += (tlon - self.lon) * share
+                remaining = 0
 
-        distance_km = math.hypot(delta_lat * KM_PER_LAT_DEGREE, delta_lon * km_per_lon_degree)
-        if distance_km <= travel_km or distance_km == 0:
-            # Close enough to land on it this tick.
-            self.lat, self.lon = self.target_lat, self.target_lon
-            self.speed_kmh = actual_speed
-            return
+        if self.path_i >= len(waypoints):
+            self.lat, self.lon = waypoints[-1]
+            self.path = []
+            self.path_i = 0
 
-        share = travel_km / distance_km
-        self.lat += delta_lat * share
-        self.lon += delta_lon * share
         self.speed_kmh = actual_speed
-        # Compass bearing, 0 at north, going clockwise.
-        self.heading_deg = (math.degrees(math.atan2(delta_lon, delta_lat)) + 360) % 360
         self.dirty = True
 
 

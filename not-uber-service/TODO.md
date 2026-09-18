@@ -3,12 +3,19 @@
 (Future major-version ideas - unrelated to this version's open work -
 live in FUTURE_ROADMAP.md, deliberately kept out of this file.)
 
-## Data quality on the current live run (Dionysus, 2026-09-17)
+## Data quality on the current live run (Dionysus, 2026-09-18)
 
 Seed and live path both produce. CDC slot `nus_debezium` is active.
-`trip_events` newest is current. Remaining connector fix (not a destroy):
-exclude `nus.trips.route` from Debezium — PostGIS geometry cannot be
-converted. Apply with `make cdc-register` on the running stack.
+`trip_events` newest is current.
+
+Live driver trails were Euclidean (Grafana: a car cutting across
+Manhattan blocks). History already sampled `route_wkt`. Live
+driver-service/dispatch now walk the pgRouting geometry; rebuild
+those two services, do not destroy. Confirm with `make profile`
+section 10b (`diagonal_pct`) on positions from *after* the rebuild.
+
+Remaining connector note: `nus.trips.route` is excluded from Debezium
+(PostGIS geometry). That is already in `nus-pg.json`.
 
 ## Not yet done: replica scaling for cache-updater and clickhouse-sink
 
