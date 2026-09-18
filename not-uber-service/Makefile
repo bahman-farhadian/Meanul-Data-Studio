@@ -71,6 +71,8 @@ PIECE_B  := redis-1 redis-2 redis-3 sentinel-1 sentinel-2 sentinel-3
 PIECE_C  := kafka-1 kafka-2 kafka-3 schema-registry ksqldb-server
 PIECE_D  := debezium-connect
 PIECE_E  := ch-keeper-1 ch-keeper-2 ch-keeper-3 ch-s1r1 ch-s1r2 ch-s2r1 ch-s2r2
+# OSM raster lives here, not as a later sidecar. HAProxy /tiles/ 503s
+# ("no server available") if this list is only grafana.
 PIECE_F  := grafana tiles
 PIECE_G  := superset
 SERVICES := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink archiver-service
@@ -113,7 +115,10 @@ help:
 	@printf "    $(C)make init$(X)        create .env and the shared network\n"
 	@printf "    $(C)\$$EDITOR .env$(X)     change every password in section 1\n"
 	@printf "    $(C)make prepare$(X)     pull, build, fetch the map — the only step needing the net\n"
-	@printf "    $(C)make up$(X)          the whole ordered bring-up\n\n"
+	@printf "    $(C)make up$(X)          the whole ordered bring-up (grafana + tiles included)\n\n"
+	@printf "  After a code change, without re-downloading LION or OSM tiles:\n"
+	@printf "    $(C)make build && make destroy && make up && make etcd-existing$(X)\n"
+	@printf "    $(C)make up$(X) does not rebuild images. Skip $(C)make prepare$(X) unless the graph or nyc.mbtiles is missing.\n\n"
 	@awk 'BEGIN {FS = ":.*##"} \
 		/^##@/ { printf "\n$(B)%s$(X)\n", substr($$0, 5) } \
 		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  $(C)%-16s$(X) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -227,8 +232,8 @@ prepare: ## Pull, build and prepare the street map — the only step needing net
 	$(call say,Fetching everything the stack needs)
 	@printf "  This is the only step that reaches outside this host. After it the\n"
 	@printf "  stack is self-contained: the containers talk to each other on %s,\n" "$(NETWORK)"
-	@printf "  and every runtime download - the LION street map, TLC's real zones\n"
-	@printf "  and trip records - is done here, once, and cached under nus-lion-data.\n\n"
+	@printf "  and every runtime download — LION, TLC zones/trips, OSM tiles — is done\n"
+	@printf "  here, once, and cached under nus-lion-data and nus-tiles-data.\n\n"
 	@$(MAKE) --no-print-directory pull
 	@$(MAKE) --no-print-directory build
 	@$(MAKE) --no-print-directory lion-fetch
@@ -238,7 +243,7 @@ prepare: ## Pull, build and prepare the street map — the only step needing net
 	@$(MAKE) --no-print-directory zone-demand-prepare
 	@$(MAKE) --no-print-directory tiles-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
-	@printf "  Every image is built and the routable graph is on disk, ready to restore.\n\n"
+	@printf "  Images, the LION graph, and nyc.mbtiles are on disk. make destroy keeps the last two.\n\n"
 
 .PHONY: preflight
 preflight: ## Check the host, Docker and the settings before anything is started
@@ -320,8 +325,9 @@ preflight: ## Check the host, Docker and the settings before anything is started
 	for i in $$($(COMPOSE) --profile init config --images 2>/dev/null | sort -u || true); do \
 		nimg=$$((nimg+1)); docker image inspect "$$i" >/dev/null 2>&1 || missingimg="$$missingimg $$i"; done; \
 	graph=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-lion-data/routable-graph.dump; \
-	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$graph" ]; then \
-		printf "  $(G)ok$(X)      all %s images built and the routable graph is on disk\n" "$$nimg"; \
+	mbtiles=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-tiles-data/nyc.mbtiles; \
+	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$graph" ] && [ -s "$$mbtiles" ]; then \
+		printf "  $(G)ok$(X)      all %s images built; LION graph and nyc.mbtiles are on disk\n" "$$nimg"; \
 		printf "  $(G)ok$(X)      nothing left to do needs the internet\n"; \
 	else \
 		if [ -n "$$missingimg" ]; then \
@@ -332,6 +338,11 @@ preflight: ## Check the host, Docker and the settings before anything is started
 			fail=1; \
 		fi; \
 		[ -s "$$graph" ] || printf "  $(Y)warn$(X)    the routable graph is not built yet — $(C)make lion-fetch && make lion-prepare$(X)\n"; \
+		if [ ! -s "$$mbtiles" ]; then \
+			printf "  $(R)FAIL$(X)    nyc.mbtiles is missing — Grafana maps 503/404 until $(C)make tiles-prepare$(X)\n"; \
+			printf "              Once. make destroy keeps nus-tiles-data; make nuke is what deletes it.\n"; \
+			fail=1; \
+		fi; \
 		probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 		probe=$${probe:-busybox:1.38.0}; \
 		docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
@@ -444,7 +455,9 @@ build: ## Build the eleven images this repository defines
 	$(call say,Building images)
 	@printf "  Layer cache is the contract: lockfiles first, source after.\n"
 	@printf "  Never --no-cache, never --pull — $(C)make pull$(X) is the registry step.\n"
+	@printf "  $(C)make up$(X) does not rebuild. Run this before destroy+up when Python or routing changed.\n"
 	@$(COMPOSE) build
+	$(call ok,images rebuilt — the next make up will run these, not the previous tags)
 
 .PHONY: config
 config: # Print the fully merged compose model (what Docker actually sees)
@@ -472,12 +485,16 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(MAKE) --no-print-directory superset-init
 	@$(MAKE) --no-print-directory bootstrap
 	@$(MAKE) --no-print-directory cdc-register
-	$(call say,Starting the six services — pieces i to n)
+	$(call say,Starting the services — pieces i to o)
 	@$(COMPOSE) up -d $(SERVICES)
 	@printf "\n$(G)$(B)The stack is up.$(X)\n\n"
+	@printf "  Grafana maps are same-origin OSM at /tiles/ (nus-tiles). No MapTiler key.\n"
+	@printf "  $(C)make up$(X) does not rebuild images — that was $(C)make build$(X).\n\n"
 	@printf "  One step is left, and it is $(B)local state you must never commit$(X):\n"
 	@printf "    $(C)make etcd-existing$(X)   flip the etcd cluster out of bootstrap mode\n\n"
-	@printf "  Then: $(C)make verify$(X), $(C)make urls$(X), $(C)make lag$(X)\n\n"
+	@printf "  Then: $(C)make verify$(X) (includes tiles through HAProxy), $(C)make urls$(X), $(C)make lag$(X)\n"
+	@printf "  After a few minutes of live trips: $(C)make verify-positions$(X)\n"
+	@printf "  Do not commit $(ETCD_ENV).\n\n"
 
 .PHONY: up-piece
 up-piece: ## One piece only:  make up-piece PIECE=a  (a-g, or infra, or services)
@@ -576,7 +593,7 @@ lb-config: ## Render haproxy.cfg with REDIS_PASSWORD (BEFORE lb-a/lb-b first sta
 verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch verify-dash verify-data ## Every check below, in order
 
 .PHONY: verify-dash
-verify-dash: grafana-health superset-health ## Grafana and Superset answer, with their data sources registered
+verify-dash: grafana-health tiles-health superset-health ## Grafana, OSM tiles through HAProxy, and Superset
 
 .PHONY: verify-walk
 verify-walk: ## Street-follow and chord/sea checks against the shipped walk/geo code
@@ -807,7 +824,9 @@ destroy: ## Remove the containers AND DESTROY every data volume
 	@$(COMPOSE) down -v
 	@$(MAKE) --no-print-directory _rm-data-tree
 	@$(MAKE) --no-print-directory etcd-new
-	@printf "\n  Volumes gone and etcd put back to 'new'. The next 'make up' starts fresh.\n"
+	@printf "\n  Volumes gone and etcd put back to 'new'. LION and OSM tiles were kept.\n"
+	@printf "  Next, without re-downloading: $(C)make build && make up && make etcd-existing$(X)\n"
+	@printf "  Skip $(C)make prepare$(X) unless the graph or nyc.mbtiles is missing.\n"
 
 .PHONY: nuke
 nuke: ## destroy EVERYTHING including the street map, and the shared network
