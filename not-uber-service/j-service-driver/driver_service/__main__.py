@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
-from nus_common.geo import day_period, points_along_linestring, to_millis, utc_now
+from nus_common.geo import day_period, linestring_vertices, to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
@@ -174,7 +174,7 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
             km = float(trip.get("route_km") or 1.0)
             dest_lat, dest_lon = float(trip["dropoff_lat"]), float(trip["dropoff_lon"])
         if wkt:
-            driver.follow(points_along_linestring(wkt, max(int(km / 0.04), 8)))
+            driver.follow(linestring_vertices(wkt))
         else:
             driver.follow(
                 routing.drive_path(driver.lat, driver.lon, dest_lat, dest_lon, day_period(utc_now()))
@@ -345,7 +345,7 @@ def main() -> int:
     if not drivers:
         log.error("driver keys appeared but none could be read")
         return 1
-    log.info("fleet loaded", extra={"drivers": len(drivers)})
+    log.info("fleet loaded", extra={"drivers": len(drivers), "movement": "street-path-vertices"})
 
     # Start with the intended share of the fleet already working, so the
     # stack does not look empty for the first ten minutes. Paths are the
@@ -478,6 +478,7 @@ def main() -> int:
             if started - last_db_sync >= db_sync_seconds:
                 updated = sync_to_database(drivers)
                 last_db_sync = started
+                wp = sorted(len(d.path) for d in drivers.values() if d.online)
                 log.info(
                     "tick",
                     extra={
@@ -485,6 +486,8 @@ def main() -> int:
                         "free": sum(len(v) for v in free_drivers.values()),
                         "positions_sent": sent,
                         "database_rows_updated": updated,
+                        "path_chord": sum(1 for n in wp if n <= 2),
+                        "path_p50": wp[len(wp) // 2] if wp else 0,
                     },
                 )
 

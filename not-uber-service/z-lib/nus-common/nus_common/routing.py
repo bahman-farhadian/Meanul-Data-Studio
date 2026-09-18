@@ -35,7 +35,7 @@ from concurrent.futures import ThreadPoolExecutor
 import psycopg
 
 from nus_common import config, postgres
-from nus_common.geo import points_along_linestring
+from nus_common.geo import linestring_vertices
 from nus_common.logging import get_logger
 
 log = get_logger(__name__)
@@ -92,7 +92,7 @@ KSP_SQL = """
          ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(%(to_lon)s, %(to_lat)s), 4326)
          LIMIT 1
     )
-    SELECT path_id, edge, cost
+    SELECT path_id, path_seq, node, edge, cost
       FROM pgr_ksp(
                %(edges_sql)s,
                (SELECT id FROM start_vertex),
@@ -100,16 +100,21 @@ KSP_SQL = """
                %(k)s,
                directed => true
            )
-     WHERE edge > 0
 """
 
-# gid is ways' own primary key, so this is an indexed lookup, not a scan -
-# cheap relative to the pgr_ksp call itself.
+# Build the walkable line from vertices in path_seq order. ST_Collect of
+# edge geometries (the previous query) did not keep that order, so
+# LineMerge produced a MULTILINESTRING whose parts were walked as chords
+# — live axis_share stayed ~0.71 while ST_Length(route) was a real 7 km.
 ROUTE_GEOMETRY_SQL = """
-    SELECT COALESCE(SUM(length_m) / 1000.0, 0) AS route_km,
-           ST_AsText(ST_LineMerge(ST_Collect(the_geom))) AS route_wkt
-      FROM ways
-     WHERE gid = ANY(%(gids)s)
+    SELECT COALESCE((
+               SELECT SUM(length_m) / 1000.0 FROM ways WHERE gid = ANY(%(gids)s)
+           ), 0) AS route_km,
+           (
+               SELECT ST_AsText(ST_MakeLine(ARRAY_AGG(v.the_geom ORDER BY u.ord)))
+                 FROM unnest(%(nodes)s::bigint[]) WITH ORDINALITY AS u(id, ord)
+                 JOIN ways_vertices_pgr v ON v.id = u.id
+           ) AS route_wkt
 """
 
 # How many times a single route()-path query gets tried before this call
@@ -220,9 +225,14 @@ def route(
 
     candidates: dict[int, dict] = {}
     for row in rows:
-        candidate = candidates.setdefault(row["path_id"], {"gids": [], "cost_s": 0.0})
-        candidate["gids"].append(row["edge"])
-        candidate["cost_s"] += float(row["cost"])
+        candidate = candidates.setdefault(
+            row["path_id"], {"gids": [], "nodes": [], "cost_s": 0.0}
+        )
+        candidate["nodes"].append(int(row["node"]))
+        edge = int(row["edge"]) if row["edge"] is not None else -1
+        if edge > 0:
+            candidate["gids"].append(edge)
+            candidate["cost_s"] += float(row["cost"])
 
     path_ids = sorted(candidates)
     weights = [
@@ -240,12 +250,14 @@ def route(
     chooser = random.Random(seed)
     chosen_id = chooser.choices(path_ids, weights=weights, k=1)[0]
     chosen = candidates[chosen_id]
+    if len(chosen["nodes"]) < 2 or not chosen["gids"]:
+        return None
 
     try:
         geo_row = _query_with_retry(
             postgres.fetch_one,
             ROUTE_GEOMETRY_SQL,
-            {"gids": chosen["gids"]},
+            {"gids": chosen["gids"], "nodes": chosen["nodes"]},
             "route geometry lookup",
             from_lat=from_lat, from_lon=from_lon,
             to_lat=to_lat, to_lon=to_lon, period=period,
@@ -277,19 +289,25 @@ def drive_path(
     from_lat: float, from_lon: float, to_lat: float, to_lon: float, period: str,
     spacing_km: float = 0.04,
 ) -> list[tuple[float, float]]:
-    """Densified (lat, lon) points along the real street path, start to end.
+    """Street vertices in drive order, start to end.
 
-    Live drivers used to lerp the two endpoints (confirmed on Grafana: the
-    trail cut across blocks). History already sampled route_wkt; this is
-    the same sampling for a live tick. If pgRouting finds no path, the
-    two endpoints are returned so the caller still has somewhere to go.
+    spacing_km is accepted for callers that used to densify; the vertex
+    list is already the real geometry. A two-point result means pgRouting
+    found no path and the caller is about to walk a chord — that is the
+    0.71 axis_share seen on Dionysus after 8b8971b.
     """
+    del spacing_km
     computed = route(from_lat, from_lon, to_lat, to_lon, period)
     if not computed or not computed[2]:
+        log.warning(
+            "drive_path falling back to the chord",
+            extra={"from_lat": from_lat, "from_lon": from_lon, "to_lat": to_lat, "to_lon": to_lon},
+        )
         return [(from_lat, from_lon), (to_lat, to_lon)]
-    km, _, wkt = computed
-    count = max(int(km / spacing_km), 8)
-    return points_along_linestring(wkt, count)
+    vertices = linestring_vertices(computed[2])
+    if len(vertices) < 2:
+        return [(from_lat, from_lon), (to_lat, to_lon)]
+    return vertices
 
 
 NEAREST_ROAD_POINT_SQL = """

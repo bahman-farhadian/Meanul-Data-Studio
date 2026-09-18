@@ -111,6 +111,11 @@ def points_along_linestring(wkt: str, count: int) -> list[tuple[float, float]]:
     return points
 
 
+def linestring_vertices(wkt: str) -> list[tuple[float, float]]:
+    """Ordered (lat, lon) vertices of a WKT (MULTI)LINESTRING."""
+    return _linestring_coords(wkt)
+
+
 def _linestring_coords(wkt: str) -> list[tuple[float, float]]:
     """Parse a WKT (MULTI)LINESTRING into a flat [(lat, lon), ...] list.
 
