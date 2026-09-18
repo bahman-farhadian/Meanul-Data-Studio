@@ -578,6 +578,13 @@ verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch v
 .PHONY: verify-dash
 verify-dash: grafana-health superset-health ## Grafana and Superset answer, with their data sources registered
 
+.PHONY: verify-walk
+verify-walk: ## Street-follow and chord/sea checks against the shipped walk/geo code
+	$(call say,Walk checks)
+	@cd z-lib/nus-common && uv sync --extra test >/dev/null
+	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
+		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests
+
 .PHONY: verify-positions
 verify-positions: ## Live positions follow streets, not the chord between two points
 	$(call say,Positions)
