@@ -62,12 +62,22 @@ class Driver:
             self.dirty = True
 
     def follow(self, path: list[tuple[float, float]]) -> None:
-        """Walk this polyline on subsequent ticks. Last point is the target."""
+        """Walk this polyline on subsequent ticks. Last point is the target.
+
+        Start at the nearest vertex to where the car already is, so a
+        re-follow (matched then accepted then en_route_pickup) does not
+        send the driver back to the origin of the line.
+        """
         if not path:
             return
         self.path = list(path)
-        self.path_i = 0
         self.target_lat, self.target_lon = self.path[-1]
+        best_i, best_d = 0, _distance_km(self.lat, self.lon, path[0][0], path[0][1])
+        for i, (lat, lon) in enumerate(path):
+            dist = _distance_km(self.lat, self.lon, lat, lon)
+            if dist < best_d:
+                best_i, best_d = i, dist
+        self.path_i = best_i
 
     def head_towards(self, lat: float, lon: float) -> None:
         self.follow([(lat, lon)])

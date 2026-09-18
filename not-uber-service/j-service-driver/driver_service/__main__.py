@@ -145,7 +145,19 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
             continue
 
         trip_id = value.get("trip_id")
+        # matched, accepted and en_route_pickup all mean "drive to pickup".
+        # Re-installing the polyline on each of those events sent the car
+        # back to vertex 0 every few seconds (drv-0000001 at 14:38).
+        same_leg = (
+            driver.trip_id == trip_id
+            and (
+                (new_status == EN_ROUTE_PICKUP and driver.status == EN_ROUTE_PICKUP)
+                or (new_status == ON_TRIP and driver.status == ON_TRIP)
+            )
+        )
         driver.set_status(new_status, trip_id)
+        if same_leg:
+            continue
 
         # Where to head next comes from the live trip state dispatch wrote.
         # The WKT is the pgRouting geometry; without it the car flies.

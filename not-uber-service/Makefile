@@ -578,6 +578,15 @@ verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch v
 .PHONY: verify-dash
 verify-dash: grafana-health superset-health ## Grafana and Superset answer, with their data sources registered
 
+.PHONY: verify-positions
+verify-positions: ## Live positions follow streets, not the chord between two points
+	$(call say,Positions)
+	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--output-format PrettyCompactMonoBlock < z-config/check-positions.sql
+	@$(COMPOSE) exec -T pg-1 psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -c \
+		"SELECT round(avg(ST_Length(route::geography))/1000,2) AS route_km, round(avg(ST_Distance(pickup_point::geography, dropoff_point::geography))/1000,2) AS chord_km FROM trips WHERE route IS NOT NULL AND ended_at > now() - interval '1 hour';"
+
 # =============================================================================
 ##@ Operate
 # =============================================================================
