@@ -238,9 +238,13 @@ listen ch_native
     server nus-ch-s2r2 nus-ch-s2r2:9000 check
 
 # Grafana (f-infra-grafana) + self-hosted OSM tiles ---------------------------
-# Same origin as Grafana so the browser never talks to MapTiler. /tiles/ is
-# stripped and sent to tileserver-gl. HTTP mode is required for the path
-# split; timeout tunnel keeps Grafana websockets alive.
+# Same origin as Grafana so the browser never talks to MapTiler. HTTP mode
+# is required for the path split; timeout tunnel keeps Grafana websockets
+# alive.
+#
+# Strip /tiles/ on the tiles BACKEND, not here. HAProxy evaluates
+# use_backend AFTER http-request rules, so a frontend replace-path
+# made path_beg /tiles/ false and every tile went to Grafana (302/404).
 
 frontend grafana_fe
     bind :3000
@@ -249,7 +253,6 @@ frontend grafana_fe
     option http-keep-alive
     timeout tunnel 1h
     acl is_tiles path_beg /tiles/
-    http-request replace-path ^/tiles/(.*) /\1 if is_tiles
     use_backend tiles if is_tiles
     default_backend grafana_be
 
@@ -262,6 +265,7 @@ backend grafana_be
 backend tiles
     mode http
     timeout server 60s
+    http-request replace-path ^/tiles/(.*) /\1
     option httpchk
     http-check send meth GET uri /
     http-check expect status 200
