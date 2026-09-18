@@ -57,3 +57,11 @@ def insert_rows(table: str, rows: list[list], column_names: list[str]) -> int:
 def ping() -> bool:
     """True when ClickHouse answers. Used by the waiting helpers."""
     return client().command("SELECT 1") == 1
+
+
+def reset_client() -> None:
+    """Drop the cached client so the next call reads CH_* from the environment."""
+    global _client
+    if _client is not None:
+        _client.close()
+    _client = None

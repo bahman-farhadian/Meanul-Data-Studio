@@ -10,6 +10,8 @@ does that for us as long as connections are taken from a Sentinel object,
 which is what this module returns.
 """
 
+import os
+
 from redis import Redis
 from redis.sentinel import Sentinel
 
@@ -148,7 +150,19 @@ def primary(db: int = DB_SYSTEM) -> Redis:
 
     Use it for writes. After a failover the library asks Sentinel again and
     reconnects on its own; the caller only sees one failed command.
+
+    REDIS_URL, when set, is a direct connection (no Sentinel). Production
+    compose never sets it; the laptop sample stack does, so a one-node
+    Redis can still exercise the same key names and JSON the services write.
     """
+    url = os.environ.get("REDIS_URL")
+    if url:
+        return Redis.from_url(
+            url,
+            db=db,
+            decode_responses=True,
+            socket_timeout=2.0,
+        )
     return _sentinel().master_for(
         config.optional("REDIS_MASTER_NAME", "nus-cache"),
         password=config.required("REDIS_PASSWORD"),

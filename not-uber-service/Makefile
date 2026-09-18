@@ -585,6 +585,13 @@ verify-walk: ## Street-follow and chord/sea checks against the shipped walk/geo 
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
 		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests
 
+.PHONY: verify-sample
+verify-sample: ## Tiny local PG/Redis/Kafka/CH sample: on-network routes, no sea hops
+	$(call say,Sample stores)
+	@cd z-lib/nus-common && uv sync --extra test >/dev/null
+	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
+		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-config/tests
+
 .PHONY: verify-positions
 verify-positions: ## Live positions follow streets, not the chord between two points
 	$(call say,Positions)

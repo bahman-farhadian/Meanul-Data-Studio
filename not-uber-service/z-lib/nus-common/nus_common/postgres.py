@@ -138,3 +138,18 @@ def ping() -> bool:
     with write_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1")
         return cur.fetchone() is not None
+
+
+def reset_pools() -> None:
+    """Drop cached pools so the next checkout reads PG_* from the environment.
+
+    Tests point PG_HOST/PG_WRITE_PORT at a throwaway node after this module
+    has already been imported. Without this, the first checkout in the
+    process would pin every later test to the wrong host.
+    """
+    global _write_pool, _read_pool
+    for pool in (_write_pool, _read_pool):
+        if pool is not None:
+            pool.close()
+    _write_pool = None
+    _read_pool = None
