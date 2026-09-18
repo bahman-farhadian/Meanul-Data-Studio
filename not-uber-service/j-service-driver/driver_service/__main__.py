@@ -22,7 +22,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
-from nus_common.geo import day_period, linestring_vertices, to_millis, utc_now
+from nus_common.geo import day_period, is_chord_path, linestring_vertices, to_millis, utc_now
 from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
 from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
@@ -140,8 +140,7 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
             continue
 
         if new_status == IDLE:
-            driver.set_status(IDLE, None)
-            driver.head_towards(driver.lat, driver.lon)
+            driver.become_idle()
             continue
 
         trip_id = value.get("trip_id")
@@ -174,12 +173,12 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
             wkt = trip.get("route_wkt")
             km = float(trip.get("route_km") or 1.0)
             dest_lat, dest_lon = float(trip["dropoff_lat"]), float(trip["dropoff_lon"])
-        if wkt:
-            driver.follow(linestring_vertices(wkt))
-        else:
-            driver.follow(
-                routing.drive_path(driver.lat, driver.lon, dest_lat, dest_lon, day_period(utc_now()))
+        path = linestring_vertices(wkt) if wkt else []
+        if not path or is_chord_path(path):
+            path = routing.drive_path(
+                driver.lat, driver.lon, dest_lat, dest_lon, day_period(utc_now())
             )
+        driver.follow(path)
 
     return handled
 

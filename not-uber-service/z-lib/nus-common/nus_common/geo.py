@@ -116,6 +116,21 @@ def linestring_vertices(wkt: str) -> list[tuple[float, float]]:
     return _linestring_coords(wkt)
 
 
+def is_chord_path(path: list[tuple[float, float]], min_km: float = 0.2) -> bool:
+    """True when the polyline is only the two ends of a long hop.
+
+    A real street path from pgRouting has shape points (or at least a
+    third vertex at the next intersection). Two points more than min_km
+    apart is the Euclidean fallback drive_path used to install — the
+    hop that cuts blocks and water. A 80 m two-vertex LION segment is
+    a real straight block and is not a chord.
+    """
+    if len(path) != 2:
+        return False
+    (lat1, lon1), (lat2, lon2) = path
+    return distance_km(lat1, lon1, lat2, lon2) >= min_km
+
+
 def _linestring_coords(wkt: str) -> list[tuple[float, float]]:
     """Parse a WKT (MULTI)LINESTRING into a flat [(lat, lon), ...] list.
 

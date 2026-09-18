@@ -66,7 +66,8 @@ class Driver:
 
         Start at the nearest vertex to where the car already is, so a
         re-follow (matched then accepted then en_route_pickup) does not
-        send the driver back to the origin of the line.
+        send the driver back to the origin of the line. An empty path is
+        a no-op: better to sit still than to install a chord across water.
         """
         if not path:
             return
@@ -78,6 +79,14 @@ class Driver:
             if dist < best_d:
                 best_i, best_d = i, dist
         self.path_i = best_i
+
+    def become_idle(self) -> None:
+        """Trip over: drop the polyline so the next tick can pick a street path."""
+        self.set_status(IDLE, None)
+        self.path = []
+        self.path_i = 0
+        self.target_lat = self.lat
+        self.target_lon = self.lon
 
     def head_towards(self, lat: float, lon: float) -> None:
         self.follow([(lat, lon)])
