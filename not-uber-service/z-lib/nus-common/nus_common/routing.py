@@ -103,19 +103,28 @@ KSP_SQL = """
      ORDER BY path_id, path_seq
 """
 
-# Edge geometries in visit order, then LineMerge. An unordered ST_Collect
-# walked as a chord (axis_share 0.71) even while SUM(length_m) was a real
-# 7 km path. Shape points on the_geom stay; a vertex-only MakeLine dropped
-# them and still let a scrambled node list cut across blocks.
+# Oriented edge geometries in visit order, then ST_MakeLine of those
+# linestrings. ST_LineMerge(ST_Collect(...)) still reversed some pieces
+# relative to path_seq, so consecutive vertices jumped the hypotenuse
+# (water, blocks) while SUM(length_m) stayed a real street length.
+# Shape points on the_geom stay; each edge is reversed when pgr_ksp
+# traversed it target→source.
 ROUTE_GEOMETRY_SQL = """
-    SELECT COALESCE(SUM(w.length_m) / 1000.0, 0) AS route_km,
-           ST_AsText(
-             ST_LineMerge(
-               ST_Collect(w.the_geom ORDER BY u.ord)
-             )
-           ) AS route_wkt
-      FROM unnest(%(gids)s::bigint[]) WITH ORDINALITY AS u(gid, ord)
-      JOIN ways w ON w.gid = u.gid
+    WITH oriented AS (
+        SELECT u.ord,
+               w.length_m,
+               CASE
+                 WHEN w.source = u.node THEN w.the_geom
+                 WHEN w.target = u.node THEN ST_Reverse(w.the_geom)
+                 ELSE w.the_geom
+               END AS geom
+          FROM unnest(%(gids)s::bigint[], %(nodes)s::bigint[])
+               WITH ORDINALITY AS u(gid, node, ord)
+          JOIN ways w ON w.gid = u.gid
+    )
+    SELECT COALESCE(SUM(length_m) / 1000.0, 0) AS route_km,
+           ST_AsText(ST_MakeLine(array_agg(geom ORDER BY ord))) AS route_wkt
+      FROM oriented
 """
 
 # How many times a single route()-path query gets tried before this call
@@ -187,6 +196,13 @@ def route(
     if period not in PERIODS:
         raise ValueError(f"unknown period {period!r}; expected one of {sorted(PERIODS)}")
 
+    # pgr_ksp itself always snaps to the nearest on_main_network vertex,
+    # even kilometres away. A pickup in the harbour would then be routed
+    # from the nearest pier — a boat trip. Refuse here so generation and
+    # dispatch both treat "off the network" as no path.
+    if nearest_road_point(from_lat, from_lon) is None or nearest_road_point(to_lat, to_lon) is None:
+        return None
+
     edges_sql = EDGES_SQL_TEMPLATE.format(period=period)
 
     try:
@@ -255,10 +271,11 @@ def route(
         return None
 
     try:
+        start_nodes = chosen["nodes"][: len(chosen["gids"])]
         geo_row = _query_with_retry(
             postgres.fetch_one,
             ROUTE_GEOMETRY_SQL,
-            {"gids": chosen["gids"]},
+            {"gids": chosen["gids"], "nodes": start_nodes},
             "route geometry lookup",
             from_lat=from_lat, from_lon=from_lon,
             to_lat=to_lat, to_lon=to_lon, period=period,
@@ -293,21 +310,28 @@ def drive_path(
     """Street vertices in drive order, start to end.
 
     spacing_km is accepted for callers that used to densify; the vertex
-    list is already the real geometry. A two-point result means pgRouting
-    found no path and the caller is about to walk a chord — that is the
-    0.71 axis_share seen on Dionysus after 8b8971b.
+    list is already the real geometry. An empty result means pgRouting
+    found no path — the caller must not walk a chord across water or
+    blocks. Driver.follow([]) is a no-op, so the car sits and retries.
     """
     del spacing_km
     computed = route(from_lat, from_lon, to_lat, to_lon, period)
     if not computed or not computed[2]:
         log.warning(
-            "drive_path falling back to the chord",
+            "drive_path found no street path; not installing a chord",
             extra={"from_lat": from_lat, "from_lon": from_lon, "to_lat": to_lat, "to_lon": to_lon},
         )
-        return [(from_lat, from_lon), (to_lat, to_lon)]
+        return []
     vertices = linestring_vertices(computed[2])
     if len(vertices) < 2:
-        return [(from_lat, from_lon), (to_lat, to_lon)]
+        log.warning(
+            "drive_path geometry collapsed; not installing a chord",
+            extra={
+                "from_lat": from_lat, "from_lon": from_lon,
+                "to_lat": to_lat, "to_lon": to_lon, "vertices": len(vertices),
+            },
+        )
+        return []
     return vertices
 
 
@@ -318,6 +342,15 @@ NEAREST_ROAD_POINT_SQL = """
      WHERE on_main_network
      ORDER BY the_geom <-> ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)
      LIMIT 1
+"""
+
+ROAD_VERTEX_IN_ZONE_SQL = """
+    SELECT ST_Y(v.the_geom) AS lat, ST_X(v.the_geom) AS lon
+      FROM ways_vertices_pgr v
+      JOIN city_zones z ON z.zone_id = %(zone_id)s
+       AND ST_Contains(z.boundary, v.the_geom)
+     WHERE v.on_main_network
+     LIMIT 400
 """
 
 
@@ -355,8 +388,9 @@ def random_road_point_in_zone(grid, zone_id: str, rng, attempts: int = 5) -> tup
     Retries with a fresh random point a few times before falling back to the
     zone's own centre (far more likely to be near real infrastructure than
     an arbitrary corner). If even that fails - a zone that is mostly water -
-    the raw, unsnapped point is returned rather than blocking forever; it is
-    a rare enough case not to be worth failing the whole run over.
+    pick a real on_main_network vertex inside the polygon, then the nearest
+    connected vertex to the centroid with no snap cap. Never return an
+    unsnapped point: that is how a cab used to be placed in the harbour.
     """
     for _ in range(attempts):
         lat, lon = grid.random_point_in(zone_id, rng)
@@ -369,8 +403,47 @@ def random_road_point_in_zone(grid, zone_id: str, rng, attempts: int = 5) -> tup
     if snapped is not None:
         return snapped
 
-    log.warning("no road point found near zone, using an unsnapped point", extra={"zone_id": zone_id})
-    return grid.random_point_in(zone_id, rng)
+    in_zone = _road_vertex_in_zone(zone_id, rng)
+    if in_zone is not None:
+        log.warning(
+            "zone interior snap missed; using a main-network vertex inside the polygon",
+            extra={"zone_id": zone_id},
+        )
+        return in_zone
+
+    unlimited = nearest_road_point(lat, lon, max_snap_km=1_000.0)
+    if unlimited is not None:
+        log.warning(
+            "zone has no snappable interior point, using nearest main-network vertex",
+            extra={"zone_id": zone_id},
+        )
+        return unlimited
+
+    with postgres.read_connection() as conn:
+        graph = postgres.fetch_one(
+            conn, "SELECT count(*) AS n FROM ways_vertices_pgr WHERE on_main_network"
+        )
+    if graph and int(graph["n"]) == 0:
+        # SKIP_MAP_IMPORT / empty graph: nothing to snap to. Logged, not silent.
+        log.warning(
+            "street graph empty - unsnapped point (no map imported)",
+            extra={"zone_id": zone_id},
+        )
+        return grid.random_point_in(zone_id, rng)
+
+    raise RuntimeError(
+        f"no connected road vertex for zone {zone_id}; refusing to place a cab off the network"
+    )
+
+
+def _road_vertex_in_zone(zone_id: str, rng) -> tuple[float, float] | None:
+    """A random on_main_network vertex contained in the zone polygon."""
+    with postgres.read_connection() as conn:
+        rows = postgres.fetch_all(conn, ROAD_VERTEX_IN_ZONE_SQL, {"zone_id": zone_id})
+    if not rows:
+        return None
+    picked = rng.choice(rows)
+    return float(picked["lat"]), float(picked["lon"])
 
 
 def build_road_point_pools(grid, pool_size: int, workers: int, seed_value: int = 20250824) -> None:
