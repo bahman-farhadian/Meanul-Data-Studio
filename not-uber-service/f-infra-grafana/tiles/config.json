@@ -3,10 +3,14 @@
     "paths": {
       "root": "/config",
       "styles": "/config/styles",
+      "fonts": "/usr/src/app/node_modules/tileserver-gl-styles/fonts",
       "mbtiles": "/data"
     },
     "serveStaticMaps": false,
-    "maxSize": 2048
+    "maxSize": 2048,
+    "tileMargin": 8,
+    "minRendererPoolSizes": [2, 1, 1],
+    "maxRendererPoolSizes": [4, 2, 1]
   },
   "styles": {
     "nus": {

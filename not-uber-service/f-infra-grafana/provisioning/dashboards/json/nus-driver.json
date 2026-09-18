@@ -9,7 +9,7 @@
   ],
   "timezone": "America/New_York",
   "schemaVersion": 39,
-  "version": 10,
+  "version": 11,
   "refresh": "10s",
   "liveNow": true,
   "editable": false,
@@ -130,8 +130,10 @@
           "type": "xyz",
           "name": "NUS OSM",
           "config": {
-            "url": "/tiles/styles/nus/{z}/{x}/{y}.png",
-            "attribution": "\u00a9 OpenStreetMap"
+            "url": "/tiles/styles/nus/{z}/{x}/{y}@2x.png",
+            "attribution": "\u00a9 OpenStreetMap",
+            "minZoom": 0,
+            "maxZoom": 14
           }
         },
         "layers": [

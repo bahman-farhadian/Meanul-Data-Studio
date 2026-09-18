@@ -8,7 +8,7 @@
   ],
   "timezone": "America/New_York",
   "schemaVersion": 39,
-  "version": 10,
+  "version": 11,
   "refresh": "1m",
   "liveNow": false,
   "editable": false,

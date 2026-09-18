@@ -20,8 +20,10 @@ LOCAL_XYZ = {
     "type": "xyz",
     "name": "NUS OSM",
     "config": {
-        "url": "/tiles/styles/nus/{z}/{x}/{y}.png",
+        "url": "/tiles/styles/nus/{z}/{x}/{y}@2x.png",
         "attribution": "© OpenStreetMap",
+        "minZoom": 0,
+        "maxZoom": 14,
     },
 }
 
@@ -148,7 +150,7 @@ def dashboard(
         "tags": tags,
         "timezone": "America/New_York",
         "schemaVersion": 39,
-        "version": 10,
+        "version": 11,
         "refresh": refresh,
         "liveNow": live,
         "editable": False,

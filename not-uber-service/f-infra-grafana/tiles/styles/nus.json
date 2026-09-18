@@ -1,6 +1,7 @@
 {
   "version": 8,
   "name": "nus-osm",
+  "glyphs": "{fontstack}/{range}.pbf",
   "sources": {
     "nyc": {
       "type": "vector",
@@ -11,72 +12,320 @@
     {
       "id": "background",
       "type": "background",
-      "paint": { "background-color": "#1b1e2b" }
+      "paint": { "background-color": "#12161f" }
     },
     {
       "id": "landcover",
       "type": "fill",
       "source": "nyc",
       "source-layer": "landcover",
-      "paint": { "fill-color": "#22263a" }
+      "paint": {
+        "fill-color": [
+          "match",
+          ["get", "class"],
+          "wood", "#163022",
+          "grass", "#1a3324",
+          "sand", "#2a281c",
+          "#1a1f2c"
+        ],
+        "fill-opacity": 0.85
+      }
     },
     {
       "id": "landuse",
       "type": "fill",
       "source": "nyc",
       "source-layer": "landuse",
-      "paint": { "fill-color": "#252a40" }
+      "paint": {
+        "fill-color": [
+          "match",
+          ["get", "class"],
+          "residential", "#181c28",
+          "commercial", "#1c1f2e",
+          "industrial", "#1b1d26",
+          "cemetery", "#16241c",
+          "hospital", "#241c22",
+          "school", "#1f2430",
+          "stadium", "#1d2430",
+          "#1a1e2a"
+        ],
+        "fill-opacity": 0.6
+      }
     },
     {
       "id": "park",
       "type": "fill",
       "source": "nyc",
       "source-layer": "park",
-      "paint": { "fill-color": "#1d3a2a" }
+      "paint": { "fill-color": "#1c3d2a", "fill-opacity": 0.9 }
     },
     {
       "id": "water",
       "type": "fill",
       "source": "nyc",
       "source-layer": "water",
-      "paint": { "fill-color": "#0d2137" }
+      "paint": { "fill-color": "#0b2a48" }
     },
     {
       "id": "waterway",
       "type": "line",
       "source": "nyc",
       "source-layer": "waterway",
-      "paint": { "line-color": "#0d2137", "line-width": 0.8 }
+      "paint": {
+        "line-color": "#0b2a48",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 0.5, 14, 2.5]
+      }
+    },
+    {
+      "id": "aeroway",
+      "type": "fill",
+      "source": "nyc",
+      "source-layer": "aeroway",
+      "minzoom": 10,
+      "paint": { "fill-color": "#2a3040", "fill-opacity": 0.8 }
     },
     {
       "id": "building",
       "type": "fill",
       "source": "nyc",
       "source-layer": "building",
-      "paint": { "fill-color": "#2a3048", "fill-opacity": 0.8 }
+      "minzoom": 13,
+      "paint": {
+        "fill-color": "#2c3348",
+        "fill-opacity": ["interpolate", ["linear"], ["zoom"], 13, 0.4, 15, 0.85],
+        "fill-outline-color": "#3d4660"
+      }
     },
     {
       "id": "boundary",
       "type": "line",
       "source": "nyc",
       "source-layer": "boundary",
-      "paint": { "line-color": "#3d4560", "line-width": 0.6 }
+      "paint": {
+        "line-color": "#4a5370",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 0.4, 12, 1.2],
+        "line-dasharray": [3, 2]
+      }
     },
     {
-      "id": "transportation",
+      "id": "tunnel",
       "type": "line",
       "source": "nyc",
       "source-layer": "transportation",
+      "filter": ["==", "brunnel", "tunnel"],
       "paint": {
-        "line-color": "#6b7394",
-        "line-width": [
-          "interpolate",
-          ["linear"],
-          ["zoom"],
-          10, 0.4,
-          14, 1.4,
-          16, 3
-        ]
+        "line-color": "#3a4158",
+        "line-dasharray": [1, 1],
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 0.4, 14, 1.6]
+      }
+    },
+    {
+      "id": "rail",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["in", "class", "rail", "transit"],
+      "minzoom": 11,
+      "paint": {
+        "line-color": "#5a4860",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.6, 14, 1.4]
+      }
+    },
+    {
+      "id": "path",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["in", "class", "path", "track"],
+      "minzoom": 13,
+      "paint": {
+        "line-color": "#4a5368",
+        "line-dasharray": [2, 2],
+        "line-width": 0.8
+      }
+    },
+    {
+      "id": "road-minor-casing",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "minor", "service"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 12,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#1a1e2a",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 12, 1.6, 14, 4.5, 16, 8]
+      }
+    },
+    {
+      "id": "road-minor",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "minor", "service"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 11,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#6a738c",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 11, 0.4, 14, 2.2, 16, 5]
+      }
+    },
+    {
+      "id": "road-secondary-casing",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "secondary", "tertiary"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 10,
+      "layout": { "line-join": "round" },
+      "paint": {
+        "line-color": "#1a1e2a",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 10, 2, 14, 6, 16, 12]
+      }
+    },
+    {
+      "id": "road-secondary",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "secondary", "tertiary"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 9,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#8b94ad",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 9, 0.6, 14, 3.2, 16, 8]
+      }
+    },
+    {
+      "id": "road-primary-casing",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "primary", "trunk"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 8,
+      "layout": { "line-join": "round" },
+      "paint": {
+        "line-color": "#1a1e2a",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 8, 2.4, 14, 8, 16, 16]
+      }
+    },
+    {
+      "id": "road-primary",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["in", "class", "primary", "trunk"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 7,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#b4bcd4",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 7, 0.8, 14, 4.5, 16, 11]
+      }
+    },
+    {
+      "id": "road-motorway-casing",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["==", "class", "motorway"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 6,
+      "layout": { "line-join": "round" },
+      "paint": {
+        "line-color": "#1a1e2a",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 6, 2, 14, 10, 16, 18]
+      }
+    },
+    {
+      "id": "road-motorway",
+      "type": "line",
+      "source": "nyc",
+      "source-layer": "transportation",
+      "filter": ["all", ["==", "class", "motorway"], ["!in", "brunnel", "tunnel"]],
+      "minzoom": 5,
+      "layout": { "line-cap": "round", "line-join": "round" },
+      "paint": {
+        "line-color": "#d2d8ea",
+        "line-width": ["interpolate", ["linear"], ["zoom"], 5, 0.8, 14, 5.5, 16, 13]
+      }
+    },
+    {
+      "id": "water-name",
+      "type": "symbol",
+      "source": "nyc",
+      "source-layer": "water_name",
+      "minzoom": 10,
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 12,
+        "symbol-placement": "line",
+        "text-max-angle": 30
+      },
+      "paint": {
+        "text-color": "#7aa0c4",
+        "text-halo-color": "#0b2a48",
+        "text-halo-width": 1.2
+      }
+    },
+    {
+      "id": "road-label",
+      "type": "symbol",
+      "source": "nyc",
+      "source-layer": "transportation_name",
+      "minzoom": 12,
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 12, 9, 14, 11],
+        "symbol-placement": "line",
+        "text-max-angle": 30,
+        "text-padding": 2
+      },
+      "paint": {
+        "text-color": "#dce1ee",
+        "text-halo-color": "#12161f",
+        "text-halo-width": 1.4
+      }
+    },
+    {
+      "id": "place-neighbourhood",
+      "type": "symbol",
+      "source": "nyc",
+      "source-layer": "place",
+      "minzoom": 12,
+      "maxzoom": 15,
+      "filter": ["in", "class", "neighbourhood", "suburb"],
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": 11,
+        "text-transform": "uppercase",
+        "text-letter-spacing": 0.08,
+        "text-padding": 4
+      },
+      "paint": {
+        "text-color": "#c5cbe0",
+        "text-halo-color": "#12161f",
+        "text-halo-width": 1.6
+      }
+    },
+    {
+      "id": "place-city",
+      "type": "symbol",
+      "source": "nyc",
+      "source-layer": "place",
+      "maxzoom": 13,
+      "filter": ["in", "class", "city", "town"],
+      "layout": {
+        "text-field": ["coalesce", ["get", "name:en"], ["get", "name:latin"], ["get", "name"]],
+        "text-font": ["Noto Sans Regular"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 6, 12, 11, 18],
+        "text-padding": 6
+      },
+      "paint": {
+        "text-color": "#e8ebf4",
+        "text-halo-color": "#12161f",
+        "text-halo-width": 1.8
       }
     }
   ]

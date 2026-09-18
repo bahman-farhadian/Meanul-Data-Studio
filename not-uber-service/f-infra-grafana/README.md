@@ -104,7 +104,7 @@ docker compose exec grafana wget -qO- \
 
 In the browser, open <http://localhost:3000>, go to
 **Connections → Data sources → ClickHouse** and press **Save & test**. It
-should report success. Maps use **self-hosted OSM** at `/tiles/styles/nus/{z}/{x}/{y}.png` (same
+should report success. Maps use **self-hosted OSM** at `/tiles/styles/nus/{z}/{x}/{y}@2x.png` (same
 origin as Grafana; HAProxy `path_beg /tiles/` selects the tiles backend, which
 strips the prefix). No MapTiler key.
 Build the MBTiles once with `make tiles-prepare`. That target is idempotent:
