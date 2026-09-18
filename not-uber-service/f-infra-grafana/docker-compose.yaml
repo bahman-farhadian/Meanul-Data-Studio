@@ -73,7 +73,7 @@ services:
   # (/tiles/... on port 3000); HAProxy strips the prefix. Data is the
   # Planetiler MBTiles from `make tiles-prepare`.
   tiles:
-    image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v4.15.3}
+    image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v5.6.0}
     container_name: nus-tiles
     hostname: nus-tiles
     restart: unless-stopped
