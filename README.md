@@ -1,5 +1,9 @@
 # Meanul Data Studio
 
+Assessment (pass/fail measurements for data quality, generation, and
+simulation accuracy): [ASSESSMENT.md](ASSESSMENT.md). Later versions
+inherit that file.
+
 ## 1. About Meanul Data Studio
 
 Meanul Data Studio is a framework for simulating the **full backend data
