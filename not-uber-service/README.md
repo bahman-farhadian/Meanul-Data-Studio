@@ -3,8 +3,8 @@
 How to bring the full stack up on a fresh host. **This file covers assembly
 only** — what each component is and how to verify it lives in that
 component's own README. Architecture: the repository's main
-[README](../README.md). Pass/fail bars for data quality, generation, and
-simulation accuracy: [ASSESSMENT.md](../ASSESSMENT.md).
+[README](../README.md). Studio assessment (schema, broker, generation,
+simulation; version-1 bindings): [ASSESSMENT.md](../ASSESSMENT.md).
 
 Everything runs from this directory, through the [Makefile](Makefile):
 

@@ -1,8 +1,10 @@
 # Meanul Data Studio
 
-Assessment (pass/fail measurements for data quality, generation, and
-simulation accuracy): [ASSESSMENT.md](ASSESSMENT.md). Later versions
-inherit that file.
+Assessment contract: [ASSESSMENT.md](ASSESSMENT.md). Studio-wide bars for
+schema, the message broker, cache, data generation, and simulation apply
+to every version in this repository. Version 1 (`not-uber-service`) binds
+those bars to named Makefile targets and domain measurements in the same
+file. Later versions add a profile; they do not replace the file.
 
 ## 1. About Meanul Data Studio
 
