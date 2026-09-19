@@ -1,12 +1,14 @@
 """The root assessment contract must stay aligned with shipped checks.
 
-Reads ASSESSMENT.md and the SQL / geo / Makefile sources it cites.
-Numbers and `make` target names are taken from those files, not copied
-into this test as literals.
+Reads ASSESSMENT.md and the SQL / Avro / DDL / geo / Makefile sources it
+cites. Numbers, closed-set symbols, id widths, topic names, and Makefile
+target names are taken from those files, not copied into this test as
+literals.
 """
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -130,3 +132,224 @@ def test_live_walk_and_tile_terms_are_in_the_sources():
     assert "/tiles/" in haproxy and "/tiles/" in text
     assert "tiles-health" in tiles_make and "make tiles-health" in text
     assert "image/png" in tiles_make and "image/png" in text
+
+
+def test_studio_contract_sections_and_roles():
+    text = _standard()
+    for heading in (
+        "## 4. Schema contract",
+        "## 5. Message-broker contract",
+        "## 6. Cache contract",
+        "## 7. Data-generation contract",
+        "## 8. Simulation-accuracy contract",
+        "## 9. Version 1",
+    ):
+        assert heading in text, heading
+    for role in (
+        "`oltp`",
+        "`cache`",
+        "`broker`",
+        "`cdc`",
+        "`warehouse`",
+        "`live-ui`",
+        "`analytic-ui`",
+        "`bootstrap`",
+        "`cache-updater`",
+        "`generator`",
+        "`coordinator`",
+        "`warehouse-sink`",
+        "`archiver`",
+        "`stack-config`",
+        "`shared-lib`",
+    ):
+        assert role in text, role
+
+
+def _pg_check_symbols(sql: str, constraint: str) -> list[str]:
+    match = re.search(
+        rf"CONSTRAINT\s+{constraint}\s+CHECK\s*\(\s*\w+\s+IN\s*\(([^)]+)\)",
+        sql,
+        re.I | re.S,
+    )
+    assert match, f"no CHECK list for {constraint}"
+    return re.findall(r"'([^']+)'", match.group(1))
+
+
+def _avro_enum_symbols(path: Path, enum_name: str) -> list[str]:
+    def walk(node: object) -> list[str] | None:
+        if isinstance(node, dict):
+            nested = node.get("type")
+            if nested == "enum" and node.get("name") == enum_name:
+                return list(node["symbols"])
+            if isinstance(nested, dict):
+                found = walk(nested)
+                if found is not None:
+                    return found
+            for value in node.values():
+                found = walk(value)
+                if found is not None:
+                    return found
+        elif isinstance(node, list):
+            for value in node:
+                found = walk(value)
+                if found is not None:
+                    return found
+        return None
+
+    found = walk(json.loads(path.read_text()))
+    assert found, f"no Avro enum {enum_name} in {path}"
+    return found
+
+
+def _ch_enum8_symbols(sql: str, after: str) -> list[str]:
+    idx = sql.index(after)
+    match = re.search(r"Enum8\s*\((.*?)\)", sql[idx:], re.S)
+    assert match, f"no Enum8 after {after}"
+    return re.findall(r"'([^']+)'", match.group(1))
+
+
+def test_closed_status_sets_align_across_stores():
+    core = (NUS / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
+    city = (NUS / "h-bootstrap" / "migrations" / "003_city.sql").read_text()
+    positions = (NUS / "e-infra-clickhouse" / "ddl" / "002_positions.sql").read_text()
+    trips = (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text()
+    hotspots = (NUS / "e-infra-clickhouse" / "ddl" / "004_hotspots.sql").read_text()
+    geo = _geo_source()
+
+    driver_pg = _pg_check_symbols(core, "drivers_status_check")
+    driver_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "driver_location.avsc",
+        "DriverStatus",
+    )
+    driver_ch = _ch_enum8_symbols(positions, "driver_positions_local")
+    assert driver_pg == driver_avro == driver_ch
+
+    trip_pg = _pg_check_symbols(core, "trips_status_check")
+    trip_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
+        "TripStatus",
+    )
+    trip_ch = _ch_enum8_symbols(trips, "trip_events_local")
+    assert trip_pg == trip_avro == trip_ch
+
+    period_pg = _pg_check_symbols(city, "segment_traffic_period_check")
+    period_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "city_hotspots.avsc",
+        "DayPeriod",
+    )
+    period_ch = _ch_enum8_symbols(hotspots, "hotspot_history_local")
+    periods = re.search(r"DAY_PERIODS\s*=\s*\(([^)]+)\)", geo)
+    assert periods, geo
+    period_py = re.findall(r'"([^"]+)"', periods.group(1))
+    assert period_pg == period_avro == period_ch == period_py
+
+    text = _standard()
+    assert "CHECK" in text
+    assert "Enum8" in text
+    assert "Avro" in text
+
+
+def test_minted_id_widths_match_warehouse():
+    ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+
+    def _length(name: str) -> str:
+        match = re.search(rf"^{name}\s*=\s*(\d+)", ids, re.M)
+        assert match, name
+        return match.group(1)
+
+    driver_n = _length("DRIVER_ID_LENGTH")
+    passenger_n = _length("PASSENGER_ID_LENGTH")
+    trip_n = _length("TRIP_ID_LENGTH")
+    assert re.search(rf"driver_id\s+FixedString\({driver_n}\)", ddl)
+    assert re.search(rf"rider_id\s+FixedString\({passenger_n}\)", ddl)
+    assert re.search(rf"trip_id\s+FixedString\({trip_n}\)", ddl)
+    text = _standard()
+    assert "FixedString" in text
+    assert driver_n in text and passenger_n in text and trip_n in text
+
+
+def test_declared_topics_have_avro_schemas():
+    tsv = (NUS / "c-infra-kafka" / "topics" / "topics.tsv").read_text()
+    names: list[str] = []
+    for line in tsv.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name = line.split("\t")[0].strip()
+        if name:
+            names.append(name)
+    assert names, tsv
+    assert all(not name.startswith("cdc.") for name in names)
+    schemas = NUS / "c-infra-kafka" / "schemas"
+    missing = [name for name in names if not (schemas / f"{name}.avsc").is_file()]
+    assert missing == [], missing
+    extra = sorted(path.stem for path in schemas.glob("*.avsc") if path.stem not in names)
+    assert extra == [], extra
+    text = _standard()
+    for name in names:
+        assert name in text, name
+    assert "topics.tsv" in text
+    create = (NUS / "c-infra-kafka" / "topics" / "create-topics.sh").read_text()
+    assert "--replication-factor 3" in create
+    assert "min.insync.replicas=2" in create
+    assert "replication-factor 3" in text
+    assert "min.insync.replicas=2" in text
+
+
+def test_cdc_excludes_oltp_geometry():
+    connector = json.loads(
+        (NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text()
+    )
+    excluded = connector["config"]["column.exclude.list"]
+    assert "nus.trips.route" in excluded
+    text = _standard()
+    assert "nus.trips.route" in text
+    assert "column.exclude.list" in text
+
+
+def test_oltp_uses_jsonb_not_a_document_db():
+    core = (NUS / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
+    assert "jsonb" in core.lower()
+    compose = "\n".join(
+        path.read_text().lower() for path in NUS.rglob("docker-compose.yaml")
+    )
+    assert "mongo" not in compose
+    text = _standard()
+    assert "jsonb" in text.lower()
+
+
+def test_cache_updater_skips_bootstrap_wait():
+    updater = (NUS / "i-service-cache-updater" / "cache_updater" / "__main__.py").read_text()
+    assert "wait_for_bootstrap" not in updater
+    assert "does not wait" in updater.lower()
+    must_wait = (
+        NUS / "j-service-driver" / "driver_service" / "__main__.py",
+        NUS / "k-service-passenger" / "passenger_service" / "__main__.py",
+        NUS / "l-service-dispatch" / "dispatch_service" / "__main__.py",
+        NUS / "m-service-city" / "city_service" / "__main__.py",
+        NUS / "n-service-clickhouse-sink" / "clickhouse_sink" / "__main__.py",
+        NUS / "o-service-archiver" / "archiver_service" / "__main__.py",
+    )
+    for path in must_wait:
+        source = path.read_text()
+        assert "wait_for_bootstrap" in source, path
+    text = _standard()
+    assert "wait_for_bootstrap" in text
+    assert "does not wait" in text.lower()
+
+
+def test_store_live_state_before_announce_is_required():
+    dispatch = (NUS / "l-service-dispatch" / "dispatch_service" / "__main__.py").read_text()
+    store = dispatch.index("def store_live_state")
+    announce = dispatch.index("def announce")
+    # Both exist; call order on the match path is store then announce.
+    match_block = dispatch[dispatch.index("store_live_state(redis_trip, trip, now, active_ttl)") :]
+    first_store = match_block.index("store_live_state")
+    first_announce = match_block.index("announce(")
+    assert first_store < first_announce
+    text = _standard()
+    assert "store_live_state" in text
+    assert "announce" in text
