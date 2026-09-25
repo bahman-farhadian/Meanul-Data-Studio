@@ -62,12 +62,19 @@ indexes. The warehouse has trip_events, driver/rider positions, hotspot and
 segment-traffic history, plus hourly/daily rollups and AggregatingMergeTree
 percentile/uniq views, all Distributed over `_local`.
 
-**The real gaps are these, and steps 2–11 close them:**
+**The real gaps are these, and steps 2–11 close them.** Step 2 is now
+done and `docs/schema-review.md` argues each schema gap against a real
+source; the finding ids below point into it.
 
 | Gap | Why it matters |
 | --- | --- |
-| No driver-arrival timestamp | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
-| Payments are two columns on `trips` | Real platforms model payment as its own record (method, amount, status, refunds, adjustments); ours cannot express a failed or refunded charge |
+| Four `trips` columns never leave Postgres (F1) | `driver_payout`, `payment_method`, `cancellation_reason`, `requested_vehicle_type` are in no `.avsc` and no ClickHouse DDL — so take rate, payment mix, why trips cancel, and anything per tier are unanswerable in the only store Superset may read |
+| Money is `Float64` in ClickHouse (F3a) | SummingMergeTree sums `revenue` during background merges in an uncontrolled order; Postgres is `numeric(10,2)` and the warehouse is not, so revenue is non-deterministic at the cent level |
+| No `event_id` on any event (F6) | A replayed sink batch is indistinguishable from a genuine repeated status, and `trip_events_local` is a plain ReplicatedMergeTree that will not dedupe it. Also fails our own §3.3 correlation-id rule |
+| Every rollup filters `completed` (F7) | Cancellations and unmatched requests appear in no aggregate we produce — fulfilment rate, the most basic health metric, needs a self-join over a year of raw events |
+| No driver-arrival timestamp (F2) | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
+| A driver can never decline (F5) | Dispatch assigns directly, so acceptance rate, offers per match and time-to-match do not exist. Real platforms offer with a deadline and re-offer on decline |
+| Payments are two columns on `trips` (F4) | Real platforms model payment as an append-only record (method, amount, status, refunds, adjustments); ours cannot express a failed or refunded charge, and overwriting the column would destroy the history |
 | `trips` is one unpartitioned table | At 7 days x 655k/day the archiver deletes by row instead of dropping a partition — bloat and vacuum pressure at exactly the scale we intend to prove |
 | `driver_positions`: monthly partition, 3-day TTL | TTL deletes inside parts rather than dropping partitions; at full-fleet tick rate this is the heaviest table in the stack |
 | ksqlDB is empty | Deployed and authenticated, zero streams registered — DBeaver connects and correctly shows nothing. The only bar today is "server RUNNING" |
@@ -151,44 +158,75 @@ HAProxy change needs a re-render, so it only takes effect then.
 
 ---
 
-## Step 2 — Schema design review (writing only, no code)
+## Step 2 — Schema research and improvement proposals (writing only)
 
-Produce `docs/schema-review.md`: every finding below argued accept or
-reject, with a reason. This is the step that decides what steps 3–5 build,
-so it is worth doing carefully and it costs no server time.
+DONE — 2026-09-25, local. Deliverable: `docs/schema-review.md`.
 
-Reviewed against how real ride-hail platforms model this domain (a trip is
-8–10 state transitions; payment is its own entity; telemetry streams to the
-warehouse, never to OLTP):
+Not a review of a schema already assumed sound. The question asked was:
+where is this schema weak against how real ride-hail platforms actually
+model the domain, and what concretely closes the gap. Section 1 of the
+deliverable lists every source with what it contributed — Uber's own
+engineering and product material (H3, upfront pricing, the guest-rides
+dispatch states, Schemaless), a complete 14-table reference model, the
+dispatch/acceptance literature, marketplace-ledger practice, Kafka
+envelope practice, Altinity on ClickHouse money types, and Kimball on
+fact grain.
 
-1. **`arrived_at` on trips** — driver reached pickup. Without it, rider wait
-   time and "cancelled after driver arrived" cannot be derived. Also implies
-   an `arrived` lifecycle symbol across all three stores.
-2. **`payments` table** — one row per charge attempt: trip, method, gross,
-   platform fee, driver payout, status, timestamps. Today `payment_method`
-   and `driver_payout` sit on `trips` and cannot express failure or refund.
-3. **Partition `trips` by month on `requested_at`** — lets the archiver
-   drop partitions instead of deleting rows at full scale.
-4. **Driver accept / decline** — dispatch assigns directly today; real
-   platforms offer and the driver may decline, which is where acceptance
-   rate comes from. Decide explicitly whether this simulation wants it.
-5. **Cancellation fee** — a real consequence of cancelling after arrival;
-   only expressible once (1) exists.
-6. **`drivers.rating` / `passengers.rating`** — denormalized aggregates of
-   `trip_ratings`, recomputed in bulk. Confirm that is intended and
-   documented rather than accidental.
+Fourteen findings, F1–F14. Three of them end in "keep what we have", with
+the reason. The rest are ordered into three tiers in section 4:
 
-**Test:** LOCAL — review only.
+**Tier 1 — steps 3–5 build these.** F1 four columns Postgres knows never
+reach Kafka or ClickHouse (take rate, payment mix, cancellation reason,
+vehicle tier are all unanswerable in the warehouse) · F3a ClickHouse money
+is `Float64` and SummingMergeTree sums it during merges, so revenue is
+non-deterministic at the cent level · F6 no `event_id` or correlation id
+on any event, so a replayed batch is indistinguishable from real repeated
+status · F7 no trip-grain fact, so every rollup filters `completed` and
+cancellations are invisible in every aggregate we produce · F2 no
+`arrived` state, so wait time and post-arrival cancellation cannot be
+derived · F11 `passenger_count` is produced on the wire and discarded.
 
-**Done when:** every item above is accept/reject with a written reason, and
-accepted items have a named target table/column.
+**Tier 2 — if steps 3–5 come in under budget.** F5 `dispatch_offers` and
+driver decline · F3b `fare_components` · F4 append-only `payments` and
+`driver_earnings` · F8 Type 1 dimensions from the existing CDC topics ·
+F14 `trip_ratings` into the warehouse.
+
+**Tier 3 — recorded, not built for v1.** F9 H3 as an additive second
+spatial key · F12 calibration provenance · F10 driver documents.
+
+**Rejected, with reasons written down:** the `ride_requests`/`trips`
+split, a full double-entry ledger, Kimball Type 2 dimensions, a Postgres
+`surge_multipliers` table, integer minor units for money.
+
+**Test:** LOCAL — writing only, no server time.
+
+**Done when:** every finding is accept or reject with a written reason and
+a named target table/column, and each one cites the source it came from. ✔
+
+**Two decisions left open** (section 6): whether F5's driver decline is in
+scope at all — it is the only proposal that changes a service's core loop
+and adds a topic — and whether F6's envelope goes on all six topics or
+only the four business-event ones, leaving the two high-volume telemetry
+streams bare.
 
 ---
 
 ## Step 3 — OLTP schema changes
 
-Migrations `013_*.sql` onward, one concern per file, for whatever step 2
-accepted. Existing migrations are never edited.
+Migrations `013_*.sql` onward, one concern per file. Existing migrations
+are never edited. Tier 1 of `docs/schema-review.md` is the scope:
+
+- `013` — `trips.arrived_at`, and `arrived` appended to the status CHECK
+  (F2). Append, never renumber: ClickHouse `Enum8` values already on disk
+  must stay valid.
+- `014` — `trips.passenger_count smallint NOT NULL DEFAULT 1` (F11).
+- `015` — `source_month` / `calibrated_at` on both calibration tables
+  (F12, Tier 3 but free to carry here).
+
+F1, F3a, F6 and F7 are Kafka and ClickHouse changes, not Postgres ones —
+they land in step 4, not here. Tier 2's tables (`dispatch_offers`,
+`fare_components`, `payments`, `driver_earnings`) get their own
+migrations only once the Tier 1 sequence is green.
 
 **Test:** LOCAL `make verify-sample` first (the sample stack applies real
 migrations), then DIONYSUS `make destroy && make up`.
@@ -202,8 +240,25 @@ passes, and no existing bar regressed.
 
 Any closed set or id added in step 3 must land in all three forms at once:
 Postgres `CHECK`, the `.avsc` enum, and the ClickHouse `Enum8` — same
-symbols, same spelling. Extend `test_assessment_standard.py` so the new
-sets and any new topic cannot drift either.
+symbols, same spelling. This is also where the Kafka/ClickHouse half of
+Tier 1 lands:
+
+- F1 — `driver_payout`, `payment_method`, `cancellation_reason`,
+  `requested_vehicle_type` added to `trip_lifecycle.avsc` (optional with
+  defaults, so the Registry sees a backward-compatible evolution) and to
+  `trip_events_local`.
+- F3a — every ClickHouse money column becomes `Decimal64(2)`, including
+  `revenue` in the three SummingMergeTree rollups. `surge_multiplier`
+  stays `Float64`; it is a ratio, not money.
+- F6 — `event_id` / `event_version` / `producer` / `correlation_id` on
+  the business-event records, and `event_id` carried into ClickHouse.
+- F7 — `trip_facts_local` and `fulfilment_hourly`.
+- F2/F11 — `arrived` and `passenger_count` mirrored from step 3.
+
+Extend `test_assessment_standard.py` so the new sets and any new topic
+cannot drift — and widen it to compare *column names* across the three
+stores for the trip entity, not only enum symbols. Comparing symbols is
+exactly why F1 went unnoticed.
 
 **Test:** LOCAL — `make verify-walk`.
 
@@ -214,10 +269,14 @@ sets and any new topic cannot drift either.
 
 ## Step 5 — Services write the new fields
 
-dispatch-service records arrival and the payment row; clickhouse-sink maps
-the new Avro fields to the new warehouse columns; generators populate
-whatever step 2 accepted. B7/M3 order still holds — durable write and cache
-write before the Kafka announce.
+dispatch-service emits the `arrived` transition with a realistic dwell
+before `in_progress`, and populates the four F1 fields it already computes
+onto the `trip_lifecycle` message. passenger-service carries
+`passenger_count` through to the trip row, and dispatch refuses a match
+where it exceeds the vehicle's `seats`. Every producer stamps the F6
+envelope. clickhouse-sink maps the new Avro fields to the new warehouse
+columns and dedupes on `event_id`. B7/M3 order still holds — durable write
+and cache write before the Kafka announce.
 
 **Test:** LOCAL `make verify-sample`; then DIONYSUS `make profile`.
 
@@ -239,6 +298,12 @@ fleet, `driver_positions` dominates everything else in the stack.
   that key does not serve well. Add a skip index or reconsider the key.
 - Measure real bytes/row at mid scale and project the full-scale footprint
   against the 96 GB per-node quota, with headroom.
+- Partition `trips` by month on `requested_at` in Postgres, so the
+  archiver drops partitions instead of deleting rows. Moved here from the
+  old step 2 list: it is a capacity decision, not a schema-design one.
+- Measure the F6 envelope's real cost on `driver_location` (~20,000
+  msg/s at full scale). If it does not pay for itself there, keep the
+  envelope on the four business-event topics only and write down why.
 
 **Test:** DIONYSUS — measure ingest rate and on-disk growth over a fixed
 window; extrapolate.
