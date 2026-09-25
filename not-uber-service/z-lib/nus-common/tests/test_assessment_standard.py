@@ -633,3 +633,32 @@ def test_prepare_writes_the_provenance_the_loader_reads():
     # It must land in the written columns, not just be computed.
     for block in re.findall(r"\[\[([^\]]+)\]\]\.to_csv", prepare):
         assert "source_month" in block, block
+
+
+def test_a_timed_tick_sets_its_clock_before_doing_the_work():
+    """city-service's two halves must not be able to starve each other.
+
+    consumer.commit() raised _NO_OFFSET mid-tick, the surrounding except
+    swallowed it, and everything after it was skipped - for the whole life
+    of the stack, because last_score was also after it and so the interval
+    never advanced. segment_traffic_updates sat at zero messages while
+    city_hotspots got 36,608, and the only symptom was a log line saying a
+    tick had failed.
+
+    The rule this encodes: an interval timer is advanced before the work it
+    guards, so a failure costs one interval rather than every future one.
+    """
+    source = (NUS / "m-service-city" / "city_service" / "__main__.py").read_text()
+    for clock, call in (("last_score", "_publish_scores"), ("last_traffic", "_update_traffic")):
+        guard = re.search(
+            rf"if now_monotonic - {clock} >=.*?\n(.*?)\n\n", source, re.S
+        )
+        assert guard, clock
+        body = guard.group(1)
+        assert f"{clock} = now_monotonic" in body, f"{clock} is never set in its own branch"
+        set_at = body.index(f"{clock} = now_monotonic")
+        work_at = body.index(call)
+        assert set_at < work_at, (
+            f"{clock} is advanced after {call}, so anything that raises in "
+            f"between disables this branch permanently"
+        )

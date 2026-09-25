@@ -283,8 +283,28 @@ class AvroTopicConsumer:
 
         Called after a batch has been handled, so a restart repeats at most
         that batch instead of losing it.
+
+        A commit with nothing new to record is not an error. librdkafka
+        answers that with _NO_OFFSET, and raising it here was doing real
+        damage in city-service: the commit sits mid-tick, so the exception
+        skipped the rest of the tick every time a tick happened to consume
+        nothing. The traffic update lives after it and therefore never ran
+        at all - segment_traffic_updates held zero messages on a stack that
+        had been up for hours - and the "when did I last publish" bookkeeping
+        after it never ran either, so scores republished on every tick
+        instead of every thirty seconds. Both were silent; the only visible
+        symptom was a log line saying the tick failed, which it had, for a
+        reason that was not a failure.
         """
-        self._consumer.commit(asynchronous=False)
+        try:
+            self._consumer.commit(asynchronous=False)
+        except KafkaException as err:
+            if err.args[0].code() == KafkaError._NO_OFFSET:
+                # Nothing consumed since the last commit. Normal on a quiet
+                # topic, and on a service that commits on a timer rather
+                # than per batch.
+                return
+            raise
 
     def close(self) -> None:
         """Leave the group cleanly, so the partitions move on at once."""

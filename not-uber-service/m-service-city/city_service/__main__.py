@@ -123,16 +123,24 @@ def main() -> int:
 
                 now_monotonic = time.monotonic()
 
+                # Each half owns its own clock, and the clock is set BEFORE
+                # the work rather than after. An exception between the two
+                # used to skip the traffic update entirely and leave
+                # last_score unset, so scores republished on every tick
+                # while segment_traffic_updates stayed empty for the whole
+                # life of the stack - two silent failures from one raised
+                # commit. Whatever goes wrong in one half now costs that
+                # half one interval, not the other half forever.
                 if now_monotonic - last_score >= score_seconds:
+                    last_score = now_monotonic
                     published += _publish_scores(
                         zones, grid, redis, producer, hotspot_ttl, hotspot_threshold
                     )
                     consumer.commit()
-                    last_score = now_monotonic
 
                 if now_monotonic - last_traffic >= traffic_minutes * 60:
-                    _update_traffic(zones, traffic_producer)
                     last_traffic = now_monotonic
+                    _update_traffic(zones, traffic_producer)
             except Exception:
                 # Confirmed live: a single QueryCanceled on UPDATE_TRAFFIC
                 # (statement_timeout=30s vs ST_Intersects over 172k ways)
