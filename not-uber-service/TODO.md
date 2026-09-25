@@ -133,13 +133,21 @@ Every criterion met. `avg_vertices` 100 and `axis_share` 0.715-0.727 (the
 ~0.71 §9.2 predicts for a real polyline on Manhattan's rotated grid)
 corroborate it; both are not-bars, not gates.
 
-**Defect found during this run — `make verify` is red on tiles.**
-`nyc.mbtiles` is 374M and `nus-tiles` reports healthy, but
-`GET /tiles/styles.json` through HAProxy returns curl 52 (empty reply,
-code 000) rather than 200 — and rather than the 503 the check's own
-message expects when a backend is missing. Not a step-1 criterion, but it
-blocks `make verify`, which steps 12 and 13 require green. Diagnose and
-fix before the scale steps.
+**Defect found during this run — fixed, needs confirming on the next
+bring-up.** `make verify` went red on tiles. The stack was fine: the same
+`/tiles/styles.json` returned 200 through the same HAProxy from `::1`,
+from the LAN address, from lb-a's container IP, and from inside
+nus-backbone — and empty only from `127.0.0.1`, the single address
+`tiles-health` hardcoded. Docker's published-port DNAT cannot send a
+loopback destination to a real interface while `route_localnet` is 0, so
+docker-proxy accepts and closes. `_wait-haproxy-pg-settled` had the same
+shape and survived only because `localhost` resolves to `::1` here.
+
+Both now read through nus-backbone, with a pytest guard
+(`test_health_checks.py`) that fails if either pattern returns. The
+HAProxy `timeout tunnel` warning the same investigation exposed is gone
+too. Re-run `make verify` on the next bring-up to confirm green — the
+HAProxy change needs a re-render, so it only takes effect then.
 
 ---
 
