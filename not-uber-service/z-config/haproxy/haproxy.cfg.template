@@ -240,7 +240,9 @@ listen ch_native
 # Grafana (f-infra-grafana) + self-hosted OSM tiles ---------------------------
 # Same origin as Grafana so the browser never talks to MapTiler. HTTP mode
 # is required for the path split; timeout tunnel keeps Grafana websockets
-# alive.
+# alive and lives on grafana_be — a frontend has no backend capability, so
+# HAProxy ignores it here and warns on every start ("'timeout tunnel' will
+# be ignored because frontend 'grafana_fe' has no backend capability").
 #
 # Strip /tiles/ on the tiles BACKEND, not here. HAProxy evaluates
 # use_backend AFTER http-request rules, so a frontend replace-path
@@ -251,7 +253,6 @@ frontend grafana_fe
     mode http
     option httplog
     option http-keep-alive
-    timeout tunnel 1h
     acl is_tiles path_beg /tiles/
     use_backend tiles if is_tiles
     default_backend grafana_be
