@@ -16,7 +16,14 @@ CREATE TABLE IF NOT EXISTS nus.trip_stats_daily_local ON CLUSTER nus_cluster
     day              Date,
     pickup_zone_id   LowCardinality(String),
     completed_trips  UInt64,
-    revenue          Float64,
+    -- Decimal64(2), not Float64: this column is summed inside background
+    -- merges in an order nobody controls, and float addition is not
+    -- associative, so the stored total depended on merge history - the
+    -- same values in two orders measurably differ. sum() over Decimal64
+    -- widens to Decimal128, so the view below casts back explicitly
+    -- rather than relying on an implicit one.
+    revenue          Decimal64(2),
+    payout_total     Decimal64(2),
     surge_sum        Float64,
     route_km_total   Float64,
     overrun_trips    UInt64
@@ -32,7 +39,8 @@ SELECT
     toDate(hour)             AS day,
     pickup_zone_id,
     sum(completed_trips)     AS completed_trips,
-    sum(revenue)              AS revenue,
+    toDecimal64(sum(revenue), 2)      AS revenue,
+    toDecimal64(sum(payout_total), 2) AS payout_total,
     sum(surge_sum)            AS surge_sum,
     sum(route_km_total)       AS route_km_total,
     sum(overrun_trips)        AS overrun_trips
@@ -54,7 +62,7 @@ CREATE TABLE IF NOT EXISTS nus.od_matrix_daily_local ON CLUSTER nus_cluster
     pickup_zone_id    LowCardinality(String),
     dropoff_zone_id   LowCardinality(String),
     completed_trips   UInt64,
-    revenue           Float64,
+    revenue           Decimal64(2),
     route_km_total    Float64
 )
 ENGINE = ReplicatedSummingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
@@ -69,7 +77,7 @@ SELECT
     pickup_zone_id,
     dropoff_zone_id,
     count()                     AS completed_trips,
-    sum(ifNull(fare_final, 0))  AS revenue,
+    toDecimal64(sum(ifNull(fare_final, toDecimal64(0, 2))), 2) AS revenue,
     sum(ifNull(route_km, 0))    AS route_km_total
 FROM nus.trip_events_local
 WHERE status = 'completed'

@@ -69,7 +69,7 @@ source; the finding ids below point into it.
 | Gap | Why it matters |
 | --- | --- |
 | Four `trips` columns never leave Postgres (F1) | `driver_payout`, `payment_method`, `cancellation_reason`, `requested_vehicle_type` are in no `.avsc` and no ClickHouse DDL — so take rate, payment mix, why trips cancel, and anything per tier are unanswerable in the only store Superset may read |
-| Money is `Float64` in ClickHouse (F3a) | SummingMergeTree sums `revenue` during background merges in an uncontrolled order; Postgres is `numeric(10,2)` and the warehouse is not, so revenue is non-deterministic at the cent level |
+| Money is `Float64` in ClickHouse (F3a) | Float addition is not associative and SummingMergeTree sums `revenue` during background merges in an uncontrolled order, so the total depends on merge history — measured at ~1e-9 relative, so sub-cent, but it never reconciles against Postgres's `numeric(10,2)` and carries a float tail onto every dashboard |
 | No `event_id` on any event (F6) | A replayed sink batch is indistinguishable from a genuine repeated status, and `trip_events_local` is a plain ReplicatedMergeTree that will not dedupe it. Also fails our own §3.3 correlation-id rule |
 | Every rollup filters `completed` (F7) | Cancellations and unmatched requests appear in no aggregate we produce — fulfilment rate, the most basic health metric, needs a self-join over a year of raw events |
 | No driver-arrival timestamp (F2) | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
@@ -179,7 +179,8 @@ the reason. The rest are ordered into three tiers in section 4:
 reach Kafka or ClickHouse (take rate, payment mix, cancellation reason,
 vehicle tier are all unanswerable in the warehouse) · F3a money is
 `Float64` in ClickHouse and `double` on the wire, and SummingMergeTree
-sums it during merges, so revenue is non-deterministic at the cent level ·
+sums it during merges in an uncontrolled order, so revenue never
+reconciles exactly against Postgres ·
 F6 no `event_id` or correlation id on any event, so a replayed batch is
 indistinguishable from real repeated status · F7 no trip-grain fact, so
 every rollup filters `completed` and cancellations are invisible in every

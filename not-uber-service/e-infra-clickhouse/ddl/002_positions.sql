@@ -14,6 +14,13 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
     -- length prefix would only cost more to store and compare for no
     -- benefit. A row that does not fit this width is a bug upstream, not
     -- something the warehouse should quietly accept.
+    -- The message's own identity, from the Avro envelope every producer
+    -- stamps. UUID is 16 bytes against 36 for the text form, and the sink
+    -- refuses an id it has already written: ClickHouse does not deduplicate
+    -- on its own - ReplacingMergeTree only collapses eventually, only within
+    -- a partition, and only on merge - so uniqueness has to hold before the
+    -- warehouse or no count here can be trusted.
+    event_id      UUID,
     driver_id     FixedString(11),
     trip_id       Nullable(FixedString(21)),
     -- Enum, not LowCardinality(String): status is a closed set already
@@ -65,6 +72,13 @@ CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
 (
     -- rider_id is a passenger id (psg-NNNNNN) - see driver_positions above
     -- for why FixedString, not String.
+    -- The message's own identity, from the Avro envelope every producer
+    -- stamps. UUID is 16 bytes against 36 for the text form, and the sink
+    -- refuses an id it has already written: ClickHouse does not deduplicate
+    -- on its own - ReplacingMergeTree only collapses eventually, only within
+    -- a partition, and only on merge - so uniqueness has to hold before the
+    -- warehouse or no count here can be trusted.
+    event_id      UUID,
     rider_id      FixedString(11),
     trip_id       Nullable(FixedString(21)),
     lat           Float64,

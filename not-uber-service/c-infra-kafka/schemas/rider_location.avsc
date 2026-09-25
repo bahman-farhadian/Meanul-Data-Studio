@@ -4,6 +4,10 @@
   "namespace": "nus.events",
   "doc": "One position report from a passenger's phone during a trip. This is a separate stream from driver_location on purpose: a phone in a pocket reports at a different rate and with different accuracy than a driver's mounted device.",
   "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},
+    {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
+    {"name": "producer", "type": "string", "doc": "Which service sent this: driver-service, passenger-service, dispatch-service, city-service or bootstrap. The first question asked when a stream looks wrong is who wrote it."},
+    {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
     {"name": "rider_id", "type": "string", "doc": "The passenger this report is about."},
     {"name": "trip_id", "type": ["null", "string"], "default": null, "doc": "The trip in progress, or null when the passenger is only browsing."},
     {"name": "lat", "type": "double", "doc": "Latitude in degrees (WGS84)."},

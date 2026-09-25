@@ -9,6 +9,13 @@ CREATE TABLE IF NOT EXISTS nus.hotspot_history_local ON CLUSTER nus_cluster
     -- not a fixed-width format this codebase mints; period is a closed set
     -- already enforced by the Avro schema (DayPeriod) and by Postgres's
     -- own segment_traffic CHECK constraint.
+    -- The message's own identity, from the Avro envelope every producer
+    -- stamps. UUID is 16 bytes against 36 for the text form, and the sink
+    -- refuses an id it has already written: ClickHouse does not deduplicate
+    -- on its own - ReplacingMergeTree only collapses eventually, only within
+    -- a partition, and only on merge - so uniqueness has to hold before the
+    -- warehouse or no count here can be trusted.
+    event_id           UUID,
     zone_id            LowCardinality(String),
     period             Enum8('night' = 1, 'morning' = 2, 'afternoon' = 3, 'evening' = 4),
     demand_score       Float64,

@@ -4,6 +4,10 @@
   "namespace": "nus.events",
   "doc": "A passenger asks for a ride. This is what dispatch-service listens to. Keyed by trip_id.",
   "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},
+    {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
+    {"name": "producer", "type": "string", "doc": "Which service sent this: driver-service, passenger-service, dispatch-service, city-service or bootstrap. The first question asked when a stream looks wrong is who wrote it."},
+    {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
     {"name": "trip_id", "type": "string", "doc": "Id created by passenger-service for this request; it follows the trip to the end."},
     {"name": "rider_id", "type": "string", "doc": "The passenger asking for the ride."},
     {"name": "pickup_lat", "type": "double", "doc": "Where the passenger wants to be picked up."},
@@ -13,7 +17,7 @@
     {"name": "pickup_zone_id", "type": "string", "doc": "City zone of the pickup point. Dispatch uses it to look up the surge multiplier."},
     {"name": "dropoff_zone_id", "type": "string", "doc": "City zone of the dropoff point. Carried through trip_lifecycle to trip_events for OD-matrix analytics."},
     {"name": "passenger_count", "type": "int", "default": 1, "doc": "How many people will travel."},
-    {"name": "requested_vehicle_type", "type": "string", "default": "economy", "doc": "economy, xl or premium. dispatch-service matches within this tier only."},
+    {"name": "requested_vehicle_type", "type": {"type": "enum", "name": "VehicleType", "symbols": ["economy", "xl", "premium"]}, "default": "economy", "doc": "dispatch-service matches within this tier only. An enum rather than a free string, so it holds the same closed set as trips.requested_vehicle_type's CHECK and trip_events' Enum8 - the three-copy rule this repo already applies to every other closed set. fastavro decodes an enum as a plain string, so no consumer changes."},
     {"name": "requested_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the request was made. Always UTC."}
   ]
 }

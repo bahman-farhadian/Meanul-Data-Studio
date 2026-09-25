@@ -173,10 +173,24 @@ and no way to add one without changing the meaning of `fare_final`.
 same money is `Nullable(Float64)`, and `revenue Float64` in three
 `SummingMergeTree` rollups. Altinity's measurement of exactly this case:
 summing `Float64` yields `499693.60500000004` where `Decimal64(3)` yields
-`499693.605`. SummingMergeTree performs that sum during background merges,
-in an order nobody controls, so **our revenue figure is not deterministic
-at the cent level and two replicas can legitimately disagree**. This is
-the clearest outright defect in the schema.
+`499693.605`.
+
+Measured directly on ClickHouse 24.8 rather than argued from the blog
+post: the same 100,000 values summed forward and then backward give
+`386991.20000000513` and `386991.2000000049`. Float addition is not
+associative, and SummingMergeTree performs its sums during background
+merges in an order nobody controls, so the stored total depends on merge
+history.
+
+**The size of the problem, stated accurately rather than dramatically.**
+The drift is on the order of 1e-9 relative, so this is not usually a wrong
+cent — an earlier draft of this review said "non-deterministic at the cent
+level" and that was too strong. What it actually is: a revenue figure that
+does not equal itself across two replicas, never reconciles exactly
+against Postgres's `numeric(10,2)`, and renders on a dashboard with a
+float tail. `Decimal64(2)` is exact and reconciles. That is reason enough
+to change a type that should have matched Postgres anyway, and it is a
+smaller claim than the one this document first made.
 
 **Proposal — ACCEPT, in two independent pieces.**
 

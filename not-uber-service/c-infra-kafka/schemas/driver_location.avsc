@@ -4,6 +4,10 @@
   "namespace": "nus.events",
   "doc": "One position report from one driver's device. Sent every few seconds while the driver is online. Keyed by driver_id so that all reports about one driver stay in order.",
   "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},
+    {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
+    {"name": "producer", "type": "string", "doc": "Which service sent this: driver-service, passenger-service, dispatch-service, city-service or bootstrap. The first question asked when a stream looks wrong is who wrote it."},
+    {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
     {"name": "driver_id", "type": "string", "doc": "The driver this report is about."},
     {"name": "trip_id", "type": ["null", "string"], "default": null, "doc": "The trip the driver is working on, or null when the driver is free."},
     {"name": "status", "type": {"type": "enum", "name": "DriverStatus", "symbols": ["offline", "idle", "en_route_pickup", "on_trip"]}, "doc": "What the driver was doing at the moment of the report."},

@@ -23,6 +23,16 @@
 # capped at 263 possible keys (one per real TLC zone) regardless of fleet
 # or demand scale, so it stays at one partition per broker.
 #
+# dispatch_offers is the one topic that does not size with an entity count
+# or with trip volume: it carries one message per offer, and a request can
+# be offered to several drivers before one accepts. Its volume is trip
+# volume multiplied by offers-per-match, which is a marketplace property
+# nobody can predict from the outside - it rises exactly when supply is
+# short, which is also when everything else is busiest. Six partitions
+# matches trip_lifecycle for now; the real ratio is measured at mid scale
+# before the full-scale run and this number revisited then, not guessed
+# harder now.
+#
 # retention_hours overrides exist because one default never fit every
 # topic here once real scale was actually flowing: driver_location alone
 # at full scale (~106,000 drivers, ~60% online, one report every
@@ -42,5 +52,6 @@ driver_location	12	6	driver_id	where each driver is, every few seconds
 rider_location	12	12	rider_id	where each rider's phone is during a trip
 trip_requests	6	-	trip_id	a passenger asks for a ride
 trip_lifecycle	6	-	trip_id	every status change of a trip, up to the final fare
+dispatch_offers	6	-	trip_id	every offer dispatch made, and what the driver said
 city_hotspots	3	-	zone_id	demand score per city zone, published by city-service
 segment_traffic_updates	3	-	zone_id	a real congestion-factor update, published by city-service

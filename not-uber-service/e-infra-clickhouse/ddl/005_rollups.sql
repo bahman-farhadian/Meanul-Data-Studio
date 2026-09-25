@@ -16,7 +16,16 @@ CREATE TABLE IF NOT EXISTS nus.trip_stats_hourly_local ON CLUSTER nus_cluster
     -- LowCardinality(String), not FixedString - see 002_positions.sql.
     pickup_zone_id   LowCardinality(String),
     completed_trips  UInt64,
-    revenue          Float64,
+    -- Decimal64(2), not Float64: this column is summed inside background
+    -- merges in an order nobody controls, and float addition is not
+    -- associative, so the stored total depended on merge history - the
+    -- same values in two orders measurably differ. sum() over Decimal64
+    -- widens to Decimal128, so the view below casts back explicitly
+    -- rather than relying on an implicit one.
+    revenue          Decimal64(2),
+    -- Driver pay at the same grain, so take rate is a rollup-level answer
+    -- rather than something only the raw event table can give.
+    payout_total     Decimal64(2),
     -- Surge added up, not averaged: an average of averages would be wrong.
     -- Divide by completed_trips at query time to get the real average.
     surge_sum        Float64,
@@ -46,7 +55,8 @@ SELECT
     toStartOfHour(event_time)                     AS hour,
     pickup_zone_id,
     count()                                       AS completed_trips,
-    sum(ifNull(fare_final, 0))                    AS revenue,
+    toDecimal64(sum(ifNull(fare_final, toDecimal64(0, 2))), 2)    AS revenue,
+    toDecimal64(sum(ifNull(driver_payout, toDecimal64(0, 2))), 2) AS payout_total,
     sum(ifNull(surge_multiplier, 1))              AS surge_sum,
     sum(ifNull(route_km, 0))                      AS route_km_total,
     countIf(took_longer_than_predicted = 1)       AS overrun_trips

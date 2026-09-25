@@ -4,6 +4,10 @@
   "namespace": "nus.events",
   "doc": "One congestion-factor update, as computed by city-service from real speed reports and applied to every road segment in one zone for one part of the day. This is the event trail behind segment_traffic (Postgres), which only ever holds the current factor - this is what makes a real history of it possible.",
   "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},
+    {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
+    {"name": "producer", "type": "string", "doc": "Which service sent this: driver-service, passenger-service, dispatch-service, city-service or bootstrap. The first question asked when a stream looks wrong is who wrote it."},
+    {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
     {"name": "zone_id", "type": "string", "doc": "The city zone every updated segment sits inside."},
     {"name": "period", "type": {"type": "enum", "name": "DayPeriod", "symbols": ["night", "morning", "afternoon", "evening"]}, "doc": "Which six-hour part of the day this factor applies to."},
     {"name": "congestion_factor", "type": "double", "doc": "The smoothed factor just applied - 1.0 is free-flow, higher is more congested. The same number every intersecting segment's cost was multiplied by."},

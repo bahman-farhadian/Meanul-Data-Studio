@@ -1,0 +1,24 @@
+{
+  "type": "record",
+  "name": "DispatchOffer",
+  "namespace": "nus.events",
+  "doc": "One offer of one trip to one driver, and what became of it. Dispatch offers a ride to a single candidate with a deadline; the driver accepts, declines, or says nothing until it expires, and the request then moves to the next candidate. Keyed by trip_id so the whole offer chain for one request stays ordered on one partition, the same rule trip_lifecycle follows. This stream is the matching funnel - acceptance rate, offers per match, and time-to-match all come from here and from nowhere else.",
+  "fields": [
+    {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},
+    {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
+    {"name": "producer", "type": "string", "doc": "Which service sent this: driver-service, passenger-service, dispatch-service, city-service or bootstrap. The first question asked when a stream looks wrong is who wrote it."},
+    {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
+    {"name": "trip_id", "type": "string", "doc": "The request being offered."},
+    {"name": "driver_id", "type": "string", "doc": "The driver this offer went to."},
+    {"name": "sequence", "type": "int", "doc": "Position in the offer chain for this trip, starting at 1. A chain of five means dispatch had to ask five drivers before one took it - which is the supply signal, not a detail."},
+    {"name": "status", "type": {"type": "enum", "name": "OfferStatus", "symbols": ["offered", "accepted", "declined", "expired", "cancelled"]}, "doc": "What became of the offer. 'expired' and 'declined' are kept apart on purpose: a driver who said no is a different signal from a driver whose phone was face-down."},
+    {"name": "pickup_zone_id", "type": ["null", "string"], "default": null, "doc": "Zone of the pickup point, so the funnel rollup can be read per zone without joining back to the trip."},
+    {"name": "eta_seconds", "type": ["null", "int"], "default": null, "doc": "Predicted driving time from the driver to the pickup point at the moment of the offer. Stored as offered, never recomputed: the acceptance literature finds pickup time is what depresses acceptance, so this is an input to the decision, not a description of it."},
+    {"name": "distance_to_pickup_m", "type": ["null", "int"], "default": null, "doc": "Straight-line metres from the driver to the pickup point when the offer was made."},
+    {"name": "surge_multiplier", "type": ["null", "double"], "default": null, "doc": "The multiplier in force in the pickup zone when the offer was made. The other half of the acceptance question - surge is found to raise acceptance where a long pickup drive lowers it."},
+    {"name": "offered_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the offer went out. Always UTC."},
+    {"name": "expires_at", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the offer lapses if the driver says nothing."},
+    {"name": "responded_at", "type": ["null", {"type": "long", "logicalType": "timestamp-millis"}], "default": null, "doc": "When the driver answered. Null for an offer that expired unanswered."},
+    {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When this outcome was recorded. Always UTC."}
+  ]
+}
