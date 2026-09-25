@@ -552,3 +552,32 @@ def test_store_live_state_before_announce_is_required():
     text = _standard()
     assert "store_live_state" in text
     assert "announce" in text
+
+
+def test_archiver_prunes_every_child_of_trips():
+    """A table referencing trips must be pruned before trips itself.
+
+    None of these foreign keys cascade, on purpose: a cascade makes it
+    possible to delete a trip's whole history by accident. The cost of that
+    choice is that the archiver has to know about every child table, and
+    forgetting one does not fail until the archiver actually runs against
+    real data and the delete hits the foreign key.
+    """
+    children = set()
+    for path in _migrations():
+        text = path.read_text()
+        for match in re.finditer(
+            r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\n\);", text, re.S
+        ):
+            table, body = match.group(1), match.group(2)
+            if table != "trips" and "REFERENCES trips(trip_id)" in body:
+                children.add(table)
+    assert children, "expected at least trip_ratings to reference trips"
+
+    archiver = (
+        NUS / "o-service-archiver" / "archiver_service" / "__main__.py"
+    ).read_text()
+    missing = sorted(t for t in children if f"DELETE FROM {t} " not in archiver)
+    assert missing == [], (
+        f"these reference trips(trip_id) but the archiver never deletes them: {missing}"
+    )

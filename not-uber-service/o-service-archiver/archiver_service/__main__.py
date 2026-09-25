@@ -46,10 +46,14 @@ PRUNE_BATCH_SQL = """
      LIMIT %(batch_size)s
 """
 
-# trip_ratings.trip_id REFERENCES trips(trip_id) with no ON DELETE CASCADE
-# - ratings for a pruned trip must go first, or the trips delete fails its
-# own foreign key.
+# Both of these reference trips(trip_id) with no ON DELETE CASCADE, so a
+# pruned trip's children go first or the trips delete fails its own foreign
+# key. Deliberately not cascading: a cascade makes it possible to delete a
+# trip's whole history by accident, and keeping the order explicit here is
+# what makes the dependency visible to whoever adds the next child table.
+# test_archiver_prunes_every_child_of_trips fails if one is forgotten.
 DELETE_RATINGS_SQL = "DELETE FROM trip_ratings WHERE trip_id = ANY(%(trip_ids)s)"
+DELETE_OFFERS_SQL = "DELETE FROM dispatch_offers WHERE trip_id = ANY(%(trip_ids)s)"
 DELETE_TRIPS_SQL = "DELETE FROM trips WHERE trip_id = ANY(%(trip_ids)s)"
 
 
@@ -61,6 +65,7 @@ def _prune_batch(retention: str, batch_size: int) -> int:
             return 0
         with conn.cursor() as cur:
             cur.execute(DELETE_RATINGS_SQL, {"trip_ids": trip_ids})
+            cur.execute(DELETE_OFFERS_SQL, {"trip_ids": trip_ids})
             cur.execute(DELETE_TRIPS_SQL, {"trip_ids": trip_ids})
         conn.commit()
     return len(trip_ids)
