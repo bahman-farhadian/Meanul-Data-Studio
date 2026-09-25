@@ -90,3 +90,53 @@ def test_no_value_in_the_payload_needs_a_custom_encoder():
         if not isinstance(value, allowed)
     }
     assert offenders == {}, f"not JSON-native: {offenders}"
+
+
+def test_a_pre_arrival_cancel_can_never_claim_a_no_show():
+    """Two of the six cancellation reasons require the car to be there.
+
+    rider_no_show was in the list dispatch draws from when a trip is
+    cancelled BEFORE the driver arrived, so a driver could report a no-show
+    for a kerb they never reached. Quality bar Q5 caught it on its first
+    real run - one row in a few thousand, which is exactly the rate at
+    which a random choice out of three picks one particular value on the
+    small number of live cancellations that had happened by then.
+    """
+    from dispatch_service.__main__ import (  # noqa: PLC0415
+        DRIVER_ARRIVED_REASON,
+        DRIVER_CANCEL_REASONS,
+        PASSENGER_ARRIVED_REASON,
+        PASSENGER_CANCEL_REASONS,
+    )
+
+    post_arrival_only = {"rider_no_show", "wait_too_long"}
+    assert not post_arrival_only & set(DRIVER_CANCEL_REASONS)
+    assert not post_arrival_only & set(PASSENGER_CANCEL_REASONS)
+    assert DRIVER_ARRIVED_REASON in post_arrival_only
+    assert PASSENGER_ARRIVED_REASON in post_arrival_only
+    # And the two sides never share a reason, or "whose problem was this"
+    # stops being answerable from the column.
+    assert not set(DRIVER_CANCEL_REASONS) & set(PASSENGER_CANCEL_REASONS)
+    assert DRIVER_ARRIVED_REASON != PASSENGER_ARRIVED_REASON
+
+
+def test_every_reason_dispatch_can_emit_is_in_the_migration_check():
+    """The CHECK constraint is the authority; dispatch must stay inside it."""
+    import re  # noqa: PLC0415
+
+    from dispatch_service.__main__ import (  # noqa: PLC0415
+        DRIVER_ARRIVED_REASON,
+        DRIVER_CANCEL_REASONS,
+        PASSENGER_ARRIVED_REASON,
+        PASSENGER_CANCEL_REASONS,
+    )
+
+    migrations = DISPATCH.parent / "h-bootstrap" / "migrations"
+    sql = (migrations / "009_cancellation_reason.sql").read_text()
+    allowed = set(re.findall(r"'(\w+)'", sql))
+    emitted = set(DRIVER_CANCEL_REASONS) | set(PASSENGER_CANCEL_REASONS) | {
+        DRIVER_ARRIVED_REASON, PASSENGER_ARRIVED_REASON,
+    }
+    assert emitted <= allowed, f"not in the CHECK: {sorted(emitted - allowed)}"
+    # Every allowed reason must be reachable, or the vocabulary is fiction.
+    assert emitted == allowed, f"never emitted: {sorted(allowed - emitted)}"

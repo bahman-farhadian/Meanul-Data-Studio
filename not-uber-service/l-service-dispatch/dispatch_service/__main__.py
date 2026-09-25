@@ -89,8 +89,19 @@ INSERT_OFFER = """
 # Which side cancelled shapes why - a driver who bails does so for a
 # different reason than a rider who gives up waiting, and conflating them
 # would make the data lie about which problem is actually happening.
-DRIVER_CANCEL_REASONS = ["rider_no_show", "driver_too_far", "vehicle_issue"]
-PASSENGER_CANCEL_REASONS = ["changed_mind", "found_alternative", "wait_too_long"]
+#
+# Split by PHASE as well as by side, because two of the six reasons are
+# only possible once the car is at the kerb. rider_no_show used to be in
+# the pre-arrival list, so a driver could report a no-show for a pickup
+# they had not reached yet - caught by quality bar Q5 on its first real
+# run against live traffic, one row in a few thousand. Same for
+# wait_too_long: waiting too long needs something to have waited for.
+DRIVER_CANCEL_REASONS = ["driver_too_far", "vehicle_issue"]
+PASSENGER_CANCEL_REASONS = ["changed_mind", "found_alternative"]
+# Only reachable from the 'arrived' state, and the state machine is what
+# guarantees that rather than a comment.
+DRIVER_ARRIVED_REASON = "rider_no_show"
+PASSENGER_ARRIVED_REASON = "wait_too_long"
 
 
 def find_candidates(
@@ -418,10 +429,10 @@ def main() -> int:
                     # A driver who gives up at the kerb is reporting a
                     # no-show, not a long drive - the reason has to match
                     # where in the trip it happened or the data lies.
-                    cancellation_reason = ("rider_no_show" if previous == "arrived"
+                    cancellation_reason = (DRIVER_ARRIVED_REASON if previous == "arrived"
                                            else rng.choice(DRIVER_CANCEL_REASONS))
                 elif status == "cancelled_by_passenger":
-                    cancellation_reason = ("wait_too_long" if previous == "arrived"
+                    cancellation_reason = (PASSENGER_ARRIVED_REASON if previous == "arrived"
                                            else rng.choice(PASSENGER_CANCEL_REASONS))
 
                 if status not in FINISHED:
