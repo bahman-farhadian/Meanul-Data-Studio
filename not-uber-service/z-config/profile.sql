@@ -53,15 +53,25 @@ FROM nus.trip_events;
 SELECT '=== 5. trip_events — the range of every measure ===' AS section FORMAT TSVRaw;
 -- min / p50 / p95 / max decides axis scale, bucket width, and whether a
 -- distribution is worth a histogram or collapses to a single bar.
+--
+-- The money rows are cast to Float64 here and only here. A UNION has to
+-- find one type for the column, and Decimal and Float have no lossless
+-- common type - which is exactly the property that made Decimal the right
+-- storage type in the first place. This is a display range, not a sum, so
+-- the cast costs nothing that matters; section 17 does the arithmetic that
+-- has to be exact, and does it in Decimal.
 SELECT 'route_km' AS measure, round(min(route_km),2) AS min, round(quantile(0.5)(route_km),2) AS p50,
        round(quantile(0.95)(route_km),2) AS p95, round(max(route_km),2) AS max, round(avg(route_km),2) AS mean
 FROM nus.trip_events WHERE route_km IS NOT NULL
-UNION ALL SELECT 'fare_final', round(min(fare_final),2), round(quantile(0.5)(fare_final),2),
-       round(quantile(0.95)(fare_final),2), round(max(fare_final),2), round(avg(fare_final),2)
+UNION ALL SELECT 'fare_final', round(toFloat64(min(fare_final)),2), round(toFloat64(quantile(0.5)(fare_final)),2),
+       round(toFloat64(quantile(0.95)(fare_final)),2), round(toFloat64(max(fare_final)),2), round(toFloat64(avg(fare_final)),2)
 FROM nus.trip_events WHERE fare_final IS NOT NULL
-UNION ALL SELECT 'fare_estimate', round(min(fare_estimate),2), round(quantile(0.5)(fare_estimate),2),
-       round(quantile(0.95)(fare_estimate),2), round(max(fare_estimate),2), round(avg(fare_estimate),2)
+UNION ALL SELECT 'fare_estimate', round(toFloat64(min(fare_estimate)),2), round(toFloat64(quantile(0.5)(fare_estimate)),2),
+       round(toFloat64(quantile(0.95)(fare_estimate)),2), round(toFloat64(max(fare_estimate)),2), round(toFloat64(avg(fare_estimate)),2)
 FROM nus.trip_events WHERE fare_estimate IS NOT NULL
+UNION ALL SELECT 'driver_payout', round(toFloat64(min(driver_payout)),2), round(toFloat64(quantile(0.5)(driver_payout)),2),
+       round(toFloat64(quantile(0.95)(driver_payout)),2), round(toFloat64(max(driver_payout)),2), round(toFloat64(avg(driver_payout)),2)
+FROM nus.trip_events WHERE driver_payout IS NOT NULL
 UNION ALL SELECT 'surge_multiplier', round(min(surge_multiplier),2), round(quantile(0.5)(surge_multiplier),2),
        round(quantile(0.95)(surge_multiplier),2), round(max(surge_multiplier),2), round(avg(surge_multiplier),2)
 FROM nus.trip_events WHERE surge_multiplier IS NOT NULL
@@ -158,3 +168,112 @@ SELECT
     (SELECT round(sum(fare_final),0) FROM nus.trip_events WHERE status='completed') AS direct_revenue,
     (SELECT count() FROM nus.trip_stats_hourly)                                    AS rollup_rows,
     (SELECT uniqExact((hour, pickup_zone_id)) FROM nus.trip_stats_hourly)          AS distinct_hour_zone;
+
+SELECT '=== 13. uniqueness — the bar the whole envelope rests on ===' AS section FORMAT TSVRaw;
+-- ClickHouse does not deduplicate on its own, so every count above is only
+-- as trustworthy as this. rows and unique_events must be equal, and
+-- zero_event_id must be zero, on every table. A gap means a replayed batch
+-- was written twice and the sink's event_id guard did not catch it.
+SELECT * FROM (
+    SELECT 'trip_events' AS tbl, count() AS rows, uniqExact(event_id) AS unique_events,
+           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) AS zero_event_id
+    FROM nus.trip_events
+    UNION ALL SELECT 'dispatch_offers', count(), uniqExact(event_id),
+           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
+    FROM nus.dispatch_offers
+    UNION ALL SELECT 'driver_positions', count(), uniqExact(event_id),
+           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
+    FROM nus.driver_positions
+    UNION ALL SELECT 'rider_positions', count(), uniqExact(event_id),
+           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
+    FROM nus.rider_positions
+    UNION ALL SELECT 'hotspot_history', count(), uniqExact(event_id),
+           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
+    FROM nus.hotspot_history
+) ORDER BY tbl;
+
+SELECT '=== 14. the matching funnel — what dispatch_offers makes answerable ===' AS section FORMAT TSVRaw;
+-- None of these numbers existed before drivers could refuse. Acceptance
+-- rate well outside 0.3-0.9, or offers_per_match at exactly 1.00, means the
+-- chain is not really running.
+SELECT
+    count()                                                   AS offers,
+    countIf(status = 'accepted')                              AS accepted,
+    countIf(status = 'declined')                              AS declined,
+    countIf(status = 'expired')                               AS expired,
+    round(countIf(status = 'accepted') / count(), 3)          AS acceptance_rate,
+    round(count() / nullIf(countIf(status = 'accepted'), 0), 2) AS offers_per_match,
+    round(avg(eta_seconds))                                   AS mean_eta_s,
+    round(avgIf(eta_seconds, status = 'accepted'))            AS mean_eta_accepted_s,
+    round(avg(response_s), 1)                                 AS mean_response_s
+FROM nus.dispatch_offers;
+
+SELECT '=== 15. fulfilment — the trips that did NOT complete ===' AS section FORMAT TSVRaw;
+-- Every rollup used to filter status = completed, so none of this appeared
+-- in any aggregate at all.
+SELECT
+    sum(trips_ended)                                          AS ended,
+    -- Aliases deliberately differ from the column names: an alias that
+    -- shadows the column it aggregates makes ClickHouse read the next
+    -- sum() as nested aggregation and refuse the whole query.
+    sum(completed)                                            AS done,
+    sum(cancelled_by_passenger)                               AS canc_rider,
+    sum(cancelled_by_driver)                                  AS canc_driver,
+    sum(no_driver_found)                                      AS no_drv,
+    sum(cancelled_after_arrival)                              AS at_kerb,
+    round(sum(completed) / nullIf(sum(trips_ended), 0), 3)    AS fulfilment_rate,
+    round(sum(match_s_sum) / nullIf(sum(matched_trips), 0))   AS mean_time_to_match_s,
+    round(sum(wait_s_sum) / nullIf(sum(waited_trips), 0))     AS mean_rider_wait_s
+FROM nus.fulfilment_hourly;
+
+SELECT '=== 16. trip_facts — one row per trip, and the milestone clock ===' AS section FORMAT TSVRaw;
+-- match_s/accept_s/arrive_s/wait_s/ride_s must all be non-negative. A
+-- negative one is a state-machine bug: they are stored Int32 precisely so
+-- it shows as a negative number rather than wrapping into a huge positive.
+SELECT
+    count()                                                   AS trips,
+    uniqExact(trip_id)                                        AS unique_trips,
+    countIf(match_s < 0 OR accept_s < 0 OR arrive_s < 0
+            OR wait_s < 0 OR ride_s < 0)                      AS negative_lags,
+    round(avg(match_s), 1)                                    AS avg_match_s,
+    round(avg(arrive_s), 1)                                   AS avg_arrive_s,
+    round(avg(wait_s), 1)                                     AS avg_wait_s,
+    round(avg(ride_s), 1)                                     AS avg_ride_s
+FROM nus.trip_facts FINAL;
+
+SELECT '=== 17. money — exact decimals, and the real take rate ===' AS section FORMAT TSVRaw;
+-- take_rate should land near PLATFORM_COMMISSION_PCT. The sums are exact
+-- rather than float-tailed, which is the point of Decimal64(2).
+SELECT
+    sum(revenue)                                              AS gross,
+    sum(payout_total)                                         AS driver_pay,
+    sum(revenue) - sum(payout_total)                          AS platform_take,
+    -- The ratio is cast to Float64 before dividing, unlike the sums above
+    -- it. Decimal division keeps the scale of the left operand, so a
+    -- Decimal(38,2) divided by a Decimal(38,2) truncates the answer to two
+    -- places: a real 0.2300 take rate printed as 0.22. The sums stay exact
+    -- because those are the numbers that have to reconcile; a displayed
+    -- ratio does not.
+    round(toFloat64(sum(revenue) - sum(payout_total))
+          / toFloat64(nullIf(sum(revenue), 0)), 4)            AS take_rate,
+    toTypeName(sum(revenue))                                  AS summed_type
+FROM nus.trip_stats_hourly;
+
+SELECT '=== 18. the fields that never used to leave PostgreSQL ===' AS section FORMAT TSVRaw;
+-- All four were in trips and in no .avsc and no DDL. A zero in any of these
+-- columns means the field is still not arriving.
+SELECT
+    countIf(driver_payout IS NOT NULL)                        AS has_driver_payout,
+    countIf(payment_method IS NOT NULL)                       AS has_payment_method,
+    countIf(cancellation_reason IS NOT NULL)                  AS has_cancel_reason,
+    countIf(requested_vehicle_type != 'economy')              AS non_default_tier,
+    countIf(passenger_count > 4)                              AS parties_needing_xl,
+    countIf(arrived_at IS NOT NULL)                           AS reached_the_kerb
+FROM nus.trip_events;
+
+SELECT '=== 19. tier vs party size — is seats a real constraint ===' AS section FORMAT TSVRaw;
+-- A party of 5 or 6 in economy or premium would be a dispatch bug: those
+-- tiers seat 4. This should be zero.
+SELECT requested_vehicle_type AS tier, passenger_count AS party, count() AS trips
+FROM nus.trip_events
+GROUP BY tier, party ORDER BY tier, party;
