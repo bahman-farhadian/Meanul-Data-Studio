@@ -165,6 +165,13 @@ def test_studio_contract_sections_and_roles():
         assert role in text, role
 
 
+def _migrations() -> list[Path]:
+    """Every migration, in the order the bootstrap applies them."""
+    found = sorted((NUS / "h-bootstrap" / "migrations").glob("*.sql"))
+    assert found, "no migrations found"
+    return found
+
+
 def _pg_check_symbols(sql: str, constraint: str) -> list[str]:
     match = re.search(
         rf"CONSTRAINT\s+{constraint}\s+CHECK\s*\(\s*\w+\s+IN\s*\(([^)]+)\)",
@@ -173,6 +180,68 @@ def _pg_check_symbols(sql: str, constraint: str) -> list[str]:
     )
     assert match, f"no CHECK list for {constraint}"
     return re.findall(r"'([^']+)'", match.group(1))
+
+
+def _pg_effective_check(constraint: str) -> list[str]:
+    """The CHECK list as it stands after every migration has run.
+
+    A later migration may drop a constraint and add it back with another
+    symbol - 013 does exactly that to trips_status_check when it appends
+    'arrived'. Reading only the file that first created the table would
+    compare the warehouse against a set that no longer exists.
+    """
+    symbols: list[str] | None = None
+    for path in _migrations():
+        text = path.read_text()
+        for match in re.finditer(
+            rf"CONSTRAINT\s+{constraint}\s+CHECK\s*\(.*?IN\s*\(([^)]+)\)",
+            text,
+            re.I | re.S,
+        ):
+            symbols = re.findall(r"'([^']+)'", match.group(1))
+    assert symbols, f"no CHECK list for {constraint} in any migration"
+    return symbols
+
+
+def _pg_trips_columns() -> set[str]:
+    """Every column trips has once all migrations have run."""
+    columns: set[str] = set()
+    for path in _migrations():
+        text = path.read_text()
+        create = re.search(
+            r"CREATE TABLE IF NOT EXISTS trips\s*\((.*?)\n\);", text, re.S
+        )
+        if create:
+            for line in create.group(1).splitlines():
+                name = re.match(r"\s{4}(\w+)\s+\S", line)
+                if name and name.group(1).upper() != "CONSTRAINT":
+                    columns.add(name.group(1))
+        for add in re.finditer(
+            r"ALTER TABLE trips ADD COLUMN IF NOT EXISTS (\w+)", text, re.I
+        ):
+            columns.add(add.group(1))
+        for drop in re.finditer(
+            r"ALTER TABLE trips DROP COLUMN IF EXISTS (\w+)", text, re.I
+        ):
+            columns.discard(drop.group(1))
+    assert "trip_id" in columns, columns
+    return columns
+
+
+def _avro_field_names(path: Path) -> set[str]:
+    return {field["name"] for field in json.loads(path.read_text())["fields"]}
+
+
+def _ch_columns(sql: str, table: str) -> set[str]:
+    start = sql.index(f"{table} ON CLUSTER")
+    body = sql[start : sql.index("ENGINE =", start)]
+    names: set[str] = set()
+    for line in body.splitlines():
+        match = re.match(r"\s{4}(\w+)\s+\S", line)
+        if match:
+            names.add(match.group(1))
+    assert names, table
+    return names
 
 
 def _avro_enum_symbols(path: Path, enum_name: str) -> list[str]:
@@ -224,13 +293,40 @@ def test_closed_status_sets_align_across_stores():
     driver_ch = _ch_enum8_symbols(positions, "driver_positions_local")
     assert driver_pg == driver_avro == driver_ch
 
-    trip_pg = _pg_check_symbols(core, "trips_status_check")
+    # The effective set, not 002's: 013 drops and re-adds this constraint
+    # to append 'arrived'.
+    trip_pg = _pg_effective_check("trips_status_check")
     trip_avro = _avro_enum_symbols(
         NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
         "TripStatus",
     )
     trip_ch = _ch_enum8_symbols(trips, "trip_events_local")
     assert trip_pg == trip_avro == trip_ch
+    # 'arrived' must stay last in all three. An Enum8's numbers are what
+    # ClickHouse stores, so moving a symbol into its lifecycle position
+    # would renumber every symbol after it and reinterpret existing rows.
+    assert trip_pg[-1] == "arrived", trip_pg
+
+    lifecycle = NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc"
+    for constraint, enum_name, column in (
+        ("trips_payment_method_check", "PaymentMethod", "payment_method"),
+        ("trips_cancellation_reason_check", "CancellationReason", "cancellation_reason"),
+        ("trips_requested_vehicle_type_check", "VehicleType", "requested_vehicle_type"),
+    ):
+        pg = _pg_effective_check(constraint)
+        avro = _avro_enum_symbols(lifecycle, enum_name)
+        ch = _ch_enum8_symbols(trips, f"    {column} ")
+        assert pg == avro == ch, (constraint, pg, avro, ch)
+
+    offers_pg = _pg_effective_check("dispatch_offers_status_check")
+    offers_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "dispatch_offers.avsc", "OfferStatus"
+    )
+    offers_ch = _ch_enum8_symbols(
+        (NUS / "e-infra-clickhouse" / "ddl" / "010_dispatch_offers.sql").read_text(),
+        "dispatch_offers_local",
+    )
+    assert offers_pg == offers_avro == offers_ch
 
     period_pg = _pg_check_symbols(city, "segment_traffic_period_check")
     period_avro = _avro_enum_symbols(
@@ -247,6 +343,53 @@ def test_closed_status_sets_align_across_stores():
     assert "CHECK" in text
     assert "Enum8" in text
     assert "Avro" in text
+
+
+def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
+    """A column in one store and nowhere else is the failure this catches.
+
+    driver_payout, payment_method, cancellation_reason and
+    requested_vehicle_type sat in Postgres for months while being absent
+    from the Avro record and from ClickHouse, so the warehouse - the only
+    store dashboards may read - could not answer take rate, payment mix,
+    why trips cancel, or anything per tier. The closed-set test above did
+    not see it: it compares symbol lists for sets that exist in all three
+    places, not the existence of the field itself.
+    """
+    avro = _avro_field_names(NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc")
+    pg = _pg_trips_columns()
+    ch = _ch_columns(
+        (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text(),
+        "nus.trip_events_local",
+    )
+
+    # The envelope describes the message, not the trip, so it has no trips
+    # column - except event_id, which the warehouse stores to dedupe on.
+    envelope_only = {"event_version", "producer", "correlation_id", "event_id"}
+    # event_time is when the status change happened; the trip's own clock
+    # is the six milestone columns, which trips does have.
+    wire_only = {"event_time"}
+
+    missing_in_pg = sorted((avro - envelope_only - wire_only) - pg)
+    assert missing_in_pg == [], (
+        f"on trip_lifecycle but not in trips: {missing_in_pg}"
+    )
+
+    missing_in_ch = sorted((avro - {"event_version", "producer", "correlation_id"}) - ch)
+    assert missing_in_ch == [], (
+        f"on trip_lifecycle but not in trip_events_local: {missing_in_ch}"
+    )
+
+    # And the reverse: a trips column that never reaches the wire is the
+    # same defect pointing the other way. rider_id is named rider_id on
+    # both sides; route and the two points are geometry, which CDC
+    # deliberately excludes (see test_cdc_excludes_oltp_geometry).
+    not_shipped = {
+        "created_at", "updated_at", "attributes",
+        "pickup_point", "dropoff_point", "route",
+    }
+    stranded = sorted(pg - avro - not_shipped)
+    assert stranded == [], f"in trips but on no topic: {stranded}"
 
 
 def test_minted_id_widths_match_warehouse():

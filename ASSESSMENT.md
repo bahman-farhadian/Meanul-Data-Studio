@@ -313,8 +313,21 @@ TSV.
 | ksqlDB | Server status RUNNING | Not RUNNING | `make verify-ksqldb` |
 
 Version-1 declared topics: `driver_location`, `rider_location`,
-`trip_requests`, `trip_lifecycle`, `city_hotspots`,
+`trip_requests`, `trip_lifecycle`, `dispatch_offers`, `city_hotspots`,
 `segment_traffic_updates`.
+
+Every record on every one of them carries the same envelope — `event_id`,
+`event_version`, `producer`, `correlation_id` — stamped by the producer,
+never by a caller. `event_id` is load-bearing rather than decorative:
+ClickHouse does not deduplicate on its own (`ReplacingMergeTree` collapses
+only eventually, only within a partition, and only on merge), so the sink
+refuses an `event_id` it has already written and that is what makes every
+count downstream trustworthy.
+
+Money crosses the wire as Avro `decimal(10,2)`, matching `numeric(10,2)`
+in Postgres and `Decimal64(2)` in ClickHouse — one representation end to
+end, with no `double` in the middle. fastavro rejects a float for such a
+field, so this cannot be got wrong quietly.
 
 #### `d-infra-debezium`
 
