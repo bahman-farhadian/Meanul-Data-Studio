@@ -613,7 +613,7 @@ verify-walk: ## Street-follow and chord/sea checks against the shipped walk/geo 
 	$(call say,Walk checks)
 	@cd z-lib/nus-common && uv sync --extra test >/dev/null
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
-		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests
+		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests l-service-dispatch/tests
 
 .PHONY: verify-sample
 verify-sample: ## Tiny local PG/Redis/Kafka/CH sample: on-network routes, no sea hops

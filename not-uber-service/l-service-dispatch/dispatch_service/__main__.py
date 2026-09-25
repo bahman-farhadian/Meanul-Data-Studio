@@ -244,30 +244,47 @@ def store_live_state(redis, trip: ActiveTrip, now: datetime, ttl_seconds: int) -
     lifetime, so a trip that somehow never finishes cannot leave a key behind
     for ever.
     """
-    lat, lon = trip.current_position(now)
     redis.set(
         redis_client.trip_active_key(trip.trip_id),
-        json.dumps(
-            {
-                "trip_id": trip.trip_id,
-                "rider_id": trip.rider_id,
-                "driver_id": trip.driver_id,
-                "status": trip.status,
-                "pickup_lat": trip.pickup_lat, "pickup_lon": trip.pickup_lon,
-                "dropoff_lat": trip.dropoff_lat, "dropoff_lon": trip.dropoff_lon,
-                "current_lat": lat, "current_lon": lon,
-                "pickup_zone_id": trip.pickup_zone_id,
-                "route_km": trip.route_km,
-                "route_wkt": trip.route_wkt,
-                "pickup_route_wkt": trip.pickup_route_wkt,
-                "pickup_route_km": trip.pickup_route_km,
-                "predicted_duration_s": trip.predicted_duration_s,
-                "surge_multiplier": trip.surge_multiplier,
-                "fare_estimate": trip.fare_estimate,
-            }
-        ),
+        json.dumps(live_state_payload(trip, now)),
         ex=ttl_seconds,
     )
+
+
+def live_state_payload(trip: ActiveTrip, now: datetime) -> dict:
+    """What store_live_state writes, as plain data.
+
+    Split out so it can be checked without a Redis: every value here has to
+    be something json.dumps accepts, and a Decimal is not. That was not a
+    theoretical concern - making fare_estimate a Decimal took dispatch down
+    on every single trip with "Object of type Decimal is not JSON
+    serializable", and nothing in the test suite could see it.
+    """
+    lat, lon = trip.current_position(now)
+    return {
+        "trip_id": trip.trip_id,
+        "rider_id": trip.rider_id,
+        "driver_id": trip.driver_id,
+        "status": trip.status,
+        "pickup_lat": trip.pickup_lat, "pickup_lon": trip.pickup_lon,
+        "dropoff_lat": trip.dropoff_lat, "dropoff_lon": trip.dropoff_lon,
+        "current_lat": lat, "current_lon": lon,
+        "pickup_zone_id": trip.pickup_zone_id,
+        "route_km": trip.route_km,
+        "route_wkt": trip.route_wkt,
+        "pickup_route_wkt": trip.pickup_route_wkt,
+        "pickup_route_km": trip.pickup_route_km,
+        "predicted_duration_s": trip.predicted_duration_s,
+        "surge_multiplier": trip.surge_multiplier,
+        # float, not the Decimal it is everywhere else. This is the
+        # one place money leaves the typed path on purpose: the
+        # value is live display state behind a TTL, read by nobody
+        # for arithmetic (driver-service and passenger-service take
+        # positions and the route from this key, never the fare),
+        # and json.dumps cannot encode a Decimal at all - which is
+        # how this was found, as a TypeError on every single trip.
+        "fare_estimate": float(trip.fare_estimate) if trip.fare_estimate is not None else None,
+    }
 
 
 def main() -> int:
