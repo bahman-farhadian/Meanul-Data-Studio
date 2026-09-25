@@ -79,8 +79,8 @@ def main() -> int:
     redis = redis_client.primary(redis_client.DB_DEMAND)
     wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
-    producer = AvroTopicProducer(HOTSPOT_TOPIC)
-    traffic_producer = AvroTopicProducer(TRAFFIC_TOPIC)
+    producer = AvroTopicProducer(HOTSPOT_TOPIC, "city-service")
+    traffic_producer = AvroTopicProducer(TRAFFIC_TOPIC, "city-service")
     consumer = AvroTopicConsumer(
         topics=WATCHED_TOPICS,
         group_id=config.optional("KAFKA_GROUP_ID", "city-service"),

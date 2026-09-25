@@ -302,7 +302,7 @@ def test_broker_cache_and_databases(sample_env):
     off = [(lat, lon) for lat, lon, _h, _s in trail if _metres_to_ways(lat, lon) > 15]
     assert off == [], f"live tail left the streets: {off[:3]}"
 
-    producer = AvroTopicProducer("driver_location")
+    producer = AvroTopicProducer("driver_location", "sample-test")
     event_time = to_millis(now)
     for i, (lat, lon, heading, speed) in enumerate(trail):
         producer.send(

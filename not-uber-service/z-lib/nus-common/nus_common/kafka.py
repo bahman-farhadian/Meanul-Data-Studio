@@ -11,6 +11,7 @@ message is enough to look the schema up.
 """
 
 import json
+import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -54,6 +55,14 @@ def load_schema(topic: str) -> str:
     return json.dumps(json.loads(path.read_text()))
 
 
+# Every record in c-infra-kafka/schemas carries these four. They are filled
+# in here, in the one place every message in the stack passes through,
+# rather than at each call site - a caller that forgets is the failure this
+# design removes, and there is no reason to trust eight call sites with
+# something one function can do.
+ENVELOPE_VERSION = 1
+
+
 class AvroTopicProducer:
     """Sends messages to one topic, encoded as Avro.
 
@@ -61,12 +70,22 @@ class AvroTopicProducer:
 
     - `acks=all` with idempotence: a message is confirmed only once the
       brokers that must hold it do, and a retry cannot create a duplicate.
+      Note what that does NOT cover: it makes the producer's own retry safe,
+      not a re-send after the process restarted, and not a consumer reading
+      the same offset twice. That is what event_id below is for.
     - `linger.ms`: wait a few milliseconds to fill a batch. It costs a little
       delay and saves a lot of network round trips at these message rates.
     """
 
-    def __init__(self, topic: str) -> None:
+    def __init__(self, topic: str, producer: str) -> None:
+        """`producer` is the service name stamped on every message.
+
+        Required rather than defaulted: "which service wrote this" is the
+        first question asked when a stream looks wrong, and a default would
+        quietly answer it incorrectly for whichever service forgot.
+        """
         self.topic = topic
+        self.producer_name = producer
         self._serializer = AvroSerializer(_registry(), load_schema(topic))
         self._key_serializer = StringSerializer("utf_8")
         self._producer = Producer(
@@ -93,22 +112,48 @@ class AvroTopicProducer:
                 extra={"topic": self.topic, "error": str(err)},
             )
 
-    def send(self, key: str, value: dict) -> None:
+    def send(self, key: str, value: dict, correlation_id: str | None = None) -> None:
         """Queue one message. Delivery happens in the background.
 
         The key decides the partition, and therefore the order: everything
         with the same key stays in the order it was sent.
+
+        `correlation_id` ties every message about one trip together across
+        topics - pass the trip_id on anything trip-scoped. It is a separate
+        argument rather than a field the caller puts in `value` because it
+        is the one piece of the envelope only the caller knows.
         """
         context = SerializationContext(self.topic, MessageField.VALUE)
         self._producer.produce(
             topic=self.topic,
             key=self._key_serializer(key),
-            value=self._serializer(value, context),
+            value=self._serializer(self._stamped(value, correlation_id), context),
             on_delivery=self._on_delivery,
         )
         # Give the background thread a chance to run its callbacks. Without
         # this the delivery reports only arrive at flush time.
         self._producer.poll(0)
+
+    def _stamped(self, value: dict, correlation_id: str | None) -> dict:
+        """The caller's payload with the envelope filled in around it.
+
+        A fresh event_id per call, which is the whole point: it is what lets
+        clickhouse-sink tell a replayed batch from a genuine repeat.
+        ClickHouse will not do that for us - ReplacingMergeTree collapses
+        only eventually, only within a partition, and only on merge - so
+        uniqueness has to be true before the warehouse, not after it.
+
+        The caller's own keys win, so a producer that has a real event_id
+        already (a replay of a stored event, a test with a fixed id) can
+        pass it and keep it.
+        """
+        envelope = {
+            "event_id": str(uuid.uuid4()),
+            "event_version": ENVELOPE_VERSION,
+            "producer": self.producer_name,
+            "correlation_id": correlation_id,
+        }
+        return {**envelope, **value}
 
     def flush(self, timeout_seconds: float = 10.0) -> int:
         """Wait for queued messages to be delivered.

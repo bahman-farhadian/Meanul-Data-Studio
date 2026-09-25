@@ -128,8 +128,8 @@ def main() -> int:
     # docstring for the full story.
     routing.build_road_point_pools(grid, road_point_pool_size, road_point_pool_workers)
 
-    request_producer = AvroTopicProducer(REQUEST_TOPIC)
-    position_producer = AvroTopicProducer(POSITION_TOPIC)
+    request_producer = AvroTopicProducer(REQUEST_TOPIC, "passenger-service")
+    position_producer = AvroTopicProducer(POSITION_TOPIC, "passenger-service")
     consumer = AvroTopicConsumer(
         topics=[LIFECYCLE_TOPIC],
         group_id=config.optional("KAFKA_GROUP_ID", "passenger-service"),

@@ -186,7 +186,7 @@ def main() -> int:
     redis_trip = redis_client.primary(redis_client.DB_TRIP)
     wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
-    producer = AvroTopicProducer(LIFECYCLE_TOPIC)
+    producer = AvroTopicProducer(LIFECYCLE_TOPIC, "dispatch-service")
     consumer = AvroTopicConsumer(
         topics=[REQUEST_TOPIC],
         group_id=config.optional("KAFKA_GROUP_ID", "dispatch-service"),

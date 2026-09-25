@@ -371,7 +371,7 @@ def main() -> int:
         },
     )
 
-    producer = AvroTopicProducer(TOPIC)
+    producer = AvroTopicProducer(TOPIC, "driver-service")
     consumer = AvroTopicConsumer(
         topics=[LIFECYCLE_TOPIC],
         group_id=config.optional("KAFKA_GROUP_ID", "driver-service"),
