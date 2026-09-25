@@ -204,9 +204,37 @@ SELECT
     round(countIf(status = 'accepted') / count(), 3)          AS acceptance_rate,
     round(count() / nullIf(countIf(status = 'accepted'), 0), 2) AS offers_per_match,
     round(avg(eta_seconds))                                   AS mean_eta_s,
-    round(avgIf(eta_seconds, status = 'accepted'))            AS mean_eta_accepted_s,
     round(avg(response_s), 1)                                 AS mean_response_s
 FROM nus.dispatch_offers;
+
+SELECT '=== 14b. does a longer pickup drive really lower acceptance ===' AS section FORMAT TSVRaw;
+-- The relationship the whole accept/decline model exists to reproduce, and
+-- the honest way to measure it. Comparing mean ETA of accepted offers
+-- against mean ETA of all offers does NOT work and is not asked here: the
+-- chain is offered nearest-first and stops at the first yes, so whoever
+-- accepts is by construction the farthest driver actually asked, and that
+-- comparison comes out backwards precisely when the ordering is right.
+-- Bucketing removes the ordering from the question.
+--
+-- accepted should fall as the bucket rises. A flat column means the
+-- acceptance model is not reading eta_seconds at all.
+SELECT
+    intDiv(eta_seconds, 120) * 2                              AS eta_bucket_min,
+    count()                                                   AS offers,
+    round(countIf(status = 'accepted') / count(), 3)          AS accepted
+FROM nus.dispatch_offers
+WHERE eta_seconds IS NOT NULL
+GROUP BY eta_bucket_min
+HAVING count() > 50
+ORDER BY eta_bucket_min;
+
+SELECT '=== 14c. how deep the chain had to go ===' AS section FORMAT TSVRaw;
+-- Acceptance should fall with position for the same reason: each next
+-- driver asked is further away. A chain that is almost always length 1
+-- means nobody is refusing and the funnel is decorative.
+SELECT sequence, count() AS offers_made,
+       round(countIf(status = 'accepted') / count(), 3) AS accepted
+FROM nus.dispatch_offers GROUP BY sequence ORDER BY sequence;
 
 SELECT '=== 15. fulfilment — the trips that did NOT complete ===' AS section FORMAT TSVRaw;
 -- Every rollup used to filter status = completed, so none of this appeared

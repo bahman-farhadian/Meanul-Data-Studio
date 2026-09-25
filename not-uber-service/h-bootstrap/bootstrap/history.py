@@ -74,11 +74,17 @@ HOUR_WEIGHTS = [
 # have no real route between its two points still ends up no_driver_found -
 # the real dispatch-service can't quote, match, or cancel a trip it never
 # managed to route in the first place, so neither does this.
+# no_driver_found here is only the "nobody in range at all" case. A second
+# path produces it too, and did not exist when these weights were set: a
+# request that WAS offered to drivers and refused by all of them (see
+# _seed_offers). That adds a few points on top, so this base weight came
+# down from 0.08 to keep the total unmatched share realistic - the
+# effective rate is the sum of the two, and only the sum is meaningful.
 OUTCOME_WEIGHTS = {
-    "completed": 0.70,
+    "completed": 0.72,
     "cancelled_by_passenger": 0.12,
-    "cancelled_by_driver": 0.10,
-    "no_driver_found": 0.08,
+    "cancelled_by_driver": 0.12,
+    "no_driver_found": 0.04,
 }
 
 # Same distribution passenger-service draws requests from at runtime
@@ -476,9 +482,15 @@ def _finish_no_driver(spec: _TripSpec, week: GeneratedWeek) -> None:
 # arrived would be nonsense.
 POST_ARRIVAL_REASONS = {"rider_no_show", "wait_too_long"}
 
+# Mirrors DISPATCH_MAX_OFFERS in l-service-dispatch. Not read from Settings
+# because h-bootstrap does not own dispatch's configuration - but the two
+# have to agree, or the seeded week's funnel has a different shape from the
+# live traffic it is meant to be indistinguishable from.
+SEED_MAX_OFFERS = 5
+
 
 def _seed_offers(spec: _TripSpec, surge: float, rng: random.Random,
-                 settings: Settings, week: GeneratedWeek) -> tuple[datetime, list]:
+                 settings: Settings, week: GeneratedWeek) -> tuple[datetime, list, str | None]:
     """The offer chain behind one seeded match, and when it ended.
 
     The driver who actually took the trip was decided before routing, so the
@@ -490,13 +502,24 @@ def _seed_offers(spec: _TripSpec, surge: float, rng: random.Random,
     # Candidates ahead of the winner, with plausible offer-time ETAs. The
     # nearest-first ordering live dispatch uses is preserved by making each
     # refused driver further away than the last.
-    chain_depth = rng.randint(1, 4)
-    etas = sorted(rng.randint(90, 1500) for _ in range(chain_depth))
+    # As deep as live dispatch will go (DISPATCH_MAX_OFFERS), not a random
+    # 1-4. run_chain stops at the first acceptance regardless, so the chain
+    # length that ends up recorded is decided by acceptance rather than by
+    # how big the pool was - which is how real dispatch works. With the
+    # shallow pool the chain exhausted 32.5% of the time and the forced
+    # acceptance below, which is always the farthest driver asked, ended up
+    # dominating the funnel: measured 0.630 acceptance at 1.59 offers per
+    # match on the first Dionysus run, against 4.6% forced here.
+    chain_depth = SEED_MAX_OFFERS
+    # Skewed low with a tail, because that is what a pickup ETA looks like.
+    # The uniform 90-1500 this replaces averaged 13 minutes, which is not a
+    # pickup drive, it is a trip.
+    etas = sorted(int(rng.triangular(60, 1200, 180)) for _ in range(chain_depth))
     candidates = [
         (people.driver_id(rng.randint(1, settings.driver_count)), eta, int(eta * 5))
         for eta in etas
     ]
-    _, offers = run_chain(candidates, surge, spec.requested_at, rng)
+    winner, offers = run_chain(candidates, surge, spec.requested_at, rng)
 
     # run_chain lays the chain out ENDING at the moment it is given, which
     # is what live dispatch wants (the tick's now). Here the chain STARTS
@@ -506,7 +529,6 @@ def _seed_offers(spec: _TripSpec, surge: float, rng: random.Random,
         span = max(o.responded_at or o.expires_at for o in offers) - offers[0].offered_at
     shift = spec.requested_at - offers[0].offered_at if offers else timedelta(0)
 
-    accepted_seen = False
     for offer in offers:
         offered_at = offer.offered_at + shift
         responded_at = offer.responded_at + shift if offer.responded_at else None
@@ -515,7 +537,6 @@ def _seed_offers(spec: _TripSpec, surge: float, rng: random.Random,
         driver_id = offer.driver_id
         if offer.status == "accepted" and spec.driver:
             driver_id = spec.driver
-            accepted_seen = True
         week.offer_rows.append({
             "trip_id": spec.trip_id, "driver_id": driver_id,
             "sequence": offer.sequence, "offered_at": offered_at,
@@ -530,22 +551,16 @@ def _seed_offers(spec: _TripSpec, surge: float, rng: random.Random,
             offered_at, responded_at or (offer.expires_at + shift),
         ])
 
-    # If nobody in the generated chain accepted but the spec says this trip
-    # was matched, the last offer becomes the acceptance. The alternative -
-    # a matched trip with no accepted offer - would break the partial unique
-    # index the migration relies on and lie about the funnel.
-    if not accepted_seen and spec.driver and week.offer_rows:
-        last = week.offer_rows[-1]
-        last["driver_id"] = spec.driver
-        last["status"] = "accepted"
-        last["responded_at"] = last["responded_at"] or last["offered_at"] + timedelta(seconds=4)
-        week.offer_events[-1][2] = spec.driver
-        week.offer_events[-1][4] = "accepted"
-        # response_s has to move with the status: an accepted offer with no
-        # response time would fail the funnel-integrity bar in step 7.
-        week.offer_events[-1][9] = week.offer_events[-1][9] or 4
-
-    return spec.requested_at + span, offers
+    # No forced acceptance. An earlier version, when the chain exhausted,
+    # rewrote the LAST offer to accepted so the pre-drawn outcome still
+    # held - and because the chain is offered nearest-first, that last
+    # offer is always the farthest driver. It showed up on the first
+    # Dionysus run as acceptance RISING with pickup ETA in the top
+    # buckets, and as position 5 accepting 100% of the time. The fix is
+    # not to disguise it: a chain that nobody took means nobody took it,
+    # and the caller turns the trip into no_driver_found. The outcome is
+    # what the search produced.
+    return spec.requested_at + span, offers, winner
 
 
 def _finish_trip(
@@ -569,7 +584,13 @@ def _finish_trip(
     # model dispatch-service runs live (nus_common.offers). A seeded week
     # whose funnel looked different from live traffic would make every
     # acceptance-rate chart read as a step change at the seed boundary.
-    matched_at, offers = _seed_offers(spec, surge, rng, settings, week)
+    matched_at, offers, winner = _seed_offers(spec, surge, rng, settings, week)
+    if winner is None:
+        # Every driver asked refused or let the offer lapse. The offer rows
+        # stay - "we asked five people and all said no" is the whole point
+        # of having them - but there is no trip to finish.
+        _finish_no_driver(spec, week)
+        return
     # The clock between matching and the wheels turning. Real numbers
     # rather than one lump, because trip_facts measures each gap
     # separately and a single invented matched_at would flatten them all.
