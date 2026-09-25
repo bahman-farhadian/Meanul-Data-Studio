@@ -48,7 +48,18 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
     event_date    Date MATERIALIZED toDate(event_time)
 )
 ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
-PARTITION BY toYYYYMM(event_date)
+-- Daily, not monthly, and this is the difference between a TTL that
+-- removes a directory and one that rewrites gigabytes. The TTL below is
+-- three days; under a monthly partition that expiry can never drop a
+-- part, so ClickHouse has to rewrite the whole month minus the expired
+-- rows, every time, on the heaviest table in the stack. Measured on a
+-- real cluster: every position table held exactly one partition.
+--
+-- The 365-day tables keep monthly partitions on purpose - daily would
+-- give them 365 parts apiece for no benefit, since their expiry drops a
+-- whole month cleanly anyway. Partition granularity follows the TTL, not
+-- a house style.
+PARTITION BY event_date
 ORDER BY (driver_id, event_time)
 -- Position history is huge and loses value quickly - the trip record
 -- keeps what matters for longer (trip_events, 365 days). Three months
@@ -90,7 +101,9 @@ CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
     event_date    Date MATERIALIZED toDate(event_time)
 )
 ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
-PARTITION BY toYYYYMM(event_date)
+-- Daily for the same reason as driver_positions above: a seven-day TTL
+-- under a monthly partition never drops anything.
+PARTITION BY event_date
 ORDER BY (rider_id, event_time)
 -- Only a travelling rider reports at all (passenger-service), and only
 -- for the length of one trip - real volume here is tiny next to

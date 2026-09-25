@@ -188,6 +188,49 @@ config. Services simulate *pools*, not one container per person.
 | G9 | Internally consistent | Where the version has a real reference surface (street graph, catalog, schedule), Faker draws from it. Random points that ignore that surface are a fail of §8, not a style choice | Lat/lon uniform in a bounding box that includes water / off-catalog ids | Version simulation SQL; generator source |
 | G10 | Secrets | `.env` is untracked. No passwords, tokens, or connection strings in git | `.env` committed; a secret in a fixture | `.gitignore`; source |
 
+### 7.1 Data-quality bars (version 1: `make verify-quality`)
+
+G1–G10 above prove generation ran and produced rows of the right shape.
+These prove the rows can be *trusted*. Every one is **structural** — an
+invariant that must hold whatever the seed knobs say. That is the whole
+distinction: a bar whose value moves with `SEED_DRIVERS` measures the
+seed settings, not the pipeline, and belongs in `make profile`, which is
+for reading rather than for passing.
+
+| # | Bar | Pass | Fail |
+| --- | --- | --- | --- |
+| Q1 | Every event id is unique | `count() = uniqExact(event_id)` on all five event tables | Any duplicate. ClickHouse does not deduplicate, so every aggregate below is void |
+| Q2 | No blank event id | Zero all-zero UUIDs | Any. A row the sink cannot dedupe on |
+| Q3 | No negative milestone lag | Zero negative `match_s`/`accept_s`/`arrive_s`/`wait_s`/`ride_s` | Any. A trip whose clock runs backwards |
+| Q4 | Arrival follows acceptance | Zero trips arrived-without-accepted, or started-without-arrived | Any |
+| Q5 | No-show only after arrival | Zero `rider_no_show`/`wait_too_long` with no `arrived_at` | Any. A driver cannot report a no-show without being there |
+| Q6 | One acceptance per trip | Zero trips with more than one accepted offer | Any. Two cars sent to one rider |
+| Q7 | Offer chains have no gaps | `count() = max(sequence)` per trip | Any. Dispatch lost track of its own search |
+| Q8 | Unmatched trips took no offer | Zero `no_driver_found` trips with an accepted offer | Any |
+| Q9 | Party fits the tier's seats | Zero trips with `passenger_count > 4` outside `xl` | Any |
+| Q10 | No fare without completion | Zero non-completed trips carrying `fare_final` | Any. Revenue that was never earned |
+| Q11 | No completion without fare | Zero completed trips missing `fare_final` | Any |
+| Q12 | Payout never exceeds fare | Zero trips where `driver_payout > fare_final` | Any |
+| Q13 | Every ended trip has a fact | `uniqExact(trip_id)` over terminal events equals `trip_facts` rows | Any gap. The materialized view is not firing |
+| Q14 | No offer for an unknown trip | Zero `dispatch_offers` trip ids absent from `trip_events` | Any |
+
+### 7.2 Capacity (version 1: `make capacity`)
+
+Bytes per row is the number that transfers between scales; a current
+total does not. The projection multiplies it by full-scale
+`SEED_DRIVERS` over the value actually in use, halves it for the two
+shards, and must leave **30% headroom** against the per-node quota — a
+warehouse planned to exactly fill its disk cannot merge, because a merge
+needs room for the new part before it can drop the old ones.
+
+**Partition granularity follows the TTL, not a house style.** A table
+expiring in three days partitions by day, so the expiry drops a
+directory; under a monthly partition it would rewrite the whole month
+minus the expired rows, every time, on the heaviest table in the stack.
+A table keeping 365 days partitions by month, because daily would give
+it 365 parts for nothing. `test_partition_granularity_follows_the_ttl`
+holds both halves.
+
 `make up` does not rebuild images. A code change is `make build` then
 bring-up. Downloads (maps, catalogs) are not required on every destroy.
 That is an operations rule, not a data-quality bar; the version Makefile

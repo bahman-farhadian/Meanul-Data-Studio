@@ -662,3 +662,39 @@ def test_a_timed_tick_sets_its_clock_before_doing_the_work():
             f"{clock} is advanced after {call}, so anything that raises in "
             f"between disables this branch permanently"
         )
+
+
+def test_partition_granularity_follows_the_ttl():
+    """A short TTL under a monthly partition can never drop a partition.
+
+    driver_positions expires after three days and was partitioned by
+    month, so the expiry had to rewrite the whole month minus the expired
+    rows - on the heaviest table in the stack, for ever. Measured on a
+    real cluster before this was fixed: one partition per position table.
+
+    The rule: a table whose TTL is shorter than a month partitions by day,
+    and one whose TTL is a year partitions by month. Daily partitions on a
+    365-day table would give it 365 parts for no benefit.
+    """
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+    for match in re.finditer(
+        r"CREATE TABLE IF NOT EXISTS (nus\.\w+_local)(.*?);", ddl, re.S
+    ):
+        table, body = match.group(1), match.group(2)
+        ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body)
+        if not ttl:
+            continue
+        days = int(ttl.group(1))
+        monthly = "PARTITION BY toYYYYMM" in body
+        if days <= 31:
+            assert not monthly, (
+                f"{table} expires after {days} days but partitions by month - "
+                "that TTL can never drop a partition"
+            )
+        else:
+            assert monthly, (
+                f"{table} keeps {days} days but does not partition by month"
+            )

@@ -730,6 +730,38 @@ lag: ## Consumer lag per group — the health signal for the whole pipeline
 	@printf "\n  Lag that stays small, or returns to small after a burst, is healthy.\n"
 	@printf "  Lag that only grows is not — turn the pacing down in $(ENV_FILE).\n"
 
+.PHONY: verify-quality
+verify-quality: ## Data-quality bars - structural invariants, pass or fail
+	$(call say,Data-quality bars)
+	@out=$$($(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--output-format PrettyCompactMonoBlock < z-config/quality.sql); \
+	printf '%s\n' "$$out"; \
+	if printf '%s' "$$out" | grep -q FAIL; then \
+		printf "\n  $(R)A bar failed.$(X) These are structural invariants, not thresholds -\n"; \
+		printf "  a failure is a real defect in the pipeline, not a tuning question.\n"; \
+		exit 1; \
+	fi; \
+	printf "\n  $(G)Every bar passed.$(X)\n"
+
+.PHONY: capacity
+capacity: ## Measure bytes/row and project the full-scale footprint
+	$(call say,Warehouse capacity)
+# The scale factor is derived, not typed: full-scale SEED_DRIVERS from
+# .env.example against whatever this run actually used. A dev profile that
+# changes therefore cannot leave a stale projection behind looking current.
+	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2-); \
+	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	quota=$$(grep -E '^CH_VOLUME_QUOTA_GB=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	quota=$${quota:-96}; \
+	scale=$$(awk -v a="$$full" -v b="$$now" 'BEGIN{printf "%.4f", (b>0? a/b : 1)}'); \
+	printf "  full-scale SEED_DRIVERS %s / this run %s = scale x%s, quota %sGB/node\n\n" \
+		"$$full" "$$now" "$$scale" "$$quota"; \
+	$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--param_scale="$$scale" --param_quota_gb="$$quota" \
+		--output-format PrettyCompactMonoBlock < z-config/capacity.sql
+
 .PHONY: profile
 profile: ## Profile the generated data — every dimension, range and null rate
 	$(call say,What the warehouse actually holds)
