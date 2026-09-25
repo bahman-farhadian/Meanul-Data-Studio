@@ -16,6 +16,17 @@ grafana-health: ## Grafana answers on its health endpoint
 	@printf "\n  Provisioned dashboards live under Dashboards → NUS.\n"
 	@printf "  Geomap tiles are same-origin /tiles/ — checked by $(C)make tiles-health$(X).\n"
 
+# The HTTP half runs through HAProxy from inside nus-backbone, never from a
+# host address. It used to curl 127.0.0.1:LB_A_GRAFANA_PORT and reported a
+# tiles failure on a stack whose tiles were perfectly healthy: Docker's
+# published-port DNAT cannot send a loopback destination out to a real
+# interface while net.ipv4.conf.*.route_localnet is 0, so docker-proxy
+# accepts the connection and closes it - an empty reply, not the 503 this
+# check's own message predicted. Confirmed on Dionysus: 127.0.0.1 empty,
+# while ::1, the LAN address, the container IP and in-network all return
+# 200 through the same HAProxy. Every sibling check already goes through a
+# container for this reason; make urls is where host addresses belong, and
+# it lists the real ones and never offers loopback.
 .PHONY: tiles-health
 tiles-health: ## OSM tiles answer through HAProxy (Grafana's map origin)
 	$(call say,Tiles)
@@ -32,19 +43,22 @@ tiles-health: ## OSM tiles answer through HAProxy (Grafana's map origin)
 		exit 1; \
 	fi; \
 	printf "  $(G)ok$(X)      nus-tiles healthy\n"; \
-	base="http://127.0.0.1:$(call getenv,LB_A_GRAFANA_PORT,3000)"; \
-	json_code=$$(curl -sS -o /dev/null -w '%{http_code}' --max-time 10 "$$base/tiles/styles.json" || true); \
-	if [ "$$json_code" != 200 ]; then \
-		printf "  $(R)FAIL$(X)    GET /tiles/styles.json -> %s (want 200). 503 means HAProxy has no tiles backend.\n" "$${json_code:-curl-failed}"; \
+	base="http://nus-lb-a:3000"; \
+	json=$$($(COMPOSE) exec -T grafana wget -S -O /dev/null "$$base/tiles/styles.json" 2>&1 || true); \
+	if ! printf '%s' "$$json" | grep -q ' 200 OK'; then \
+		printf "  $(R)FAIL$(X)    GET /tiles/styles.json did not return 200. 503 means HAProxy has no tiles backend.\n"; \
+		printf '%s\n' "$$json" | sed -n '1,6p' | sed 's/^/              /'; \
 		exit 1; \
 	fi; \
 	printf "  $(G)ok$(X)      HAProxy /tiles/styles.json 200\n"; \
-	out=$$(curl -sS -o /dev/null -w '%{http_code} %{content_type}' --max-time 60 "$$base/tiles/styles/nus/11/602/768.png" || true); \
-	code=$${out%% *}; ctype=$${out#* }; \
-	case "$$code:$$ctype" in \
-		200:image/png*) printf "  $(G)ok$(X)      HAProxy /tiles/styles/nus/11/602/768.png 200 image/png\n" ;; \
-		*) printf "  $(R)FAIL$(X)    GET /tiles/styles/nus/11/602/768.png -> %s (want 200 image/png)\n" "$$out"; exit 1 ;; \
-	esac; \
+	png=$$($(COMPOSE) exec -T grafana wget -S -O /dev/null "$$base/tiles/styles/nus/11/602/768.png" 2>&1 || true); \
+	if printf '%s' "$$png" | grep -q ' 200 OK' && printf '%s' "$$png" | grep -qi 'Content-Type: *image/png'; then \
+		printf "  $(G)ok$(X)      HAProxy /tiles/styles/nus/11/602/768.png 200 image/png\n"; \
+	else \
+		printf "  $(R)FAIL$(X)    GET /tiles/styles/nus/11/602/768.png did not return 200 image/png\n"; \
+		printf '%s\n' "$$png" | sed -n '1,6p' | sed 's/^/              /'; \
+		exit 1; \
+	fi; \
 	printf "  Grafana geomap is same-origin OSM, no MapTiler key.\n"
 
 .PHONY: grafana-check

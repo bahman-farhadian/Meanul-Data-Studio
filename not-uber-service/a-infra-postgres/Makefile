@@ -56,9 +56,16 @@ _wait-haproxy-pg-settled: ## Wait past the post-recreation flap, not just pg-1/2
 	@printf "  (default-server on-marked-down shutdown-sessions - correct behaviour\n"
 	@printf "  for a real demotion, but it also fires on a transient flap). pg-1/2/3\n"
 	@printf "  answering their own healthcheck does not mean HAProxy has caught up.\n"
+# The stats page is read through nus-backbone, not a host address. This read
+# localhost:LB_A_STATS_PORT from the host and only worked because localhost
+# resolves to ::1 here - the same request to 127.0.0.1 returns an empty reply
+# on this host (published-port DNAT cannot reach a loopback destination while
+# route_localnet is 0). On a host whose localhost resolves to 127.0.0.1 first,
+# this loop would have read an empty CSV 30 times and failed the bootstrap it
+# is supposed to protect. See f-infra-grafana's tiles-health for the incident.
 	@stable=0; write_up=0; read_up=0; \
 	for i in $$(seq 1 30); do \
-		csv=$$(curl -fsS "http://localhost:$(call getenv,LB_A_STATS_PORT,8404)/stats;csv" 2>/dev/null || true); \
+		csv=$$($(COMPOSE) exec -T grafana wget -qO- "http://nus-lb-a:8404/stats;csv" 2>/dev/null || true); \
 		write_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_write" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
 		read_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_read" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
 		if [ "$$write_up" = "1" ] && [ "$$read_up" = "2" ]; then \
