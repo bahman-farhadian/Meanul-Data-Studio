@@ -73,7 +73,7 @@ source; the finding ids below point into it.
 | No `event_id` on any event (F6) | A replayed sink batch is indistinguishable from a genuine repeated status, and `trip_events_local` is a plain ReplicatedMergeTree that will not dedupe it. Also fails our own §3.3 correlation-id rule |
 | Every rollup filters `completed` (F7) | Cancellations and unmatched requests appear in no aggregate we produce — fulfilment rate, the most basic health metric, needs a self-join over a year of raw events |
 | No driver-arrival timestamp (F2) | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
-| A driver can never decline (F5) | Dispatch assigns directly, so acceptance rate, offers per match and time-to-match do not exist. Real platforms offer with a deadline and re-offer on decline |
+| A driver can never decline (F5) | Dispatch assigns directly, so acceptance rate, offers per match and time-to-match do not exist. Real platforms offer with a deadline and re-offer on decline. **Decided 2026-09-25: in scope, in full** |
 | Payments are two columns on `trips` (F4) | Real platforms model payment as an append-only record (method, amount, status, refunds, adjustments); ours cannot express a failed or refunded charge, and overwriting the column would destroy the history |
 | `trips` is one unpartitioned table | At 7 days x 655k/day the archiver deletes by row instead of dropping a partition — bloat and vacuum pressure at exactly the scale we intend to prove |
 | `driver_positions`: monthly partition, 3-day TTL | TTL deletes inside parts rather than dropping partitions; at full-fleet tick rate this is the heaviest table in the stack |
@@ -177,19 +177,20 @@ the reason. The rest are ordered into three tiers in section 4:
 
 **Tier 1 — steps 3–5 build these.** F1 four columns Postgres knows never
 reach Kafka or ClickHouse (take rate, payment mix, cancellation reason,
-vehicle tier are all unanswerable in the warehouse) · F3a ClickHouse money
-is `Float64` and SummingMergeTree sums it during merges, so revenue is
-non-deterministic at the cent level · F6 no `event_id` or correlation id
-on any event, so a replayed batch is indistinguishable from real repeated
-status · F7 no trip-grain fact, so every rollup filters `completed` and
-cancellations are invisible in every aggregate we produce · F2 no
-`arrived` state, so wait time and post-arrival cancellation cannot be
-derived · F11 `passenger_count` is produced on the wire and discarded.
+vehicle tier are all unanswerable in the warehouse) · F3a money is
+`Float64` in ClickHouse and `double` on the wire, and SummingMergeTree
+sums it during merges, so revenue is non-deterministic at the cent level ·
+F6 no `event_id` or correlation id on any event, so a replayed batch is
+indistinguishable from real repeated status · F7 no trip-grain fact, so
+every rollup filters `completed` and cancellations are invisible in every
+aggregate we produce · F2 no `arrived` state, so wait time and
+post-arrival cancellation cannot be derived · F5 a driver can never
+refuse, so the whole matching funnel is unmeasurable · F11
+`passenger_count` is produced on the wire and discarded.
 
-**Tier 2 — if steps 3–5 come in under budget.** F5 `dispatch_offers` and
-driver decline · F3b `fare_components` · F4 append-only `payments` and
-`driver_earnings` · F8 Type 1 dimensions from the existing CDC topics ·
-F14 `trip_ratings` into the warehouse.
+**Tier 2 — if steps 3–5 come in under budget.** F3b `fare_components` ·
+F4 append-only `payments` and `driver_earnings` · F8 Type 1 dimensions
+from the existing CDC topics · F14 `trip_ratings` into the warehouse.
 
 **Tier 3 — recorded, not built for v1.** F9 H3 as an additive second
 spatial key · F12 calibration provenance · F10 driver documents.
@@ -203,11 +204,21 @@ split, a full double-entry ledger, Kimball Type 2 dimensions, a Postgres
 **Done when:** every finding is accept or reject with a written reason and
 a named target table/column, and each one cites the source it came from. ✔
 
-**Two decisions left open** (section 6): whether F5's driver decline is in
-scope at all — it is the only proposal that changes a service's core loop
-and adds a topic — and whether F6's envelope goes on all six topics or
-only the four business-event ones, leaving the two high-volume telemetry
-streams bare.
+**Decisions taken 2026-09-25** (section 6 of the review):
+
+- **F5 is in scope, in full.** A driver may accept, decline, or let an
+  offer expire, and the request moves to the next candidate. Promoted
+  from tier 2 to tier 1.
+- **F6 goes on all six topics**, position streams included. No
+  measurement gate. ClickHouse does not guarantee deduplication —
+  ReplacingMergeTree dedupes only eventually, only within a partition,
+  only on merge — so uniqueness must be guaranteed before the warehouse,
+  and only then is aggregating inside ClickHouse trustworthy. The byte
+  cost is a capacity input to step 6, not a reason to narrow the scope.
+- **Money is two decimals everywhere.** `numeric(10,2)` in Postgres,
+  Avro `decimal(10,2)` on the wire, `Decimal64(2)` in ClickHouse. No
+  `double` hop in the middle.
+- Commit `8b5849d`'s non-imperative subject is left as it is.
 
 ---
 
@@ -220,7 +231,12 @@ are never edited. Tier 1 of `docs/schema-review.md` is the scope:
   (F2). Append, never renumber: ClickHouse `Enum8` values already on disk
   must stay valid.
 - `014` — `trips.passenger_count smallint NOT NULL DEFAULT 1` (F11).
-- `015` — `source_month` / `calibrated_at` on both calibration tables
+- `015` — `dispatch_offers` (F5): `(offer_id, trip_id, driver_id,
+  sequence, offered_at, expires_at, responded_at, status, eta_seconds,
+  distance_to_pickup_m)`, `status` CHECK in
+  `offered|accepted|declined|expired|cancelled`, unique on
+  `(trip_id, sequence)`.
+- `016` — `source_month` / `calibrated_at` on both calibration tables
   (F12, Tier 3 but free to carry here).
 
 F1, F3a, F6 and F7 are Kafka and ClickHouse changes, not Postgres ones —
@@ -247,11 +263,21 @@ Tier 1 lands:
   `requested_vehicle_type` added to `trip_lifecycle.avsc` (optional with
   defaults, so the Registry sees a backward-compatible evolution) and to
   `trip_events_local`.
-- F3a — every ClickHouse money column becomes `Decimal64(2)`, including
-  `revenue` in the three SummingMergeTree rollups. `surge_multiplier`
-  stays `Float64`; it is a ratio, not money.
+- F3a — money is two decimals in all three copies: `numeric(10,2)`
+  already in Postgres, Avro `decimal` precision 10 scale 2 on the wire
+  (replacing `double` in `trip_lifecycle.avsc`), `Decimal64(2)` in
+  ClickHouse including `revenue` in the three SummingMergeTree rollups.
+  `surge_multiplier` stays `Float64`; it is a ratio, not money.
+  **Run the Avro decimal round-trip check first** — serialise
+  `Decimal("12.22")` through `AvroSerializer`/`AvroDeserializer` against
+  the real Registry and read it back unchanged. fastavro implements the
+  logical type, but that is believed, not verified here.
 - F6 — `event_id` / `event_version` / `producer` / `correlation_id` on
-  the business-event records, and `event_id` carried into ClickHouse.
+  **all six** records, and `event_id` carried into every ClickHouse
+  table. Decided; not a subset, not gated on a measurement.
+- F5 — a `dispatch_offers` Avro record and topic, keyed by `trip_id` so
+  the whole offer chain for one request stays ordered on one partition,
+  plus `dispatch_offers_local` and a `dispatch_funnel_hourly` rollup.
 - F7 — `trip_facts_local` and `fulfilment_hourly`.
 - F2/F11 — `arrived` and `passenger_count` mirrored from step 3.
 
@@ -269,14 +295,24 @@ exactly why F1 went unnoticed.
 
 ## Step 5 — Services write the new fields
 
-dispatch-service emits the `arrived` transition with a realistic dwell
+dispatch-service stops assigning and starts offering (F5): one candidate
+at a time, with a deadline, `sequence` incrementing down the chain, and a
+decline probability that is a real function of `eta_seconds` and surge —
+the acceptance literature in the review says pickup time depresses
+acceptance and surge raises it, so a flat coin-flip would produce data not
+worth charting. An expired offer is a distinct outcome from a declined
+one. `no_driver_found` becomes what it should always have been: the end of
+an exhausted offer chain, not a decision the generator makes.
+
+The same service emits the `arrived` transition with a realistic dwell
 before `in_progress`, and populates the four F1 fields it already computes
 onto the `trip_lifecycle` message. passenger-service carries
 `passenger_count` through to the trip row, and dispatch refuses a match
 where it exceeds the vehicle's `seats`. Every producer stamps the F6
-envelope. clickhouse-sink maps the new Avro fields to the new warehouse
-columns and dedupes on `event_id`. B7/M3 order still holds — durable write
-and cache write before the Kafka announce.
+envelope on every message. clickhouse-sink maps the new Avro fields to
+the new warehouse columns and rejects any `event_id` it has already seen.
+B7/M3 order still holds — durable write and cache write before the Kafka
+announce.
 
 **Test:** LOCAL `make verify-sample`; then DIONYSUS `make profile`.
 
@@ -301,9 +337,14 @@ fleet, `driver_positions` dominates everything else in the stack.
 - Partition `trips` by month on `requested_at` in Postgres, so the
   archiver drops partitions instead of deleting rows. Moved here from the
   old step 2 list: it is a capacity decision, not a schema-design one.
-- Measure the F6 envelope's real cost on `driver_location` (~20,000
-  msg/s at full scale). If it does not pay for itself there, keep the
-  envelope on the four business-event topics only and write down why.
+- Budget the F6 envelope's real cost on `driver_location` (~20,000 msg/s
+  at full scale, so roughly 40-60 extra bytes on every one). This is a
+  sizing input now, not a decision — the envelope is on all six topics
+  either way, so what has to move if it does not fit is retention or
+  partition count, not the envelope.
+- Budget the `dispatch_offers` topic. It carries several messages per
+  completed match, not one, so it sizes with offers-per-match rather
+  than with trip volume. Measure the real ratio at mid scale.
 
 **Test:** DIONYSUS — measure ingest rate and on-disk growth over a fixed
 window; extrapolate.
@@ -319,7 +360,16 @@ Today's bars prove rows exist and align. None score whether the generated
 data is any *good*. Add numeric bars (ASSESSMENT §7 already has the frame):
 
 - Null rate per nullable column, with a ceiling.
+- **Uniqueness, and it is load-bearing.** `count() = uniqExact(event_id)`
+  on every ClickHouse table, and zero rows whose `event_id` is null. This
+  is the bar the whole F6 decision rests on: ClickHouse does not dedupe
+  for us, so every aggregate in Grafana and Superset is only as
+  trustworthy as this number. It fails loud or the warehouse is not
+  trusted.
 - Referential integrity: zero orphan rider/driver/trip references.
+- Funnel integrity (F5): every `dispatch_offers` chain for one trip has
+  contiguous `sequence` values starting at 1, at most one `accepted`, and
+  a trip in `no_driver_found` has no accepted offer.
 - Distribution sanity: fare, duration, distance within stated ranges; no
   single-value columns where variety is intended.
 - Calibration fidelity: generated demand per zone/hour correlates with
@@ -355,10 +405,17 @@ returns live rows, and DBeaver shows them without hand-created objects.
 Existing dashboards cover live ops, driver/trip inspectors, and history
 well. Missing the metrics a real marketplace is actually run on:
 
-- Fulfillment rate (requests → completed) and cancellation rate by reason.
+- Fulfillment rate (requests → completed) and cancellation rate by reason
+  — both need F1's `cancellation_reason` in the warehouse and F7's
+  `fulfilment_hourly`, since today every rollup only sees completed trips.
 - Rider wait time — request → pickup (needs step 3's `arrived_at`).
-- Take rate: platform fee vs driver payout vs gross.
-- Surge effectiveness: surge multiplier vs subsequent fulfillment in-zone.
+- Take rate: platform fee vs driver payout vs gross (needs F1's
+  `driver_payout` on the wire).
+- The matching funnel (F5): acceptance rate, offers per match, and
+  time-to-match by zone — the panels the whole `dispatch_offers` decision
+  exists to make possible.
+- Surge effectiveness: surge multiplier vs subsequent fulfillment in-zone,
+  and whether surge measurably lifts acceptance rate.
 - ETA accuracy: predicted vs actual, already stored, never charted.
 
 Panels are generated by `render_dashboards.py` and must pass

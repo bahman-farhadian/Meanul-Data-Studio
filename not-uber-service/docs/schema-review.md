@@ -187,6 +187,26 @@ becomes `Decimal64(2)` — `fare_estimate`, `fare_final`, `driver_payout`
 three-copy rule: Postgres is already `numeric(10,2)`; `Float64` was never
 its match. Keep `surge_multiplier` as `Float64` — it is a ratio, not money.
 
+**The wire is the third copy, and it is a `double` today.**
+`trip_lifecycle.avsc` declares `fare_estimate` and `fare_final` as Avro
+`double`. A *single* two-decimal value does survive a double round-trip
+intact at our magnitudes, so this is not a live defect the way the
+ClickHouse sums are — but "two decimals everywhere" is not true of a
+schema that says `double`, and a contract that has to be explained is
+not a contract. The money fields become Avro `decimal`:
+`{"type": "bytes", "logicalType": "decimal", "precision": 10, "scale": 2}`,
+matching Postgres's `numeric(10,2)` exactly.
+
+*Needs one local check before it is planned, not assumed:* this stack
+serialises through `confluent-kafka[schema-registry]` over `fastavro`
+(`z-lib/nus-common/pyproject.toml`), and fastavro does implement the
+decimal logical type — but round-tripping a `Decimal("12.22")` through
+`AvroSerializer`/`AvroDeserializer` against the real Registry is a
+five-minute local test and should be run before any `.avsc` is changed.
+Debezium's own Avro converter already emits Postgres `numeric` as a
+scaled-bytes decimal on the `cdc.*` topics, so the encoding is believed
+to be in use in this stack already — believed, not verified.
+
 *3b:* a `fare_components` table in Postgres, `(trip_id, kind, amount,
 quantity, unit_rate)` with `kind` a CHECK-constrained closed set:
 `base`, `distance`, `time`, `booking_fee`, `surge_premium`, `toll`,
@@ -558,15 +578,17 @@ and one consumer branch. Add `rating_updated_at` to `drivers` and
 questions a ride-hail platform is expected to answer.**
 
 1. F1 — the four orphaned columns reach Kafka and ClickHouse
-2. F3a — money becomes `Decimal64(2)` in ClickHouse
-3. F6 — event envelope on the four business-event topics
+2. F3a — money is `Decimal64(2)` in ClickHouse and `decimal(10,2)` on the
+   wire, matching Postgres's `numeric(10,2)`
+3. F6 — event envelope on **all six** topics (decided, see §6)
 4. F7 — `trip_facts` + `fulfilment_hourly`
 5. F2 — the `arrived` state and `arrived_at`
-6. F11 — `passenger_count` survives to storage
+6. F5 — `dispatch_offers`, with real decline and expiry (decided, see §6;
+   promoted out of tier 2)
+7. F11 — `passenger_count` survives to storage
 
 **Tier 2 — build if steps 3–5 come in under budget.**
 
-7. F5 — `dispatch_offers` (largest item; changes dispatch's core loop)
 8. F3b — `fare_components`
 9. F4 — `payments` + `driver_earnings`, append-only
 10. F8 — Type 1 dimensions from CDC
@@ -594,16 +616,38 @@ part of F14); one — partitioning `trips` by month on `requested_at` — is
 not a schema *design* question at all and belongs in step 6's capacity
 work, where the archiver already lives.
 
-## 6. Open questions
+## 6. Decisions taken — 2026-09-25
 
-Two decisions in here are mine to propose and yours to make, and both
-change how much work steps 3–5 are:
+Three questions were left open when this review was written. All three are
+now settled, and the tiers in §4 already reflect them.
 
-- **F5, driver decline.** It is the difference between a dispatch
-  simulation and a dispatch *marketplace* simulation, and it is the only
-  proposal that changes a service's core loop and adds a topic. Tier 2 is
-  my recommendation, not a conclusion.
-- **F6 scope.** Envelope on all six topics, or only on the four
-  business-event topics with the two telemetry streams left bare for
-  volume reasons. This should be settled by a measurement in step 6, but
-  if you have a preference it saves a round trip.
+**F5 — drivers can refuse. Build the full mechanism, not a log-only
+version.** An offer is made to one driver with a deadline; the driver may
+accept, decline, or let it expire, and the request then moves to the next
+candidate. This is promoted out of tier 2 into tier 1 — it is no longer
+"if budget allows". The consequence to plan for is volume: the
+`dispatch_offers` topic carries several messages per completed match, not
+one, so it must be sized in step 6 alongside the position streams rather
+than treated as a low-volume business topic.
+
+**F6 — the envelope goes on all six topics, including the two
+high-volume position streams.** No measurement gate, no fallback to a
+four-topic subset. The reasoning is worth writing down because it is a
+sharper argument than the one this review originally made for it:
+ClickHouse does not guarantee deduplication. `ReplacingMergeTree` dedupes
+only eventually, only within a partition, and only on merge; the
+`insert_deduplication_token` path only covers an identical retried block.
+None of that is a foundation for correct counts. So uniqueness has to be
+guaranteed *before* the warehouse — a unique `event_id` on every message
+and a sink that rejects what it has already seen — and only then is
+aggregating inside ClickHouse trustworthy. That argument applies to
+`driver_positions` exactly as much as to `trip_events`, which is why the
+subset option is dropped. The byte cost is now a capacity input to step 6,
+not a decision gate.
+
+**Money is two decimals, everywhere.** `numeric(10,2)` in Postgres,
+Avro `decimal` with precision 10 and scale 2 on the wire, `Decimal64(2)`
+in ClickHouse. One representation, no `double` hop in the middle. See
+F3a, which now covers the wire as well as the warehouse.
+
+Nothing else in this document is waiting on an answer.
