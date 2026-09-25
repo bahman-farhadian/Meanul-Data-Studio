@@ -225,7 +225,31 @@ a named target table/column, and each one cites the source it came from. ✔
 
 ## Step 3 — OLTP schema changes
 
-DONE — 2026-09-25, local. Awaiting the Dionysus run below.
+DONE — 2026-09-26, Dionysus. Verified on a full destroy/build/up cycle
+with live traffic running, not on seeded rows alone:
+
+- **Uniqueness** — `rows` = `unique_events` on all five warehouse tables
+  (trip_events 6,326, dispatch_offers 5,356, driver_positions 253,365,
+  rider_positions 38,406, hotspot_history 19,712), zero malformed ids.
+  This is the bar every other count depends on.
+- **The `arrived` state is live** — 591 events, `reached_the_kerb` 2,903,
+  mean rider wait at the kerb 81s, 189 cancellations after arrival.
+  `driver_positions` now carries `en_route_pickup` as its own status.
+- **The funnel is real** — 0.494 acceptance over 2.02 offers per match;
+  acceptance falls 0.601 → 0.367 by pickup ETA and 0.541 → 0.347 by
+  position in the chain. No position accepts 100% of the time.
+- **Milestones** — 2,896 trip_facts rows, 2,896 distinct trips, **zero
+  negative lags**.
+- **Money** — take rate 0.2300 against PLATFORM_COMMISSION_PCT 0.23,
+  summed type `Decimal(38, 2)`.
+- **The four orphaned columns** — all populated: driver_payout 1,626,
+  payment_method 1,626, cancellation_reason 596 (matching exactly the
+  303 + 293 cancellations), non-default tier 1,115.
+- **Seats is a real constraint** — parties of 5 and 6 appear in `xl` and
+  in no other tier.
+- Every topic carries messages, including `segment_traffic_updates` (534)
+  which had never been written to before, and `make errors` reports
+  nothing from city-service or cache-updater.
 
 Migrations `013_*.sql` onward, one concern per file. Existing migrations
 are never edited. Tier 1 of `docs/schema-review.md` is the scope:
@@ -257,7 +281,31 @@ passes, and no existing bar regressed.
 
 ## Step 4 — Three-copy alignment
 
-DONE — 2026-09-25, local. Awaiting the Dionysus run below.
+DONE — 2026-09-26, Dionysus. Verified on a full destroy/build/up cycle
+with live traffic running, not on seeded rows alone:
+
+- **Uniqueness** — `rows` = `unique_events` on all five warehouse tables
+  (trip_events 6,326, dispatch_offers 5,356, driver_positions 253,365,
+  rider_positions 38,406, hotspot_history 19,712), zero malformed ids.
+  This is the bar every other count depends on.
+- **The `arrived` state is live** — 591 events, `reached_the_kerb` 2,903,
+  mean rider wait at the kerb 81s, 189 cancellations after arrival.
+  `driver_positions` now carries `en_route_pickup` as its own status.
+- **The funnel is real** — 0.494 acceptance over 2.02 offers per match;
+  acceptance falls 0.601 → 0.367 by pickup ETA and 0.541 → 0.347 by
+  position in the chain. No position accepts 100% of the time.
+- **Milestones** — 2,896 trip_facts rows, 2,896 distinct trips, **zero
+  negative lags**.
+- **Money** — take rate 0.2300 against PLATFORM_COMMISSION_PCT 0.23,
+  summed type `Decimal(38, 2)`.
+- **The four orphaned columns** — all populated: driver_payout 1,626,
+  payment_method 1,626, cancellation_reason 596 (matching exactly the
+  303 + 293 cancellations), non-default tier 1,115.
+- **Seats is a real constraint** — parties of 5 and 6 appear in `xl` and
+  in no other tier.
+- Every topic carries messages, including `segment_traffic_updates` (534)
+  which had never been written to before, and `make errors` reports
+  nothing from city-service or cache-updater.
 
 Any closed set or id added in step 3 must land in all three forms at once:
 Postgres `CHECK`, the `.avsc` enum, and the ClickHouse `Enum8` — same
@@ -300,7 +348,31 @@ exactly why F1 went unnoticed.
 
 ## Step 5 — Services write the new fields
 
-DONE — 2026-09-25, local. Awaiting the Dionysus run below.
+DONE — 2026-09-26, Dionysus. Verified on a full destroy/build/up cycle
+with live traffic running, not on seeded rows alone:
+
+- **Uniqueness** — `rows` = `unique_events` on all five warehouse tables
+  (trip_events 6,326, dispatch_offers 5,356, driver_positions 253,365,
+  rider_positions 38,406, hotspot_history 19,712), zero malformed ids.
+  This is the bar every other count depends on.
+- **The `arrived` state is live** — 591 events, `reached_the_kerb` 2,903,
+  mean rider wait at the kerb 81s, 189 cancellations after arrival.
+  `driver_positions` now carries `en_route_pickup` as its own status.
+- **The funnel is real** — 0.494 acceptance over 2.02 offers per match;
+  acceptance falls 0.601 → 0.367 by pickup ETA and 0.541 → 0.347 by
+  position in the chain. No position accepts 100% of the time.
+- **Milestones** — 2,896 trip_facts rows, 2,896 distinct trips, **zero
+  negative lags**.
+- **Money** — take rate 0.2300 against PLATFORM_COMMISSION_PCT 0.23,
+  summed type `Decimal(38, 2)`.
+- **The four orphaned columns** — all populated: driver_payout 1,626,
+  payment_method 1,626, cancellation_reason 596 (matching exactly the
+  303 + 293 cancellations), non-default tier 1,115.
+- **Seats is a real constraint** — parties of 5 and 6 appear in `xl` and
+  in no other tier.
+- Every topic carries messages, including `segment_traffic_updates` (534)
+  which had never been written to before, and `make errors` reports
+  nothing from city-service or cache-updater.
 
 dispatch-service stops assigning and starts offering (F5): one candidate
 at a time, with a deadline, `sequence` incrementing down the chain, and a
@@ -351,7 +423,15 @@ fleet, `driver_positions` dominates everything else in the stack.
   partition count, not the envelope.
 - Budget the `dispatch_offers` topic. It carries several messages per
   completed match, not one, so it sizes with offers-per-match rather
-  than with trip volume. Measure the real ratio at mid scale.
+  than with trip volume. Measured 2.02 offers per match on Dionysus at
+  dev scale, so budget roughly twice the trip volume, not equal to it.
+- **city-service cannot keep up.** Measured 2,976 messages of consumer
+  lag against 244k on `driver_location` while everything else sat near
+  zero. It is the only consumer reading every position to score demand,
+  and at full fleet that gap becomes the reason the demand picture is
+  stale rather than merely late. Decide whether it samples positions
+  rather than reading all of them, or runs as more than one instance -
+  and measure before choosing.
 
 **Test:** DIONYSUS — measure ingest rate and on-disk growth over a fixed
 window; extrapolate.
@@ -466,6 +546,16 @@ returns rows.
 ---
 
 ## Step 12 — Staged scale-up
+
+**Scale supply and demand together, which the dev profile does not.**
+Measured on Dionysus: 800 drivers against ~68 requests/minute is 11.8
+drivers per request-per-minute, where `.env.example`'s full-scale numbers
+(106,000 drivers, 455 requests/minute) give 233 - roughly twenty times
+more supply per unit of demand. That gap, not a defect, is why the dev
+profile reads 0.561 fulfilment with 23% `no_driver_found`: dispatch
+genuinely cannot find a free driver within `DISPATCH_SEARCH_RADIUS_KM`.
+Every intermediate rung has to hold that ratio, or each stage measures a
+different marketplace and none of them predicts the last one.
 
 Do not jump from the dev seed to full scale. Two measured stops, each a
 full `destroy` + `up`, fixing what breaks before moving on:
