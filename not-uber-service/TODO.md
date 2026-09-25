@@ -225,6 +225,8 @@ a named target table/column, and each one cites the source it came from. ✔
 
 ## Step 3 — OLTP schema changes
 
+DONE — 2026-09-25, local. Awaiting the Dionysus run below.
+
 Migrations `013_*.sql` onward, one concern per file. Existing migrations
 are never edited. Tier 1 of `docs/schema-review.md` is the scope:
 
@@ -254,6 +256,8 @@ passes, and no existing bar regressed.
 ---
 
 ## Step 4 — Three-copy alignment
+
+DONE — 2026-09-25, local. Awaiting the Dionysus run below.
 
 Any closed set or id added in step 3 must land in all three forms at once:
 Postgres `CHECK`, the `.avsc` enum, and the ClickHouse `Enum8` — same
@@ -295,6 +299,8 @@ exactly why F1 went unnoticed.
 ---
 
 ## Step 5 — Services write the new fields
+
+DONE — 2026-09-25, local. Awaiting the Dionysus run below.
 
 dispatch-service stops assigning and starts offering (F5): one candidate
 at a time, with a deadline, `sequence` incrementing down the chain, and a
