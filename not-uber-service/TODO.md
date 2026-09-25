@@ -113,6 +113,34 @@ below instead.
 `long_two_point_routes` = 0, `route_km` > `chord_km` with last-hour
 `trips` > 0, and the driver tick shows `path_p50` ≠ 2 while `online` > 0.
 
+### DONE — 2026-09-25, Dionysus
+
+Fresh bring-up at the dev seed. `make verify-positions`, on containers
+started 15:32:21Z (driver) / 15:32:22Z (dispatch):
+
+```
+ trips | pickup_off_network | dropoff_off_network | long_two_point_routes
+   245 |                  0 |                   0 |                     0
+
+ route_km | chord_km | avg_vertices
+     4.14 |     3.06 |          100
+```
+
+`docker compose logs driver-service | grep tick`: `online` 486-515,
+`path_p50` 125-171, `path_chord` 0-3.
+
+Every criterion met. `avg_vertices` 100 and `axis_share` 0.715-0.727 (the
+~0.71 §9.2 predicts for a real polyline on Manhattan's rotated grid)
+corroborate it; both are not-bars, not gates.
+
+**Defect found during this run — `make verify` is red on tiles.**
+`nyc.mbtiles` is 374M and `nus-tiles` reports healthy, but
+`GET /tiles/styles.json` through HAProxy returns curl 52 (empty reply,
+code 000) rather than 200 — and rather than the 503 the check's own
+message expects when a backend is missing. Not a step-1 criterion, but it
+blocks `make verify`, which steps 12 and 13 require green. Diagnose and
+fix before the scale steps.
+
 ---
 
 ## Step 2 — Schema design review (writing only, no code)
