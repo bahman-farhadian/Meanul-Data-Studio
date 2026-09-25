@@ -41,7 +41,7 @@ WATCHED_TOPICS = ["driver_location", "rider_location", "trip_lifecycle"]
 WAITING = {"requested", "matched"}
 # In any of these it is no longer waiting - it has a car, or it is over.
 NOT_WAITING = {
-    "accepted", "en_route_pickup", "in_progress", "completed",
+    "accepted", "en_route_pickup", "arrived", "in_progress", "completed",
     "cancelled_by_passenger", "cancelled_by_driver", "no_driver_found",
 }
 

@@ -46,6 +46,12 @@ STATUS_EFFECT = {
     "matched": EN_ROUTE_PICKUP,
     "accepted": EN_ROUTE_PICKUP,
     "en_route_pickup": EN_ROUTE_PICKUP,
+    # A driver at the kerb waiting for the rider is still on the pickup leg,
+    # not on a trip. DriverStatus has no separate "waiting" symbol and does
+    # not need one: the car has reached the end of its pickup polyline and
+    # simply stops there, which is what a waiting driver looks like from the
+    # outside. Mapping it to ON_TRIP would start the fare clock early.
+    "arrived": EN_ROUTE_PICKUP,
     "in_progress": ON_TRIP,
     "completed": IDLE,
     "cancelled_by_passenger": IDLE,

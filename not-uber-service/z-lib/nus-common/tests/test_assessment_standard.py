@@ -392,6 +392,62 @@ def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
     assert stranded == [], f"in trips but on no topic: {stranded}"
 
 
+def test_the_two_warehouse_writers_agree_on_every_column():
+    """h-bootstrap and clickhouse-sink write the same tables.
+
+    The seeded history and the live stream both insert into nus.trip_events
+    and friends, from two separate column lists in two separate packages. A
+    column added to one and not the other produces rows that disagree about
+    what they contain, which is the same class of drift that hid
+    driver_payout from the warehouse in the first place.
+    """
+    sink = (
+        NUS / "n-service-clickhouse-sink" / "clickhouse_sink" / "batches.py"
+    ).read_text()
+    bootstrap = (NUS / "h-bootstrap" / "bootstrap" / "warehouse.py").read_text()
+
+    def sink_columns(table: str) -> list[str]:
+        match = re.search(rf'"{re.escape(table)}":\s*\[(.*?)\]', sink, re.S)
+        assert match, table
+        return re.findall(r'"([^"]+)"', match.group(1))
+
+    def bootstrap_columns(name: str) -> list[str]:
+        match = re.search(rf"^{name}\s*=\s*\[(.*?)^\]", bootstrap, re.S | re.M)
+        assert match, name
+        return re.findall(r'"([^"]+)"', match.group(1))
+
+    for table, constant in (
+        ("nus.trip_events", "TRIP_EVENT_COLUMNS"),
+        ("nus.dispatch_offers", "DISPATCH_OFFER_COLUMNS"),
+        ("nus.driver_positions", "DRIVER_POSITION_COLUMNS"),
+        ("nus.rider_positions", "RIDER_POSITION_COLUMNS"),
+        ("nus.hotspot_history", "HOTSPOT_COLUMNS"),
+    ):
+        assert sink_columns(table) == bootstrap_columns(constant), table
+
+
+def test_every_warehouse_table_carries_an_event_id():
+    """Uniqueness has to hold before ClickHouse, so every table needs the id.
+
+    ClickHouse does not deduplicate on its own, which is the whole reason
+    the envelope exists. A table without event_id is a table whose counts
+    cannot be checked, and the quality bar in step 7 would silently pass it.
+    """
+    ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
+    missing = []
+    for path in sorted(ddl_dir.glob("*.sql")):
+        for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (nus\.\w+_local)", path.read_text()):
+            table = match.group(1)
+            # A rollup holds aggregates of many events, not one event, so
+            # it has no single id to carry - and it inherits the guarantee
+            # from the table it is built on.
+            if table.endswith(("_hourly_local", "_daily_local")):
+                continue
+            if "event_id" not in _ch_columns(path.read_text(), table):
+                missing.append(table)
+    assert missing == [], f"warehouse tables with no event_id: {missing}"
+
+
 def test_minted_id_widths_match_warehouse():
     ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()
     ddl = "\n".join(

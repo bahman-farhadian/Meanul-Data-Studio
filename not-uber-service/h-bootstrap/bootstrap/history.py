@@ -34,9 +34,11 @@ logged as such.
 
 import random
 import time
+import uuid
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
 import psycopg
 
@@ -44,6 +46,8 @@ from nus_common import demand_calibration, postgres, redis_client, routing
 from nus_common.geo import day_period, distance_km, in_sim_tz, points_along_linestring
 from nus_common.ids import new_trip_id
 from nus_common.logging import get_logger
+from nus_common.money import money, money_or_none
+from nus_common.offers import run_chain
 
 from bootstrap import people, zones
 from bootstrap.settings import Settings
@@ -82,6 +86,13 @@ OUTCOME_WEIGHTS = {
 # - the historical week and live traffic should look like the same city.
 VEHICLE_TYPE_WEIGHTS = [70, 20, 10]
 
+# And the same party-size rule. A party of five cannot take a four-seat
+# car, so size and tier are drawn together rather than independently -
+# see passenger_service.party_and_tier, which this mirrors deliberately.
+PARTY_SIZES = [1, 2, 3, 4, 5, 6]
+PARTY_WEIGHTS = [66, 19, 7, 4, 2.5, 1.5]
+TIER_SEATS = {"economy": 4, "xl": 6, "premium": 4}
+
 # Only used when the street map was not imported. A straight line is shorter
 # than a drive; roads bend, and one-way streets and rivers make it worse in a
 # city like this one.
@@ -97,6 +108,11 @@ class GeneratedWeek:
 
     trip_rows: list[dict] = field(default_factory=list)
     trip_ratings: list[dict] = field(default_factory=list)
+    # The offer chain behind every trip, live-shaped: PostgreSQL rows and
+    # ClickHouse rows are kept apart because the two stores want different
+    # columns, not because the data differs.
+    offer_rows: list[dict] = field(default_factory=list)
+    offer_events: list[list] = field(default_factory=list)
     trip_events: list[list] = field(default_factory=list)
     driver_positions: list[list] = field(default_factory=list)
     rider_positions: list[list] = field(default_factory=list)
@@ -121,6 +137,7 @@ class _TripSpec:
     dropoff_lat: float
     dropoff_lon: float
     requested_vehicle_type: str
+    passenger_count: int
     requested_at: datetime
 
 
@@ -290,6 +307,7 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
         "history generated",
         extra={
             "trips": len(week.trip_rows),
+            "dispatch_offers": len(week.offer_rows),
             "trip_events": len(week.trip_events),
             "driver_positions": len(week.driver_positions),
             "rider_positions": len(week.rider_positions),
@@ -381,7 +399,13 @@ def _next_spec(
     dropoff_lat, dropoff_lon = zones.pooled_road_point_in_zone(dropoff_zone, rng)
 
     trip_id = new_trip_id(requested_at, rng)
-    vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
+    passenger_count = rng.choices(PARTY_SIZES, PARTY_WEIGHTS)[0]
+    allowed = [tier for tier in redis_client.VEHICLE_TYPES
+               if TIER_SEATS[tier] >= passenger_count]
+    vehicle_type = rng.choices(
+        allowed,
+        [VEHICLE_TYPE_WEIGHTS[redis_client.VEHICLE_TYPES.index(t)] for t in allowed],
+    )[0]
     rider = people.passenger_id(rng.randint(1, settings.passenger_count))
     outcome = rng.choices(
         list(OUTCOME_WEIGHTS), weights=list(OUTCOME_WEIGHTS.values()), k=1
@@ -398,6 +422,7 @@ def _next_spec(
         pickup_lat=pickup_lat, pickup_lon=pickup_lon,
         dropoff_lat=dropoff_lat, dropoff_lon=dropoff_lon,
         requested_vehicle_type=vehicle_type,
+        passenger_count=passenger_count,
         requested_at=requested_at,
     )
 
@@ -424,13 +449,16 @@ def _no_driver_rows(spec: _TripSpec) -> tuple[dict, list]:
         pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
         pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
         requested_vehicle_type=spec.requested_vehicle_type,
+        passenger_count=spec.passenger_count,
         route_km=None, predicted_s=None, actual_s=None,
         surge=None, estimate=None, final=None,
         requested_at=spec.requested_at, ended_at=ended_at,
     )
     event = _event_row(spec.trip_id, spec.rider, None, "no_driver_found", spec.pickup_zone,
                         spec.dropoff_zone, None, None, None, None, None, None, ended_at,
-                        hotspot_score=score)
+                        hotspot_score=score, passenger_count=spec.passenger_count,
+                        vehicle_type=spec.requested_vehicle_type,
+                        requested_at=spec.requested_at, ended_at=ended_at)
     return row, event
 
 
@@ -440,6 +468,84 @@ def _finish_no_driver(spec: _TripSpec, week: GeneratedWeek) -> None:
     row, event = _no_driver_rows(spec)
     week.trip_rows.append(row)
     week.trip_events.append(event)
+
+
+# Reasons that can only happen once the driver is already at the kerb.
+# Which side gave up decides the reason, and where in the trip it happened
+# decides which reasons are even possible - a rider_no_show before the car
+# arrived would be nonsense.
+POST_ARRIVAL_REASONS = {"rider_no_show", "wait_too_long"}
+
+
+def _seed_offers(spec: _TripSpec, surge: float, rng: random.Random,
+                 settings: Settings, week: GeneratedWeek) -> tuple[datetime, list]:
+    """The offer chain behind one seeded match, and when it ended.
+
+    The driver who actually took the trip was decided before routing, so the
+    chain is built to end on them: the refusals in front are other drivers,
+    drawn from the same fleet. That is the one place this differs from live
+    dispatch, which discovers the winner rather than being told - and it
+    only affects WHO refused, never how many did or why.
+    """
+    # Candidates ahead of the winner, with plausible offer-time ETAs. The
+    # nearest-first ordering live dispatch uses is preserved by making each
+    # refused driver further away than the last.
+    chain_depth = rng.randint(1, 4)
+    etas = sorted(rng.randint(90, 1500) for _ in range(chain_depth))
+    candidates = [
+        (people.driver_id(rng.randint(1, settings.driver_count)), eta, int(eta * 5))
+        for eta in etas
+    ]
+    _, offers = run_chain(candidates, surge, spec.requested_at, rng)
+
+    # run_chain lays the chain out ENDING at the moment it is given, which
+    # is what live dispatch wants (the tick's now). Here the chain STARTS
+    # at the request, so it is shifted forward by its own length.
+    span = timedelta(seconds=0)
+    if offers:
+        span = max(o.responded_at or o.expires_at for o in offers) - offers[0].offered_at
+    shift = spec.requested_at - offers[0].offered_at if offers else timedelta(0)
+
+    accepted_seen = False
+    for offer in offers:
+        offered_at = offer.offered_at + shift
+        responded_at = offer.responded_at + shift if offer.responded_at else None
+        # The winner is the driver the spec already chose, so the accepting
+        # offer is rewritten to them rather than to whoever run_chain picked.
+        driver_id = offer.driver_id
+        if offer.status == "accepted" and spec.driver:
+            driver_id = spec.driver
+            accepted_seen = True
+        week.offer_rows.append({
+            "trip_id": spec.trip_id, "driver_id": driver_id,
+            "sequence": offer.sequence, "offered_at": offered_at,
+            "expires_at": offer.expires_at + shift, "responded_at": responded_at,
+            "status": offer.status, "eta_seconds": offer.eta_seconds,
+            "distance_to_pickup_m": offer.distance_to_pickup_m,
+        })
+        week.offer_events.append([
+            str(uuid.uuid4()), spec.trip_id, driver_id, offer.sequence,
+            offer.status, spec.pickup_zone, offer.eta_seconds,
+            offer.distance_to_pickup_m, surge, offer.response_s,
+            offered_at, responded_at or (offer.expires_at + shift),
+        ])
+
+    # If nobody in the generated chain accepted but the spec says this trip
+    # was matched, the last offer becomes the acceptance. The alternative -
+    # a matched trip with no accepted offer - would break the partial unique
+    # index the migration relies on and lie about the funnel.
+    if not accepted_seen and spec.driver and week.offer_rows:
+        last = week.offer_rows[-1]
+        last["driver_id"] = spec.driver
+        last["status"] = "accepted"
+        last["responded_at"] = last["responded_at"] or last["offered_at"] + timedelta(seconds=4)
+        week.offer_events[-1][2] = spec.driver
+        week.offer_events[-1][4] = "accepted"
+        # response_s has to move with the status: an accepted offer with no
+        # response time would fail the funnel-integrity bar in step 7.
+        week.offer_events[-1][9] = week.offer_events[-1][9] or 4
+
+    return spec.requested_at + span, offers
 
 
 def _finish_trip(
@@ -454,22 +560,41 @@ def _finish_trip(
     """Turn a routed trip spec into trip/event/position rows."""
     score = min(HOUR_WEIGHTS[spec.hour] / 2.0, 1.0)
     surge = _surge_from_score(score)
-    estimate = round(
+    estimate = money(
         (settings.base_fare + settings.per_km * route_km
-         + settings.per_minute * predicted_s / 60) * surge,
-        2,
+         + settings.per_minute * predicted_s / 60) * surge
     )
+
+    # The offer chain that produced this match, using the same acceptance
+    # model dispatch-service runs live (nus_common.offers). A seeded week
+    # whose funnel looked different from live traffic would make every
+    # acceptance-rate chart read as a step change at the seed boundary.
+    matched_at, offers = _seed_offers(spec, surge, rng, settings, week)
+    # The clock between matching and the wheels turning. Real numbers
+    # rather than one lump, because trip_facts measures each gap
+    # separately and a single invented matched_at would flatten them all.
+    accepted_at = matched_at + timedelta(seconds=rng.randint(1, 6))
+    arrived_at = accepted_at + timedelta(seconds=rng.randint(90, 720))
 
     if spec.outcome != "completed":
         # Cancelled after matching: there is a driver and a quote, but no
         # journey and no charge. Same reason sets dispatch-service draws
         # from for live trips (l-service-dispatch/dispatch_service/
         # __main__.py's DRIVER_CANCEL_REASONS/PASSENGER_CANCEL_REASONS).
-        ended = spec.requested_at + timedelta(minutes=rng.randint(1, 6))
         reason = (
             rng.choice(["rider_no_show", "driver_too_far", "vehicle_issue"])
             if spec.outcome == "cancelled_by_driver"
             else rng.choice(["changed_mind", "found_alternative", "wait_too_long"])
+        )
+        # Where in the trip the cancellation happened has to agree with the
+        # reason. A no-show can only be declared by a driver who is already
+        # waiting, and "waited too long" means there was something to wait
+        # for - so those two, and only those two, get an arrival.
+        post_arrival = reason in POST_ARRIVAL_REASONS
+        cancel_arrived_at = arrived_at if post_arrival else None
+        ended = (
+            arrived_at + timedelta(seconds=rng.randint(120, 420)) if post_arrival
+            else accepted_at + timedelta(seconds=rng.randint(30, 300))
         )
         week.trip_rows.append(
             _trip_row(
@@ -477,16 +602,21 @@ def _finish_trip(
                 pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
                 pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
                 requested_vehicle_type=spec.requested_vehicle_type,
+                passenger_count=spec.passenger_count,
                 cancellation_reason=reason,
                 route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=None,
                 surge=surge, estimate=estimate, final=None,
-                requested_at=spec.requested_at, ended_at=ended,
+                requested_at=spec.requested_at, matched_at=matched_at,
+                accepted_at=accepted_at, arrived_at=cancel_arrived_at, ended_at=ended,
             )
         )
         week.trip_events.append(
             _event_row(spec.trip_id, spec.rider, spec.driver, spec.outcome, spec.pickup_zone,
                        spec.dropoff_zone, route_km, predicted_s, None, surge, estimate, None, ended,
-                       hotspot_score=score)
+                       hotspot_score=score, passenger_count=spec.passenger_count,
+                       vehicle_type=spec.requested_vehicle_type, cancellation_reason=reason,
+                       requested_at=spec.requested_at, matched_at=matched_at,
+                       accepted_at=accepted_at, arrived_at=cancel_arrived_at, ended_at=ended)
         )
         return
 
@@ -496,14 +626,18 @@ def _finish_trip(
     # look like a large overrun (confirmed on the first Dionysus seed:
     # predicted min 14, actual min 120).
     actual_s = max(int(predicted_s * rng.triangular(0.75, 1.6, 1.05)), 30)
-    started_at = spec.requested_at + timedelta(minutes=rng.randint(2, 8))
+    # The rider takes a moment to come out. This is the gap the 'arrived'
+    # state exists to measure, and it is the same range the live state
+    # machine draws from (dispatch_service.trips.WAIT_SECONDS).
+    started_at = arrived_at + timedelta(seconds=int(rng.triangular(20, 180, 45)))
     ended_at = started_at + timedelta(seconds=actual_s)
-    final = round(
+    final = money(
         (settings.base_fare + settings.per_km * route_km
-         + settings.per_minute * actual_s / 60) * surge,
-        2,
+         + settings.per_minute * actual_s / 60) * surge
     )
-    payout = round(final * (1 - settings.platform_commission_pct), 2)
+    # Decimal arithmetic end to end: the payout is a share of a stored
+    # amount, so it is computed in the type that amount is stored in.
+    payout = money(final * (Decimal(1) - money(settings.platform_commission_pct)))
     payment_method = rng.choice(["card", "wallet", "cash"])
 
     week.trip_rows.append(
@@ -512,16 +646,24 @@ def _finish_trip(
             pickup=(spec.pickup_lat, spec.pickup_lon), dropoff=(spec.dropoff_lat, spec.dropoff_lon),
             pickup_zone=spec.pickup_zone, dropoff_zone=spec.dropoff_zone,
             requested_vehicle_type=spec.requested_vehicle_type,
+            passenger_count=spec.passenger_count,
             driver_payout=payout, payment_method=payment_method,
             route_km=route_km, route_wkt=route_wkt, predicted_s=predicted_s, actual_s=actual_s,
             surge=surge, estimate=estimate, final=final,
-            requested_at=spec.requested_at, ended_at=ended_at, started_at=started_at,
+            requested_at=spec.requested_at, matched_at=matched_at,
+            accepted_at=accepted_at, arrived_at=arrived_at,
+            ended_at=ended_at, started_at=started_at,
         )
     )
     week.trip_events.append(
         _event_row(spec.trip_id, spec.rider, spec.driver, "completed", spec.pickup_zone,
                    spec.dropoff_zone, route_km, predicted_s, actual_s, surge, estimate, final, ended_at,
-                   hotspot_score=score)
+                   hotspot_score=score, passenger_count=spec.passenger_count,
+                   vehicle_type=spec.requested_vehicle_type,
+                   driver_payout=payout, payment_method=payment_method,
+                   requested_at=spec.requested_at, matched_at=matched_at,
+                   accepted_at=accepted_at, arrived_at=arrived_at,
+                   started_at=started_at, ended_at=ended_at)
     )
     # Same bidirectional pattern dispatch-service uses for live trips
     # (l-service-dispatch/dispatch_service/ratings.py) - a completed trip
@@ -549,14 +691,15 @@ def _finish_trip(
         share = step / max(steps - 1, 1)
         moment = started_at + timedelta(seconds=int(actual_s * share))
         week.driver_positions.append(
-            [spec.driver, spec.trip_id, "on_trip", lat, lon,
+            [str(uuid.uuid4()), spec.driver, spec.trip_id, "on_trip", lat, lon,
              float(rng.uniform(0, 360)), float(route_km / (actual_s / 3600) if actual_s else 0),
              spec.pickup_zone, moment]
         )
         # The rider's phone reports less often and less precisely.
         if step % 2 == 0:
             week.rider_positions.append(
-                [spec.rider, spec.trip_id, lat, lon, float(rng.uniform(4, 40)), spec.pickup_zone, moment]
+                [str(uuid.uuid4()), spec.rider, spec.trip_id, lat, lon,
+                 float(rng.uniform(4, 40)), spec.pickup_zone, moment]
             )
 
 
@@ -579,7 +722,8 @@ def _hotspot_history(
             waiting = int(score * rng.randint(5, 40))
             free = max(int((1.05 - score) * rng.randint(5, 40)), 0)
             week.hotspots.append(
-                [zid, period, score, waiting, free, _surge_from_score(score), moment]
+                [str(uuid.uuid4()), zid, period, score, waiting, free,
+                 _surge_from_score(score), moment]
             )
 
 
@@ -597,6 +741,7 @@ def _trip_row(**kwargs) -> dict:
         "pickup_zone_id": kwargs["pickup_zone"],
         "dropoff_zone_id": kwargs["dropoff_zone"],
         "requested_vehicle_type": kwargs["requested_vehicle_type"],
+        "passenger_count": kwargs["passenger_count"],
         "cancellation_reason": kwargs.get("cancellation_reason"),
         "driver_payout": kwargs.get("driver_payout"),
         "payment_method": kwargs.get("payment_method"),
@@ -608,6 +753,9 @@ def _trip_row(**kwargs) -> dict:
         "fare_estimate": kwargs["estimate"],
         "fare_final": kwargs["final"],
         "requested_at": kwargs["requested_at"],
+        "matched_at": kwargs.get("matched_at"),
+        "accepted_at": kwargs.get("accepted_at"),
+        "arrived_at": kwargs.get("arrived_at"),
         "started_at": kwargs.get("started_at"),
         "ended_at": kwargs["ended_at"],
     }
@@ -615,10 +763,19 @@ def _trip_row(**kwargs) -> dict:
 
 def _event_row(trip_id, rider, driver, status, zone, dropoff_zone, route_km,
                predicted_s, actual_s, surge, estimate, final, moment,
-               hotspot_score: float | None = None) -> list:
+               hotspot_score: float | None = None,
+               passenger_count: int = 1, vehicle_type: str = "economy",
+               driver_payout=None, payment_method=None, cancellation_reason=None,
+               requested_at=None, matched_at=None, accepted_at=None,
+               arrived_at=None, started_at=None, ended_at=None) -> list:
     """One row for the ClickHouse trip_events table.
 
     The column order matches warehouse.TRIP_EVENT_COLUMNS.
+
+    event_id is minted here rather than carried, because a seeded row never
+    crossed Kafka - there is no producer envelope to inherit. It is still a
+    real unique id, which is what the warehouse's uniqueness bar counts and
+    what keeps a re-run of the seed from silently doubling every trip.
     """
     delta = None if (actual_s is None or predicted_s is None) else actual_s - predicted_s
     longer = None if delta is None else int(delta > 0)
@@ -627,9 +784,14 @@ def _event_row(trip_id, rider, driver, status, zone, dropoff_zone, route_km,
     # on history was empty (confirmed: has_hotspot_score = 0 / 2000).
     is_hotspot = None if hotspot_score is None else int(hotspot_score >= 0.6)
     return [
+        str(uuid.uuid4()),
         trip_id, rider, driver, status, zone, dropoff_zone,
+        passenger_count, vehicle_type,
         route_km, predicted_s, actual_s, delta, longer,
-        surge, hotspot_score, is_hotspot, estimate, final, moment,
+        surge, hotspot_score, is_hotspot, estimate, final, driver_payout,
+        payment_method, cancellation_reason,
+        requested_at, matched_at, accepted_at, arrived_at, started_at, ended_at,
+        moment,
     ]
 
 
@@ -644,18 +806,19 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
         INSERT INTO trips (
             trip_id, rider_id, driver_id, status,
             pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
-            requested_vehicle_type, cancellation_reason,
+            requested_vehicle_type, passenger_count, cancellation_reason,
             driver_payout, payment_method,
             route, route_km, predicted_duration_s, actual_duration_s,
             surge_multiplier, fare_estimate, fare_final,
-            requested_at, started_at, ended_at
+            requested_at, matched_at, accepted_at, arrived_at,
+            started_at, ended_at
         )
         VALUES (
             %(trip_id)s, %(rider_id)s, %(driver_id)s, %(status)s,
             ST_SetSRID(ST_MakePoint(%(pickup_lon)s, %(pickup_lat)s), 4326),
             ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
             %(pickup_zone_id)s, %(dropoff_zone_id)s,
-            %(requested_vehicle_type)s, %(cancellation_reason)s,
+            %(requested_vehicle_type)s, %(passenger_count)s, %(cancellation_reason)s,
             %(driver_payout)s, %(payment_method)s,
             -- NULL for no_driver_found, and for the straight-line fallback
             -- when the map was not available - ST_GeomFromText(NULL, ...)
@@ -663,7 +826,8 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             ST_GeomFromText(%(route_wkt)s::text, 4326),
             %(route_km)s, %(predicted_duration_s)s, %(actual_duration_s)s,
             %(surge_multiplier)s, %(fare_estimate)s, %(fare_final)s,
-            %(requested_at)s, %(started_at)s, %(ended_at)s
+            %(requested_at)s, %(matched_at)s, %(accepted_at)s, %(arrived_at)s,
+            %(started_at)s, %(ended_at)s
         )
         ON CONFLICT (trip_id) DO NOTHING
     """
@@ -675,6 +839,36 @@ def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
             conn.commit()
             inserted += len(batch)
             log.info("trips written", extra={"done": inserted, "of": len(rows)})
+    return inserted
+
+
+def store_dispatch_offers(rows: list[dict], batch_size: int = 1000) -> int:
+    """Write the seeded offer chains into PostgreSQL.
+
+    Must run AFTER store_trips: every offer references a trip, and the
+    foreign key is what stops a chain existing for a trip that does not.
+    """
+    inserted = 0
+    sql = """
+        INSERT INTO dispatch_offers (
+            trip_id, driver_id, sequence, offered_at, expires_at,
+            responded_at, status, eta_seconds, distance_to_pickup_m
+        )
+        VALUES (
+            %(trip_id)s, %(driver_id)s, %(sequence)s, %(offered_at)s,
+            %(expires_at)s, %(responded_at)s, %(status)s, %(eta_seconds)s,
+            %(distance_to_pickup_m)s
+        )
+        ON CONFLICT (trip_id, sequence) DO NOTHING
+    """
+    with postgres.write_connection() as conn:
+        for start in range(0, len(rows), batch_size):
+            batch = rows[start:start + batch_size]
+            with conn.cursor() as cur:
+                cur.executemany(sql, batch)
+            conn.commit()
+            inserted += len(batch)
+            log.info("dispatch offers written", extra={"done": inserted, "of": len(rows)})
     return inserted
 
 

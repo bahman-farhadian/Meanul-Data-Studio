@@ -45,22 +45,51 @@ INSERT_TRIP = """
     INSERT INTO trips (
         trip_id, rider_id, status,
         pickup_point, dropoff_point, pickup_zone_id, dropoff_zone_id,
-        requested_vehicle_type, requested_at
+        requested_vehicle_type, passenger_count, requested_at
     )
     VALUES (
         %(trip_id)s, %(rider_id)s, 'requested',
         ST_SetSRID(ST_MakePoint(%(pickup_lon)s, %(pickup_lat)s), 4326),
         ST_SetSRID(ST_MakePoint(%(dropoff_lon)s, %(dropoff_lat)s), 4326),
         %(pickup_zone_id)s, %(dropoff_zone_id)s,
-        %(requested_vehicle_type)s, %(requested_at)s
+        %(requested_vehicle_type)s, %(passenger_count)s, %(requested_at)s
     )
     ON CONFLICT (trip_id) DO NOTHING
 """
 
+# How big the party is. Most rides are one person; five and six are rare
+# and they matter, because those are the parties that do not fit in a
+# four-seat car. Party size used to stop at four, which made the tier a
+# pure preference and meant vehicles.seats was never a real constraint on
+# anything.
+PARTY_SIZES = [1, 2, 3, 4, 5, 6]
+PARTY_WEIGHTS = [66, 19, 7, 4, 2.5, 1.5]
+
 # Most riders take whatever shows up; a minority pay for more room or more
-# comfort. Independent of passenger_count: today's max party size (4) fits
-# in any tier, so this is a preference, not a capacity constraint.
+# comfort. This is the preference, and it applies only when the party
+# actually fits - see party_and_tier.
 VEHICLE_TYPE_WEIGHTS = [70, 20, 10]
+
+# Seats per tier, the same numbers bootstrap/people.py builds the fleet
+# with. A party larger than this cannot be carried, whatever the rider
+# would have preferred.
+TIER_SEATS = {"economy": 4, "xl": 6, "premium": 4}
+
+
+def party_and_tier(rng) -> tuple[int, str]:
+    """How many people are travelling, and what they can therefore ride in.
+
+    Drawn together rather than independently: a party of five in an economy
+    car is not a preference, it is a request dispatch would have to refuse.
+    Real platforms work the same way - XL exists because the party does not
+    fit, not because the rider felt like more room.
+    """
+    size = rng.choices(PARTY_SIZES, PARTY_WEIGHTS)[0]
+    allowed = [tier for tier in redis_client.VEHICLE_TYPES if TIER_SEATS[tier] >= size]
+    weights = [
+        VEHICLE_TYPE_WEIGHTS[redis_client.VEHICLE_TYPES.index(tier)] for tier in allowed
+    ]
+    return size, rng.choices(allowed, weights)[0]
 
 
 def load_rider_ids(redis) -> list[str]:
@@ -178,7 +207,7 @@ def main() -> int:
                 pickup_lat, pickup_lon = routing.pooled_road_point_in_zone(grid, pickup_zone, rng)
                 dropoff_lat, dropoff_lon = routing.pooled_road_point_in_zone(grid, dropoff_zone, rng)
                 trip_id = new_trip_id(now, rng)
-                vehicle_type = rng.choices(redis_client.VEHICLE_TYPES, VEHICLE_TYPE_WEIGHTS)[0]
+                passenger_count, vehicle_type = party_and_tier(rng)
 
                 new_trips.append(
                     {
@@ -189,6 +218,7 @@ def main() -> int:
                         "pickup_zone_id": pickup_zone,
                         "dropoff_zone_id": dropoff_zone,
                         "requested_vehicle_type": vehicle_type,
+                        "passenger_count": passenger_count,
                         "requested_at": now,
                     }
                 )
@@ -216,10 +246,11 @@ def main() -> int:
                             "dropoff_lon": trip["dropoff_lon"],
                             "pickup_zone_id": trip["pickup_zone_id"],
                             "dropoff_zone_id": trip["dropoff_zone_id"],
-                            "passenger_count": rng.choices([1, 2, 3, 4], [70, 20, 7, 3])[0],
+                            "passenger_count": trip["passenger_count"],
                             "requested_vehicle_type": trip["requested_vehicle_type"],
                             "requested_at": event_time,
                         },
+                        correlation_id=trip["trip_id"],
                     )
                     requested += 1
 

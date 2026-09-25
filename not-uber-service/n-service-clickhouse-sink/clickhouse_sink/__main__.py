@@ -29,6 +29,7 @@ from nus_common.lifecycle import Shutdown, wait_for_bootstrap
 from nus_common.logging import get_logger, setup_logging
 
 from clickhouse_sink.batches import Batches
+from clickhouse_sink.seen import SeenEvents
 
 log = get_logger(__name__)
 
@@ -37,6 +38,7 @@ TOPICS = [
     "rider_location",
     "trip_requests",
     "trip_lifecycle",
+    "dispatch_offers",
     "city_hotspots",
     "segment_traffic_updates",
 ]
@@ -88,6 +90,11 @@ def main() -> int:
         max_seconds=config.number("SINK_FLUSH_SECONDS", 5.0),
     )
     hotspot_threshold = config.number("HOTSPOT_SCORE_THRESHOLD", 0.6)
+    # Offsets are committed after a batch is written, so a crash in between
+    # replays that batch. This is what refuses the replay - ClickHouse will
+    # not, see clickhouse_sink.seen. Sized well above the largest window
+    # that can be in flight, which is what makes it a guarantee.
+    seen = SeenEvents(config.integer("SINK_SEEN_EVENTS", 500_000))
 
     # This service's only Redis read is hotspot scores, to decide whether a
     # trip counts as a hotspot trip - its whole domain is DB_DEMAND.
@@ -110,7 +117,7 @@ def main() -> int:
             message = consumer.poll_once(timeout=1.0)
             if message is not None:
                 topic, _, value = message
-                if value:
+                if value and seen.accept(value.get("event_id")):
                     _collect(batches, topic, value, hotspots, hotspot_threshold)
 
             if batches.due():
@@ -123,7 +130,10 @@ def main() -> int:
         written += batches.flush()
         consumer.commit()
         consumer.close()
-        log.info("stopped", extra={"rows_written": written})
+        log.info(
+            "stopped",
+            extra={"rows_written": written, "replays_refused": seen.rejected},
+        )
 
     return 0
 
@@ -133,6 +143,7 @@ def _collect(batches: Batches, topic: str, value: dict,
     """Turn one message into one row waiting to be inserted."""
     if topic == "driver_location":
         batches.add("nus.driver_positions", [
+            value["event_id"],
             value["driver_id"], value.get("trip_id"), value.get("status"),
             value["lat"], value["lon"],
             value.get("heading_deg"), value.get("speed_kmh"),
@@ -142,6 +153,7 @@ def _collect(batches: Batches, topic: str, value: dict,
 
     if topic == "rider_location":
         batches.add("nus.rider_positions", [
+            value["event_id"],
             value["rider_id"], value.get("trip_id"),
             value["lat"], value["lon"], value.get("accuracy_m"),
             value.get("zone_id") or "", _moment(value["event_time"]),
@@ -150,6 +162,7 @@ def _collect(batches: Batches, topic: str, value: dict,
 
     if topic == "city_hotspots":
         batches.add("nus.hotspot_history", [
+            value["event_id"],
             value["zone_id"], value["period"], value["demand_score"],
             value["open_requests"], value["available_drivers"],
             value["surge_multiplier"], _moment(value["computed_at"]),
@@ -158,6 +171,7 @@ def _collect(batches: Batches, topic: str, value: dict,
 
     if topic == "segment_traffic_updates":
         batches.add("nus.segment_traffic_history", [
+            value["event_id"],
             value["zone_id"], value["period"], value["congestion_factor"],
             value["speed_samples"], value["segments_updated"],
             _moment(value["computed_at"]),
@@ -175,19 +189,60 @@ def _collect(batches: Batches, topic: str, value: dict,
         is_hotspot = None if score is None else int(score >= threshold)
 
         batches.add("nus.trip_events", [
+            value["event_id"],
             value["trip_id"], value["rider_id"], value.get("driver_id"),
             value["status"], value.get("pickup_zone_id") or "",
             value.get("dropoff_zone_id") or "",
+            value.get("passenger_count") or 1,
+            value.get("requested_vehicle_type") or "economy",
             value.get("route_km"), predicted, actual, delta, longer,
             value.get("surge_multiplier"), score, is_hotspot,
             value.get("fare_estimate"), value.get("fare_final"),
+            value.get("driver_payout"),
+            value.get("payment_method"), value.get("cancellation_reason"),
+            _moment_or_none(value.get("requested_at")),
+            _moment_or_none(value.get("matched_at")),
+            _moment_or_none(value.get("accepted_at")),
+            _moment_or_none(value.get("arrived_at")),
+            _moment_or_none(value.get("started_at")),
+            _moment_or_none(value.get("ended_at")),
             _moment(value["event_time"]),
+        ])
+        return
+
+    if topic == "dispatch_offers":
+        # How long the driver took to answer, worked out here rather than
+        # carried: the two timestamps it comes from are both on the message,
+        # and a stored duration that disagrees with them would be worse than
+        # no stored duration at all.
+        responded = value.get("responded_at")
+        offered = value["offered_at"]
+        response_s = None
+        if responded is not None:
+            response_s = int((_moment(responded) - _moment(offered)).total_seconds())
+        batches.add("nus.dispatch_offers", [
+            value["event_id"], value["trip_id"], value["driver_id"],
+            value["sequence"], value["status"],
+            value.get("pickup_zone_id") or "",
+            value.get("eta_seconds"), value.get("distance_to_pickup_m"),
+            value.get("surge_multiplier"), response_s,
+            _moment(offered), _moment(value["event_time"]),
         ])
         return
 
     # trip_requests is consumed but not stored on its own: every request also
     # appears on trip_lifecycle, either as a match or as no_driver_found, and
     # storing both would count the same trip twice.
+
+
+def _moment_or_none(millis) -> object | None:
+    """`_moment`, but a missing milestone stays missing.
+
+    A trip that was never matched has no matched_at, and storing the epoch
+    or the event time in its place would put a fictional milestone into
+    every funnel measurement.
+    """
+    return None if millis is None else _moment(millis)
 
 
 def _moment(millis) -> object:

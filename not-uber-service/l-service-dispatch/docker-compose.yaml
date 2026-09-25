@@ -77,6 +77,11 @@ services:
       DISPATCH_TICK_SECONDS: ${DISPATCH_TICK_SECONDS:-1.0}
       DISPATCH_SEARCH_RADIUS_KM: ${DISPATCH_SEARCH_RADIUS_KM:-5.0}
       DISPATCH_MAX_REQUESTS_PER_TICK: ${DISPATCH_MAX_REQUESTS_PER_TICK:-50}
+      # A driver may decline or let an offer lapse, so a request is
+      # offered down a chain. These two say how deep and how the
+      # offer-time ETA is estimated - see nus_common/offers.py.
+      DISPATCH_MAX_OFFERS: ${DISPATCH_MAX_OFFERS:-5}
+      DISPATCH_OFFER_SPEED_KMH: ${DISPATCH_OFFER_SPEED_KMH:-18.0}
       CANCEL_BY_DRIVER_CHANCE: ${CANCEL_BY_DRIVER_CHANCE:-0.06}
       CANCEL_BY_PASSENGER_CHANCE: ${CANCEL_BY_PASSENGER_CHANCE:-0.07}
       TRIP_ACTIVE_TTL_SECONDS: ${TRIP_ACTIVE_TTL_SECONDS:-7200}

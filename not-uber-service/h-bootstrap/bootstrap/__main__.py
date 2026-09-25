@@ -83,6 +83,9 @@ def main() -> int:
     # --- 7. a week of history, routed for real ---------------------------
     week = history.generate(settings)
     history.store_trips(week.trip_rows)
+    # After the trips: every offer references one, and the foreign key is
+    # what stops a chain existing for a trip that does not.
+    history.store_dispatch_offers(week.offer_rows)
     history.store_trip_ratings(week.trip_ratings)
 
     # --- 8. the same week in the warehouse ------------------------------

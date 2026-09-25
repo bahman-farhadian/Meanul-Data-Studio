@@ -4,7 +4,8 @@ Dispatch owns the status machine. It is the only service that decides a trip
 has moved on, which means there is exactly one place to look when a trip is
 stuck, and no two services can ever disagree about what state a trip is in.
 
-    requested -> matched -> accepted -> en_route_pickup -> in_progress -> completed
+    requested -> matched -> accepted -> en_route_pickup -> arrived
+              -> in_progress -> completed
 
 and, at the points where they are possible, the three ways a trip ends early:
 cancelled_by_driver, cancelled_by_passenger, and no_driver_found (which
@@ -27,6 +28,20 @@ STEP_SECONDS = {
     "matched": (3, 12),      # the driver's phone rings, the driver taps accept
     "accepted": (1, 5),      # the car pulls away
 }
+
+# How long the rider takes to actually come out and get in, once the car is
+# at the kerb. This is the gap the 'arrived' state exists to measure: it is
+# what a real platform charges a per-minute wait fee against, and what tells
+# a cancellation after the driver was waiting apart from one while the
+# driver was still driving over. Skewed low with a long tail - most people
+# are already outside, some are still finding their shoes.
+WAIT_SECONDS = (20, 180)
+
+# Once the driver is at the kerb, waiting turns into giving up in one of two
+# directions: the driver declares a no-show, or the rider decides it has
+# taken too long. Both are about the wait itself, so they are separate from
+# the en_route_pickup chances, which are about the drive over.
+NO_SHOW_CHANCE_SHARE = 0.6
 
 
 @dataclass
@@ -51,6 +66,22 @@ class ActiveTrip:
     status: str
     # When this trip should move on to whatever comes next.
     next_change_at: datetime
+
+    # Carried through from the request so the warehouse can group by tier
+    # and see party size. requested_vehicle_type was already matched on;
+    # passenger_count was produced on the request topic and dropped.
+    passenger_count: int = 1
+    requested_vehicle_type: str = "economy"
+
+    # The trip's own clock. Kept on the trip rather than read back from
+    # PostgreSQL every time a message is announced: the milestone times ride
+    # on every lifecycle message so the warehouse can hold one row per trip.
+    requested_at: datetime | None = None
+    matched_at: datetime | None = None
+    accepted_at: datetime | None = None
+    # When the car reached the kerb. None until it does, which is exactly
+    # what makes "was this cancelled after the driver arrived" answerable.
+    arrived_at: datetime | None = None
     # Set when the car actually starts moving with the rider in it.
     started_at: datetime | None = None
     route_wkt: str | None = None
@@ -114,8 +145,24 @@ def next_status(
         return "en_route_pickup", now + timedelta(seconds=pickup_drive_seconds)
 
     if trip.status == "en_route_pickup":
-        # Waiting is where riders give up, so this is where that can happen.
+        # A rider watching a car crawl towards them is where giving up
+        # starts. This chance is about the drive over; the wait at the kerb
+        # has its own, below.
         if rng.random() < cancel_by_passenger_chance:
+            return "cancelled_by_passenger", now
+        # The car is at the kerb. How long the rider takes to come out is
+        # the wait this state exists to measure.
+        low, high = WAIT_SECONDS
+        return "arrived", now + timedelta(seconds=int(rng.triangular(low, high, low + 25)))
+
+    if trip.status == "arrived":
+        # The driver has been waiting. Both sides can give up on that, and
+        # which one does decides the reason recorded against the trip -
+        # rider_no_show reads very differently from wait_too_long, and
+        # conflating them would make the data lie about whose problem it is.
+        if rng.random() < cancel_by_driver_chance:
+            if rng.random() < NO_SHOW_CHANCE_SHARE:
+                return "cancelled_by_driver", now
             return "cancelled_by_passenger", now
         # The journey itself takes as long as the route said, give or take.
         real_duration = int(trip.predicted_duration_s * rng.triangular(0.75, 1.6, 1.05))

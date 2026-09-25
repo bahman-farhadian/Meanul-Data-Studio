@@ -74,6 +74,10 @@ services:
       SINK_BATCH_ROWS: ${SINK_BATCH_ROWS:-5000}
       SINK_FLUSH_SECONDS: ${SINK_FLUSH_SECONDS:-5.0}
       SINK_HOTSPOT_REFRESH_SECONDS: ${SINK_HOTSPOT_REFRESH_SECONDS:-30.0}
+      # Recent event_ids kept in memory, so a replayed batch is
+      # refused rather than written twice. ClickHouse does not
+      # deduplicate for us - see clickhouse_sink/seen.py.
+      SINK_SEEN_EVENTS: ${SINK_SEEN_EVENTS:-500000}
       HOTSPOT_SCORE_THRESHOLD: ${HOTSPOT_SCORE_THRESHOLD:-0.6}
     networks:
       - backbone
