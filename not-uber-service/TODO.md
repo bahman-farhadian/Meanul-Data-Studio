@@ -56,8 +56,16 @@ that fix has not been confirmed on positions produced *after* the rebuild.
 Rebuild those two services only — do not destroy:
 
 ```
-make build && make restart SVC=driver-service && make restart SVC=dispatch-service
+make build
+make reload SVC=driver-service
+make reload SVC=dispatch-service
 ```
+
+`make reload`, not `make restart`: `docker compose restart` restarts the
+container that is already there and never looks at the image again, so
+`build` + `restart` would leave the old code running. `reload` recreates the
+container from the image just built (`--force-recreate --no-deps`) and
+prints the image id and start time so it can be checked, not assumed.
 
 **Note:** the old instruction here said to confirm with `make profile`
 section 10b (`diagonal_pct`). That column does not exist anywhere in the

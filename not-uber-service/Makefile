@@ -514,9 +514,22 @@ up-piece: ## One piece only:  make up-piece PIECE=a  (a-g, or infra, or services
 	$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) "$$@"
 
 .PHONY: restart
-restart: ## Restart one service:  make restart SVC=driver-service
+restart: ## Bounce one service, SAME image:  make restart SVC=driver-service
 	@test -n "$(SVC)" || { printf "$(R)set SVC=<service>$(X)\n"; exit 1; }
 	@$(COMPOSE) restart $(SVC)
+
+# `docker compose restart` restarts the container that is already there - it
+# does NOT look at the image again, so `make build && make restart` silently
+# keeps running the old code. That failure mode has already cost this project
+# a full debugging round once (a fix that was committed, built, and never
+# actually running). This is the target to use after `make build` when the
+# data must survive: --force-recreate replaces the container from the image
+# that was just built, --no-deps leaves the healthy infrastructure alone.
+.PHONY: reload
+reload: ## Rebuild-aware restart, keeps data:  make build && make reload SVC=driver-service
+	@test -n "$(SVC)" || { printf "$(R)set SVC=<service>$(X)\n"; exit 1; }
+	@$(COMPOSE) up -d --no-deps --force-recreate $(SVC)
+	@docker inspect $(SVC) --format '  {{.Name}} now running image {{.Image}} started {{.State.StartedAt}}' 2>/dev/null || true
 
 # =============================================================================
 ##@ One-shots (idempotent — safe to re-run at any time)
