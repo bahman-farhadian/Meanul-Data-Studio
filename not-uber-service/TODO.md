@@ -43,6 +43,43 @@ data, never from an earlier run.
 Future major-version ideas live in FUTURE_ROADMAP.md, deliberately out of
 this file.
 
+## Working blocks
+
+The thirteen steps are worked in four blocks, not one at a time. Steps
+that read the same stack are verified on one bring-up rather than on one
+each - eight remaining steps become four cycles.
+
+| Block | Steps | Where | Why they combine |
+| --- | --- | --- | --- |
+| A | 6 (measure) + 7 | Dionysus, one bring-up | Both read the same live stack: measure bytes/row while the quality bars run |
+| B | 8 + 9 + 10 | Dionysus, one bring-up | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
+| C | 11 | Local | Contract and documentation. No server time |
+| D | 12 + 13 | Dionysus | The staged scale-up running straight into the full-scale run |
+
+Step 11 is deliberately placed between B and D rather than last: writing
+down what the contract actually is, immediately before the full-scale
+run, is when the last drift gets caught.
+
+**Blocks A to C run at dev scale, and deliberately.** Correctness is what
+they test, and correctness is scale-independent. Four things are not, and
+must never be "fixed" on the strength of a dev-scale reading:
+
+- **fulfilment rate and surge** - wrong at dev scale because the
+  supply/demand ratio is wrong, not because the code is. See step 12.
+- **the disk projection** - bytes/row is measurable now; the
+  extrapolation from it is the risk, and only step 13 settles it.
+- **city-service consumer lag** - 2,976 behind at 800 drivers says
+  nothing reliable about the shape at 106,000.
+- **merge pressure and TTL partition drops** - these only appear at
+  volume.
+
+This has a direct consequence for step 7: a quality bar must be
+STRUCTURAL, not distributional. "Zero orphans", "zero negative lags",
+"rows = uniqExact(event_id)", "no party of six outside xl" hold at every
+scale. "Fulfilment above 0.8" passes at one scale and fails at the other,
+which makes it a bar that measures the seed settings rather than the
+pipeline.
+
 ---
 
 ## Where this stands (reviewed 2026-09-25)
