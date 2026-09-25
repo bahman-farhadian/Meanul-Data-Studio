@@ -10,6 +10,36 @@ Each step says where it is tested:
 - **DIONYSUS** — needs the real stack. Costs server hours; batch the
   local work first.
 
+## Test protocol on Dionysus
+
+**Every DIONYSUS step starts from a clean stack and ends by tearing it
+down.** A step is never measured on state left behind by the step before
+it — otherwise a pass can come from stale containers, stale data, or a
+fix that was built and never actually running. That failure has already
+happened here once.
+
+The cycle:
+
+```
+make destroy
+make init
+make up
+make etcd-existing
+```
+
+`make destroy` keeps the two slow artifacts on purpose — the LION routable
+graph and `nyc.mbtiles` — so a fresh start needs no internet. It *does*
+remove the volume directories, which is why `make init` runs again before
+`make up`; `make preflight` fails with "volume directories the stack mounts
+do not exist" when that is skipped.
+
+Skip `make prepare` unless preflight says an image, the LION dump, or the
+MBTiles file is actually missing.
+
+Evidence: every step records the commands run and the output that proved
+its **Done when** line — measured after the bring-up that produced the
+data, never from an earlier run.
+
 Future major-version ideas live in FUTURE_ROADMAP.md, deliberately out of
 this file.
 
@@ -51,21 +81,23 @@ percentile/uniq views, all Distributed over `_local`.
 
 The live data-quality item carried over from 2026-09-18. driver-service and
 dispatch-service now walk pgRouting geometry instead of Euclidean chords;
-that fix has not been confirmed on positions produced *after* the rebuild.
+that fix has never been confirmed against live data.
 
-Rebuild those two services only — do not destroy:
+Run the clean cycle from the test protocol above, at the dev seed already
+in `.env` (800 drivers, 1 day, 2000 trips/day, 40 req/min). A fresh
+bring-up creates every container from the current images, so the walk code
+is live by construction — nothing to rebuild or reload here.
 
 ```
-make build
-make reload SVC=driver-service
-make reload SVC=dispatch-service
+make destroy
+make init
+make up
+make etcd-existing
 ```
 
-`make reload`, not `make restart`: `docker compose restart` restarts the
-container that is already there and never looks at the image again, so
-`build` + `restart` would leave the old code running. `reload` recreates the
-container from the image just built (`--force-recreate --no-deps`) and
-prints the image id and start time so it can be checked, not assumed.
+Then let live traffic run long enough to complete trips before measuring:
+`check-on-network.sql` filters on `ended_at > now() - interval '1 hour'`,
+so the window must contain finished trips produced by this bring-up.
 
 **Note:** the old instruction here said to confirm with `make profile`
 section 10b (`diagonal_pct`). That column does not exist anywhere in the
@@ -74,9 +106,9 @@ repo — section 10b emits `axis_share` / `both_axes_pct`, and ASSESSMENT.md
 ~29°, so ~0.71 is expected on a real polyline). Use the real instruments
 below instead.
 
-**Test:** DIONYSUS — `make verify-positions`; `docker logs driver-service | tail`
+**Test:** DIONYSUS — `make verify-positions`; `docker compose logs driver-service --tail 20 | grep tick`
 
-**Done when:** on positions produced after the rebuild,
+**Done when:** on positions produced by this bring-up,
 `pickup_off_network` = 0, `dropoff_off_network` = 0,
 `long_two_point_routes` = 0, `route_km` > `chord_km` with last-hour
 `trips` > 0, and the driver tick shows `path_p50` ≠ 2 while `online` > 0.
