@@ -134,4 +134,20 @@ FROM (
     UNION ALL SELECT 'Q13 every ended trip has a fact',   toInt64((SELECT n FROM facts_missing)),         'missing = 0'
     UNION ALL SELECT 'Q14 no offer for an unknown trip',  toInt64((SELECT n FROM orphan_offers)),         'orphans = 0'
 )
-ORDER BY bar;
+ORDER BY bar
+-- Q8 joins dispatch_offers to trip_facts and Q14 checks dispatch_offers
+-- against trip_events. Both are Distributed tables, and a Distributed
+-- subquery inside a Distributed query is refused by default
+-- (distributed_product_mode = 'deny', error 288) - which a single-shard
+-- test cluster never triggers and a two-shard one does. Found on
+-- Dionysus, then reproduced locally by giving the probe two shards.
+--
+-- 'local' rather than GLOBAL, and this is a correctness argument rather
+-- than a performance one: dispatch_offers, trip_events and trip_facts all
+-- shard on cityHash64(trip_id), so every row about one trip lives on one
+-- shard. Rewriting the subquery to the local table therefore compares
+-- exactly the rows that could ever match, on the node that holds them.
+-- GLOBAL would also be correct but would broadcast a set the size of
+-- every trip id in the warehouse to answer a question already settled
+-- per shard.
+SETTINGS distributed_product_mode = 'local';

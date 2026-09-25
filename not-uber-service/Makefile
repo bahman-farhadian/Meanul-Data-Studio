@@ -750,10 +750,18 @@ capacity: ## Measure bytes/row and project the full-scale footprint
 # The scale factor is derived, not typed: full-scale SEED_DRIVERS from
 # .env.example against whatever this run actually used. A dev profile that
 # changes therefore cannot leave a stale projection behind looking current.
-	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2-); \
-	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	quota=$$(grep -E '^CH_VOLUME_QUOTA_GB=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+# Every grep ends in `|| true`: this recipe runs under bash -eu -o
+# pipefail, so a grep that matches nothing exits 1 and kills the target
+# before a single line is printed. CH_VOLUME_QUOTA_GB is optional and
+# absent from .env, which made `make capacity` fail with Error 1 and no
+# output at all - the least diagnosable shape a failure can take.
+	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
+	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
+	quota=$$(grep -E '^CH_VOLUME_QUOTA_GB=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
 	quota=$${quota:-96}; \
+	if [ -z "$$full" ] || [ -z "$$now" ]; then \
+		printf "  $(R)FAIL$(X)    SEED_DRIVERS missing from .env or .env.example\n"; exit 1; \
+	fi; \
 	scale=$$(awk -v a="$$full" -v b="$$now" 'BEGIN{printf "%.4f", (b>0? a/b : 1)}'); \
 	printf "  full-scale SEED_DRIVERS %s / this run %s = scale x%s, quota %sGB/node\n\n" \
 		"$$full" "$$now" "$$scale" "$$quota"; \
