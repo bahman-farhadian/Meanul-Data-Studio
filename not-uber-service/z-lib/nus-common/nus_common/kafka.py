@@ -194,6 +194,17 @@ class AvroTopicConsumer:
         the consumer has to be told which kind it is about to read.
         """
         self.topics = topics
+        # A regex subscription matches nothing until the topics exist, and
+        # librdkafka reports that as UNKNOWN_TOPIC_OR_PART rather than as
+        # an empty assignment. For cache-updater's "^cdc\\..*" that is the
+        # normal startup order - Debezium creates those topics only once
+        # its connector registers - and raising it cost five crash-restarts
+        # and about five minutes on every bring-up, which every service
+        # waiting on the cache then inherited. A literal topic that does
+        # not exist is still an error worth raising: that is a typo, not a
+        # race.
+        self._pattern_subscription = any(name.startswith("^") for name in topics)
+        self._missing_topics_logged = False
         self._deserializer = AvroDeserializer(_registry())
         self._key_deserializer = (
             AvroDeserializer(_registry()) if avro_keys else StringDeserializer("utf_8")
@@ -226,8 +237,7 @@ class AvroTopicConsumer:
             if message is None:
                 continue
             if message.error():
-                # The end of a partition is normal news, not a problem.
-                if message.error().code() == KafkaError._PARTITION_EOF:
+                if self._tolerable(message.error()):
                     continue
                 raise KafkaException(message.error())
 
@@ -242,6 +252,24 @@ class AvroTopicConsumer:
                 value = self._deserializer(raw_value, context)
 
             yield topic, key, value
+
+    def _tolerable(self, error: KafkaError) -> bool:
+        """True for the conditions that are news, not failures."""
+        # The end of a partition is normal news, not a problem.
+        if error.code() == KafkaError._PARTITION_EOF:
+            return True
+        if self._pattern_subscription and error.code() == KafkaError.UNKNOWN_TOPIC_OR_PART:
+            if not self._missing_topics_logged:
+                # Once, not per poll: this repeats several times a second
+                # until the topics appear, and a log full of it would bury
+                # whatever is actually wrong.
+                log.info(
+                    "waiting for topics to appear",
+                    extra={"pattern": self.topics},
+                )
+                self._missing_topics_logged = True
+            return True
+        return False
 
     def _decode_key(self, topic: str, raw_key: bytes | None):
         """Turn the message key back into something readable."""
@@ -266,7 +294,7 @@ class AvroTopicConsumer:
         if message is None:
             return None
         if message.error():
-            if message.error().code() == KafkaError._PARTITION_EOF:
+            if self._tolerable(message.error()):
                 return None
             raise KafkaException(message.error())
 
