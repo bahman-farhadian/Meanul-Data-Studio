@@ -771,6 +771,15 @@ profile: ## Profile the generated data — every dimension, range and null rate
 logs: ## Follow logs:  make logs  |  make logs SVC=dispatch-service
 	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs -f --tail=200 $(SVC); else $(COMPOSE) logs -f --tail=50; fi
 
+# logs follows, so piping it into grep|tail hangs for ever - tail cannot
+# print until it sees an EOF that a follow never sends. That is not an
+# obvious failure while watching it: the terminal simply sits there, and
+# it reads exactly like a stalled stack. This is the one to pipe.
+.PHONY: tail
+tail: ## Print the last N lines and STOP:  make tail SVC=passenger-service N=400
+	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs --tail=$(or $(N),200) $(SVC); \
+	else $(COMPOSE) logs --tail=$(or $(N),50); fi
+
 .PHONY: urls
 urls: ## Where to point a browser or a client, from here and from the network
 	@def=$$(ip route get 1.1.1.1 2>/dev/null | grep -oE 'dev [a-z0-9.-]+' | awk '{print $$2}' | head -1 || true); \
