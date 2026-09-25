@@ -18,16 +18,32 @@ from nus_common.logging import get_logger
 log = get_logger(__name__)
 
 INSERT_ZONE_DEMAND = """
-    INSERT INTO zone_demand_calibration (zone_id, hour_of_day, day_of_week, weight)
-    VALUES (%(zone_id)s, %(hour_of_day)s, %(day_of_week)s, %(weight)s)
+    INSERT INTO zone_demand_calibration
+        (zone_id, hour_of_day, day_of_week, weight, source_month)
+    VALUES (%(zone_id)s, %(hour_of_day)s, %(day_of_week)s, %(weight)s, %(source_month)s)
     ON CONFLICT (zone_id, hour_of_day, day_of_week) DO NOTHING
 """
 
 INSERT_OD_PAIR = """
-    INSERT INTO od_pair_calibration (pickup_zone_id, dropoff_zone_id, trip_share, avg_fare, avg_duration_s)
-    VALUES (%(pickup_zone_id)s, %(dropoff_zone_id)s, %(trip_share)s, %(avg_fare)s, %(avg_duration_s)s)
+    INSERT INTO od_pair_calibration
+        (pickup_zone_id, dropoff_zone_id, trip_share, avg_fare, avg_duration_s, source_month)
+    VALUES (%(pickup_zone_id)s, %(dropoff_zone_id)s, %(trip_share)s, %(avg_fare)s,
+            %(avg_duration_s)s, %(source_month)s)
     ON CONFLICT (pickup_zone_id, dropoff_zone_id) DO NOTHING
 """
+
+
+def _source_month(row: dict) -> str | None:
+    """Which TLC month this weight came from.
+
+    Read from the CSV, not the environment: a file already on disk must
+    not be relabelled by someone changing TLC_TRIP_DATA_MONTH afterwards.
+    A CSV written before prepare.py carried the column has no answer, and
+    None is the honest one - inventing a month would be worse than
+    admitting the calibration does not know where it came from, which is
+    the whole reason the column exists.
+    """
+    return row.get("source_month") or None
 
 
 def _load_csv(path: Path) -> list[dict]:
@@ -41,6 +57,7 @@ def _zone_row(row: dict) -> dict:
         "hour_of_day": int(row["hour_of_day"]),
         "day_of_week": int(row["day_of_week"]),
         "weight": float(row["weight"]),
+        "source_month": _source_month(row),
     }
 
 
@@ -57,6 +74,7 @@ def _od_row(row: dict) -> dict:
         "trip_share": float(row["trip_share"]),
         "avg_fare": float(row["avg_fare"]) if row["avg_fare"] else None,
         "avg_duration_s": round(float(row["avg_duration_s"])) if row["avg_duration_s"] else None,
+        "source_month": _source_month(row),
     }
 
 

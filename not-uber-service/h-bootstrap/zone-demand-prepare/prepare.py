@@ -96,7 +96,14 @@ def main() -> int:
     )
     zone_demand["weight"] = zone_demand["trips"] / zone_demand["trips"].mean()
     zone_demand = zone_demand.rename(columns={"PULocationID": "zone_id"})
-    zone_demand[["zone_id", "hour_of_day", "day_of_week", "weight"]].to_csv(
+    # The month rides in the CSV rather than being read from the
+    # environment at load time. A calibration file already on disk cannot
+    # then be mislabelled by someone changing TLC_TRIP_DATA_MONTH between
+    # the prepare step and the bootstrap - which is precisely the
+    # confusion source_month exists to prevent. Written as the first of
+    # the month because that is what the CHECK constraint requires.
+    zone_demand["source_month"] = f"{month}-01"
+    zone_demand[["zone_id", "hour_of_day", "day_of_week", "weight", "source_month"]].to_csv(
         zone_demand_out, index=False
     )
     log(f"zone_demand_calibration: {len(zone_demand):,} rows")
@@ -121,7 +128,9 @@ def main() -> int:
     od_counts = od_counts.rename(
         columns={"PULocationID": "pickup_zone_id", "DOLocationID": "dropoff_zone_id"}
     )
-    od_counts[["pickup_zone_id", "dropoff_zone_id", "trip_share", "avg_fare", "avg_duration_s"]].to_csv(
+    od_counts["source_month"] = f"{month}-01"
+    od_counts[["pickup_zone_id", "dropoff_zone_id", "trip_share", "avg_fare",
+               "avg_duration_s", "source_month"]].to_csv(
         od_pair_out, index=False
     )
     log(f"od_pair_calibration: {len(od_counts):,} rows")

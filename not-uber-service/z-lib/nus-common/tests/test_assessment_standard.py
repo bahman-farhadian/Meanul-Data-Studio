@@ -581,3 +581,55 @@ def test_archiver_prunes_every_child_of_trips():
     assert missing == [], (
         f"these reference trips(trip_id) but the archiver never deletes them: {missing}"
     )
+
+
+def test_calibration_insert_matches_the_rows_it_is_given():
+    """Every %(name)s the SQL needs must be a key the row builder produces.
+
+    Migration 016 added source_month and calibrated_at to both calibration
+    tables and its own comment promised zone-demand-prepare would fill
+    them. Nothing did, and the first Dionysus run loaded 42,837 rows with
+    source_month NULL - a provenance column recording no provenance. The
+    migration and the writer are in different directories and nothing tied
+    them together, so this is the tie.
+    """
+    import sys
+
+    sys.path.insert(0, str(NUS / "h-bootstrap"))
+    from bootstrap import demand_calibration as dc
+
+    zone_row = {
+        "zone_id": "161", "hour_of_day": "8", "day_of_week": "0",
+        "weight": "1.84", "source_month": "2025-01-01",
+    }
+    od_row = {
+        "pickup_zone_id": "161", "dropoff_zone_id": "237", "trip_share": "0.081",
+        "avg_fare": "24.80", "avg_duration_s": "918.0", "source_month": "2025-01-01",
+    }
+    for sql, builder, sample in (
+        (dc.INSERT_ZONE_DEMAND, dc._zone_row, zone_row),
+        (dc.INSERT_OD_PAIR, dc._od_row, od_row),
+    ):
+        needed = set(re.findall(r"%\((\w+)\)s", sql))
+        produced = set(builder(sample))
+        assert needed == produced, (
+            f"SQL needs {sorted(needed - produced)}, "
+            f"builder produces unused {sorted(produced - needed)}"
+        )
+
+    # A CSV written before prepare.py carried the column still has to load,
+    # with an honest None rather than an invented month.
+    older = {k: v for k, v in zone_row.items() if k != "source_month"}
+    assert dc._zone_row(older)["source_month"] is None
+
+
+def test_prepare_writes_the_provenance_the_loader_reads():
+    """The CSV is where source_month comes from, not the environment."""
+    prepare = (
+        NUS / "h-bootstrap" / "zone-demand-prepare" / "prepare.py"
+    ).read_text()
+    assert 'zone_demand["source_month"]' in prepare
+    assert 'od_counts["source_month"]' in prepare
+    # It must land in the written columns, not just be computed.
+    for block in re.findall(r"\[\[([^\]]+)\]\]\.to_csv", prepare):
+        assert "source_month" in block, block
