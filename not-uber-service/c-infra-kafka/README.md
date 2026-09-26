@@ -75,6 +75,36 @@ Verified locally before this shipped: `CREATE STREAM ... WITH (KAFKA_TOPIC='...'
 VALUE_FORMAT=...)` followed by `SELECT * FROM ... EMIT CHANGES` returned a real row produced
 onto the underlying topic.
 
+### Browse the heavy streams with a LIMIT
+
+Double-clicking a stream sends an unbounded `SELECT`, and ksqlDB answers a
+pull query over a stream by **scanning the whole topic** before it returns
+anything. There is no server-side row cap — `ksql.query.pull.limit.clause.enabled`
+only honours a `LIMIT` the client sends, and the client does not send one.
+
+So the small streams open instantly and the heavy ones do not, and the line
+between them moves with how busy the broker is. Measured on one server, 0.5
+CPU, a 202,000-message topic across 12 partitions:
+
+| query | result |
+| --- | --- |
+| `SELECT * FROM s LIMIT 200` | 200 rows, **1–2 s** |
+| `SELECT * FROM s WHERE key = '…' LIMIT 200` | 41 rows, 4 s |
+| `SELECT * FROM s` | 202,000 rows, **15–29 s** |
+
+`driver_location` holds four times that at dev scale and around 14 million
+at full scale, where an unbounded scan is not a slow query but a pointless
+one. Use the SQL Editor:
+
+```sql
+SELECT * FROM DRIVER_LOCATION LIMIT 200;
+SELECT * FROM TRIP_LIFECYCLE WHERE trip_key = 'trp-…' LIMIT 200;
+```
+
+Nothing is wrong with the stream when a browse times out — `make
+verify-ksqldb` reads the three server settings a client depends on and says
+so directly.
+
 ## Why binary Avro
 
 Messages are not JSON. Each message carries a small binary body plus the
