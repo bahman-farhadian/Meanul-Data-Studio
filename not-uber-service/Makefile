@@ -770,8 +770,6 @@ capacity: ## Measure bytes/row and project the full-scale footprint
 	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
 	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
 	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' Makefile | head -1 | sed 's/.*://; s/g$$//' || true); \
-	# probe
-
 	quota=$${quota:-96}; \
 	if [ -z "$$full" ] || [ -z "$$now" ]; then \
 		printf "  $(R)FAIL$(X)    SEED_DRIVERS missing from .env or .env.example\n"; exit 1; \

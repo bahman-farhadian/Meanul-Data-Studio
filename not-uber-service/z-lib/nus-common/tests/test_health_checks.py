@@ -115,15 +115,45 @@ def test_no_comment_interrupts_a_continued_recipe():
     for path in _makefiles():
         lines = path.read_text().splitlines()
         for i, line in enumerate(lines[:-1]):
-            if not line.rstrip().endswith("\\"):
-                continue
-            if not line.startswith("\t"):
+            if not line.rstrip().endswith("\\") or not line.startswith("\t"):
                 continue
             nxt = lines[i + 1]
-            if nxt.lstrip().startswith("#") and not nxt.startswith("\t"):
+            # Indented or not. A tab-indented `#` is handed to the shell as
+            # a comment and, carrying no trailing backslash of its own, ends
+            # the continuation just as surely as one at column 0 - that is
+            # how a stray "# probe" left in this file broke make capacity a
+            # second time after the first fix.
+            if nxt.lstrip().startswith("#"):
                 offenders.append(f"{path.relative_to(NUS)}:{i + 2}")
     assert not offenders, (
         "a comment interrupts a continued recipe at: "
         + ", ".join(offenders)
         + " - move it above the target"
+    )
+
+
+def test_capacity_is_exactly_one_shell_command():
+    """Structural, because "make parses it" is not the property that matters.
+
+    The recipe passes variables between its lines, so it has to be a single
+    continued command. It broke twice: once from a comment at column 0, then
+    again from a tab-indented one. Both times `make -n` still parsed
+    perfectly - what changed was how many shells it would run, which is not
+    something parsing can tell you.
+    """
+    lines = (NUS / "Makefile").read_text().splitlines()
+    start = next(i for i, line in enumerate(lines) if line.startswith("capacity:"))
+    body: list[str] = []
+    for line in lines[start + 1 :]:
+        if not line.startswith("\t"):
+            break
+        body.append(line)
+    # The say() call is its own command; everything after it is the one that
+    # must stay whole.
+    shell = [line for line in body if "$(call say" not in line]
+    unterminated = [line for line in shell if not line.rstrip().endswith("\\")]
+    assert len(unterminated) == 1, (
+        f"make capacity would run {len(unterminated)} shells, not 1 - "
+        f"variables set in one do not reach the next. Lines that end a "
+        f"command: {unterminated}"
     )
