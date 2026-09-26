@@ -548,9 +548,13 @@ quota.
   completed match, not one, so it sizes with offers-per-match rather
   than with trip volume. Measured 2.02 offers per match on Dionysus at
   dev scale, so budget roughly twice the trip volume, not equal to it.
-- **city-service cannot keep up.** Measured 2,976 messages of consumer
-  lag against 244k on `driver_location` while everything else sat near
-  zero. It is the only consumer reading every position to score demand,
+- **city-service cannot keep up, and the gap is widening.** Measured 2,976
+  messages of lag at 45 minutes and 11,080 at two hours, against 5.6M on
+  `driver_location`, while every other consumer sat at 0-7. The visible
+  consequence is already in the data: `hotspot_score` has a median of 0
+  and mean surge is 1.02, so the surge half of the simulation is inert
+  because city-service's demand picture is stale rather than because
+  demand is low. It is the only consumer reading every position to score demand,
   and at full fleet that gap becomes the reason the demand picture is
   stale rather than merely late. Decide whether it samples positions
   rather than reading all of them, or runs as more than one instance -
@@ -686,6 +690,17 @@ returns rows.
 ---
 
 ## Step 12 — Staged scale-up
+
+**Fulfilment is 0.572 at 4,000 drivers, and raising supply did not fix
+it.** Measured over two hours: 1,351 of 5,115 ended trips are
+`no_driver_found` - 26%, slightly WORSE than the 23% at 800 drivers. Chain
+exhaustion cannot explain it: at 0.533 acceptance over five offers, all
+five refusing happens 2% of the time. The remaining ~24% is
+`find_candidates` returning nothing at all, which at 2,400 online drivers
+over roughly 1,200 km2 should not happen inside a 5 km radius. Something
+about how drivers enter or leave the per-tier Redis GEO sets is the
+suspect, not the supply ratio. Diagnose before building a fulfilment panel
+on it, or step 9 charts a number nobody trusts.
 
 **Scale supply and demand together, which the dev profile does not.**
 Measured on Dionysus: 800 drivers against ~68 requests/minute is 11.8
