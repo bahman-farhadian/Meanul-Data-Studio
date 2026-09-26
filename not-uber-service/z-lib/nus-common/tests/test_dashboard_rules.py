@@ -208,3 +208,46 @@ def test_the_panel_probe_is_wired_into_verification() -> None:
     )
     grafana_make = (NUS / "f-infra-grafana" / "Makefile").read_text()
     assert "panel-probe.py" in grafana_make
+
+
+def test_a_substituted_variable_carries_the_distributed_setting() -> None:
+    """Every IN-subquery the probe builds must survive two shards.
+
+    A real panel filters on a literal and touches one Distributed table.
+    Substituting the template variable makes it a Distributed table inside a
+    subquery of a Distributed query, which ClickHouse denies outright -
+    code 288, and only ever on two shards or more, so a single-node probe
+    would never see it. Reproduced against a real two-shard cluster.
+    """
+    import contextlib
+    import io
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        PROBE.main()
+    statements = [s for s in out.getvalue().split(";") if s.strip()]
+
+    with_subquery = [s for s in statements if re.search(r"(?i)\bIN\s*\(\s*SELECT", s)]
+    assert with_subquery, "no panel substituted a template variable"
+    for statement in with_subquery:
+        assert "distributed_product_mode" in statement, (
+            "an IN-subquery statement carries no distributed_product_mode; "
+            "it would be denied on two shards"
+        )
+
+    for statement in statements:
+        if "distributed_product_mode" in statement:
+            assert re.search(r"(?i)\bIN\s*\(\s*SELECT", statement), (
+                "the setting is on a statement that does not need it"
+            )
+
+
+def test_the_setting_is_global_not_local() -> None:
+    """local is only right when both tables shard on the same key.
+
+    rider_positions shards on rider_id while the nus-trip variable reads
+    trip_events sharded on trip_id, so local would quietly drop rows rather
+    than fail. global costs a pass and is correct whatever the sharding.
+    """
+    assert "'global'" in PROBE.SUBQUERY_SETTINGS
+    assert "'local'" not in PROBE.SUBQUERY_SETTINGS
