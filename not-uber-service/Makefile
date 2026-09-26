@@ -481,6 +481,7 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
 	$(call ok,infrastructure healthy; Debezium Connect still loading its plugins)
 	@$(MAKE) --no-print-directory topics
+	@$(MAKE) --no-print-directory schemas
 	@$(MAKE) --no-print-directory ksql-ddl
 	@$(MAKE) --no-print-directory ch-ddl
 	@$(MAKE) --no-print-directory superset-init

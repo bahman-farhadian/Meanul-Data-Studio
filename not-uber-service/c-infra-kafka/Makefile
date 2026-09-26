@@ -34,6 +34,11 @@ verify-kafka: ## Brokers, the controller quorum, and every topic's replication
 		--bootstrap-server nus-kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
 	@printf "\n  Every partition should list three replicas and three in-sync.\n"
 
+.PHONY: schemas
+schemas: ## Register every .avsc as <topic>-value (before any producer runs)
+	$(call say,Avro schemas)
+	@$(COMPOSE) run --rm schema-init
+
 .PHONY: ksql-ddl
 ksql-ddl: ## Register every ksqlDB stream and table from ksql/*.sql (after the topics exist)
 	$(call say,ksqlDB streams and tables)

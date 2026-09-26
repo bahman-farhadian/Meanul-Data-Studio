@@ -182,6 +182,65 @@ def test_check_regex_matches_what_the_ddl_declares() -> None:
     )
 
 
+def test_every_topic_has_a_schema_to_register() -> None:
+    """A stream infers its columns from the Registry, so the .avsc must exist.
+
+    ksqlDB refuses CREATE STREAM with no column list when the subject is
+    absent - "Schema for message values on topic X does not exist" - and
+    that aborts the bring-up before bootstrap. A topic added to topics.tsv
+    without its schema fails here instead, where it costs nothing.
+    """
+    missing = {
+        topic for topic in _declared_topics()
+        if not (SCHEMA_DIR / f"{topic}.avsc").is_file()
+    }
+    assert not missing, f"topics with no .avsc to register: {sorted(missing)}"
+
+
+def test_schemas_are_registered_before_the_streams_are_created() -> None:
+    """Order, not just presence.
+
+    The producers register their own schemas, but they start at bootstrap -
+    after ksql-init. On a stack that has just been destroyed the Registry is
+    empty at that moment, so the schemas have to be put there first. This is
+    the order that failed on the server once.
+    """
+    root = (NUS / "Makefile").read_text()
+    order = [
+        root.index("--no-print-directory topics"),
+        root.index("--no-print-directory schemas"),
+        root.index("--no-print-directory ksql-ddl"),
+    ]
+    assert order == sorted(order), (
+        "make up must run topics, then schemas, then ksql-ddl"
+    )
+
+    kafka_make = (NUS / "c-infra-kafka" / "Makefile").read_text()
+    assert "run --rm schema-init" in kafka_make, "schemas does not run the one-shot"
+
+
+def test_the_registered_subject_matches_what_the_producers_use() -> None:
+    """Subject naming has to agree in two places or nothing lines up.
+
+    register-schemas.py writes <topic>-value. The producers reach the same
+    name through Confluent's default TopicNameStrategy, because
+    nus_common.kafka serializes with a SerializationContext of (topic,
+    VALUE). If either side changed, ksqlDB would read one subject while the
+    producers wrote another, and the mismatch would look like a schema
+    problem rather than a naming one.
+    """
+    registrar = (KSQL_DIR.parent / "schemas" / "register-schemas.py").read_text()
+    assert 'f"{path.stem}-value"' in registrar, (
+        "register-schemas.py no longer names subjects <topic>-value"
+    )
+
+    producer = (NUS / "z-lib" / "nus-common" / "nus_common" / "kafka.py").read_text()
+    assert "MessageField.VALUE" in producer, (
+        "the producer no longer serializes with a VALUE SerializationContext, "
+        "so the subject it writes may not be <topic>-value any more"
+    )
+
+
 def test_ksql_is_wired_into_bring_up_and_verification() -> None:
     """Registered by `make up`, and checked by a target that can fail."""
     root = (NUS / "Makefile").read_text()

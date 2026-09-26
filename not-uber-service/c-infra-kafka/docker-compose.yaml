@@ -319,9 +319,34 @@ services:
     networks:
       - backbone
 
+  # One-shot: register every .avsc under schemas/ as <topic>-value. Run it
+  # AFTER kafka-topics-init and BEFORE ksql-init, which is not an arbitrary
+  # order: the ksqlDB streams read their value columns out of the Registry,
+  # and on a stack that has just been destroyed the Registry is empty until
+  # a producer runs - which happens later, at bootstrap.
+  #
+  # It is worth doing on its own account. Without this, the contract for a
+  # topic is whatever the first producer to connect happened to send.
+  schema-init:
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
+    profiles: ["init"]
+    cpus: ${SCHEMA_INIT_CPUS:-0.25}
+    mem_limit: ${SCHEMA_INIT_MEM:-512m}
+    memswap_limit: ${SCHEMA_INIT_MEM:-512m}
+    entrypoint: ["python3", "/register-schemas.py"]
+    environment:
+      TZ: ${TZ:-UTC}
+      SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
+      SCHEMA_DIR: /schemas
+    volumes:
+      - ./schemas:/schemas:ro
+      - ./schemas/register-schemas.py:/register-schemas.py:ro
+    networks:
+      - backbone
+
   # One-shot: register every stream and table from ksql/*.sql. Run it AFTER
-  # kafka-topics-init - a stream over a topic that does not exist yet is
-  # refused - and after ksqldb-server reports healthy. Re-runs are safe, the
+  # schema-init - a stream whose value columns are inferred needs the schema
+  # to be there - and after ksqldb-server reports healthy. Re-runs are safe, the
   # same way ch-ddl-init and kafka-topics-init are: this is how a newly
   # declared stream is rolled out.
   #
