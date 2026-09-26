@@ -47,6 +47,12 @@
 # The cdc.* topics are NOT listed here: Debezium creates them itself, one
 # per PostgreSQL table (see d-infra-debezium).
 #
+# ksql_* and _confluent-ksql-* are not listed here either, for the same
+# reason: ksqlDB creates the sink topic of every table in ksql/*.sql, plus
+# its own command topic and each query's internal state, and owns their
+# settings. Adding one here would mean two things creating the same topic
+# with two ideas about its partitions.
+#
 # name	partitions	retention_hours	key	purpose
 driver_location	12	6	driver_id	where each driver is, every few seconds
 rider_location	12	12	rider_id	where each rider's phone is during a trip
