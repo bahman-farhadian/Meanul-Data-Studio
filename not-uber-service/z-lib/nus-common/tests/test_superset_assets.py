@@ -224,6 +224,31 @@ def test_every_chart_bounds_what_it_scans() -> None:
         )
 
 
+def test_the_window_reaches_the_present() -> None:
+    """A friendly time range is not a harmless one.
+
+    Resolved against apache/superset 6.1.0, "Last week" AND "Last 7 days"
+    both give 00:00 seven days back -> 00:00 TODAY. The upper bound is
+    midnight, so a daily-grain chart silently drops the current day: the
+    Revenue and Completed trips tiles read exactly the seeded day's figures
+    while a full day of live trips sat outside the window.
+
+    A correct sum over a wrong window looks like a number, so this is
+    checked rather than remembered.
+    """
+    ends_at_midnight = {"Last day", "Last week", "Last 7 days", "Last month",
+                        "Last quarter", "Last year"}
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        window = (CHECK.load(path).get("params") or {}).get("time_range")
+        assert window not in ends_at_midnight, (
+            f"{path.name} uses {window!r}, which ends at midnight today and "
+            "drops the current day"
+        )
+        assert window.rstrip().endswith(": now"), (
+            f"{path.name} uses {window!r}; the window has to reach now"
+        )
+
+
 def test_the_time_column_is_the_datasets_own() -> None:
     """Read from the dataset, never repeated, so the two cannot disagree."""
     dttm = {}

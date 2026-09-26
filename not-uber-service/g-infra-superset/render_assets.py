@@ -561,7 +561,20 @@ DATASETS = [FULFILMENT, FUNNEL, TRIPS_DAILY, OD, UTILIZATION, DURATIONS]
 # retention holds - thirty days for the rollups - which is thirty times the
 # work for a question nobody asked, and this project's full-scale scope is
 # seven days of history anyway.
-TIME_RANGE = "Last week"
+#
+# Written out rather than "Last week", which does NOT mean what it reads
+# like. Resolved against this exact image:
+#
+#   "Last week"    2026-09-19 00:00:00  ->  2026-09-26 00:00:00
+#   "Last 7 days"  2026-09-19 00:00:00  ->  2026-09-26 00:00:00
+#   this one       2026-09-19 00:00:00  ->  2026-09-26 23:22:56
+#
+# Both of the friendly names end at MIDNIGHT TODAY, so a daily-grain chart
+# loses the current day outright. The Revenue and Completed trips tiles
+# read 1,166 and $28,473.37 - the seeded day exactly, with every live trip
+# of the day it was showing missing - and nothing said so, because a
+# correct sum over a wrong window looks like a number.
+TIME_RANGE = "DATEADD(DATETIME('today'), -7, day) : now"
 
 # Superset needs to be told WHICH column the time range applies to; without
 # it the range is silently a no-op. It is the dataset's own main_dttm_col,
