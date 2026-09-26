@@ -51,7 +51,14 @@ PARTITION BY toYYYYMM(event_date)
 ORDER BY (trip_id, sequence)
 -- Kept as long as the trip record it explains. An offer chain is only
 -- interesting next to the trip it did or did not produce.
-TTL event_date + INTERVAL 365 DAY;
+-- Ninety days, not a year. Measured rather than chosen: at full scale the
+-- four 365-day tables together projected 32.5 GiB per node against a
+-- 96 GiB quota, and this project's own full-scale scope is SEVEN DAYS of
+-- history - a year of retention provisions for fifty-two times more data
+-- than will ever exist here. Ninety days is still twelve times the scope
+-- and supports every quarterly trend a dashboard asks for. Re-measure with
+-- make capacity rather than trusting this number forever.
+TTL event_date + INTERVAL 90 DAY;
 
 CREATE TABLE IF NOT EXISTS nus.dispatch_offers ON CLUSTER nus_cluster
 AS nus.dispatch_offers_local

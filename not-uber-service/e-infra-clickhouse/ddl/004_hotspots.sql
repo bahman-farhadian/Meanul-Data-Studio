@@ -28,7 +28,14 @@ CREATE TABLE IF NOT EXISTS nus.hotspot_history_local ON CLUSTER nus_cluster
 ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
 PARTITION BY toYYYYMM(event_date)
 ORDER BY (zone_id, computed_at)
-TTL event_date + INTERVAL 365 DAY;
+-- Ninety days, not a year. Measured rather than chosen: at full scale the
+-- four 365-day tables together projected 32.5 GiB per node against a
+-- 96 GiB quota, and this project's own full-scale scope is SEVEN DAYS of
+-- history - a year of retention provisions for fifty-two times more data
+-- than will ever exist here. Ninety days is still twelve times the scope
+-- and supports every quarterly trend a dashboard asks for. Re-measure with
+-- make capacity rather than trusting this number forever.
+TTL event_date + INTERVAL 90 DAY;
 
 CREATE TABLE IF NOT EXISTS nus.hotspot_history ON CLUSTER nus_cluster
 AS nus.hotspot_history_local

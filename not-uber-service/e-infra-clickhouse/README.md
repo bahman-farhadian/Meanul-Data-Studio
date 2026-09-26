@@ -47,8 +47,8 @@ about one driver reads half the cluster instead of all of it.
 | --- | --- | --- |
 | `driver_positions` | every driver position report | 90 days |
 | `rider_positions` | every rider position report | 90 days |
-| `trip_events` | every trip status change, enriched by the sink | 365 days |
-| `hotspot_history` | the demand score of each zone over time | 365 days |
+| `trip_events` | every trip status change, enriched by the sink | 90 days |
+| `hotspot_history` | the demand score of each zone over time | 90 days |
 | `trip_stats_hourly` | completed trips summed per hour and pickup zone | kept |
 
 Old data is removed automatically by the `TTL` rule on each table, so the

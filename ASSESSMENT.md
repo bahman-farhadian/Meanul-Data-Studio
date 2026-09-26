@@ -227,9 +227,15 @@ needs room for the new part before it can drop the old ones.
 expiring in three days partitions by day, so the expiry drops a
 directory; under a monthly partition it would rewrite the whole month
 minus the expired rows, every time, on the heaviest table in the stack.
-A table keeping 365 days partitions by month, because daily would give
-it 365 parts for nothing. `test_partition_granularity_follows_the_ttl`
+A table keeping 90 days partitions by month, because daily would give it
+ninety parts for nothing. `test_partition_granularity_follows_the_ttl`
 holds both halves.
+
+Retention is measured, not chosen. The business-record tables were set to
+365 days by assumption and cut to 90 once `make capacity` put a number on
+them: this project's full-scale scope is seven days of history, so a year
+of retention provisions for fifty-two times more data than will ever
+exist.
 
 `make up` does not rebuild images. A code change is `make build` then
 bring-up. Downloads (maps, catalogs) are not required on every destroy.
