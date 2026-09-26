@@ -242,6 +242,15 @@ metrics:
     currency: null
     warning_text: null
     extra: null
+  - metric_name: 'unserved'
+    verbose_name: 'Rides lost'
+    metric_type: 'count'
+    expression: 'sum(trips_ended) - sum(completed)'
+    description: 'Requests that reached an ending and were not one. A count, not a rate, so a zone with one request cannot outrank a zone losing forty.'
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
   - metric_name: 'post_arrival_cancel_rate'
     verbose_name: 'Cancelled after the driver arrived'
     metric_type: 'avg'

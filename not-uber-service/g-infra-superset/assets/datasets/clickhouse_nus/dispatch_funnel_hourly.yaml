@@ -206,6 +206,15 @@ metrics:
     currency: null
     warning_text: null
     extra: null
+  - metric_name: 'offers_wasted'
+    verbose_name: 'Offers that went nowhere'
+    metric_type: 'count'
+    expression: 'sum(offers_made) - sum(offers_accepted)'
+    description: 'Offers made that nobody took. A count, so a zone with six offers cannot outrank a zone burning three hundred.'
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
   - metric_name: 'acceptance_rate'
     verbose_name: 'Acceptance rate'
     metric_type: 'avg'

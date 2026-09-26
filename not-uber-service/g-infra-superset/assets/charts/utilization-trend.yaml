@@ -1,5 +1,5 @@
 slice_name: 'Driver utilization'
-description: 'Share of online time spent on a trip, fleet-wide.'
+description: 'Share of online time spent on a trip, fleet-wide. READ THE SEEDED WINDOW WITH CARE: h-bootstrap writes driver positions only along trip paths and only as on_trip, so the history has no idle telemetry and this reads 100% across it, then drops to the real figure when live traffic starts. The cliff is the seam between seeded and live, not a collapse in efficiency.'
 uuid: 'bb795561-9366-5fa1-95ed-3315cd90c9e6'
 dataset_uuid: '462681bd-1e53-5cba-a7f0-6f6e48ff358c'
 version: '1.0.0'

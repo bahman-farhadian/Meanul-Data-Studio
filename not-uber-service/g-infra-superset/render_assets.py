@@ -356,6 +356,9 @@ FULFILMENT = dataset(
                description="Both sides together. A trip nobody could be found for is counted separately."),
         metric("no_driver_rate", "Unmatched rate",
                "sum(no_driver_found) / greatest(sum(trips_ended), 1)", fmt=PCT, kind="avg"),
+        metric("unserved", "Rides lost", "sum(trips_ended) - sum(completed)",
+               fmt=NUM, kind="count",
+               description="Requests that reached an ending and were not one. A count, not a rate, so a zone with one request cannot outrank a zone losing forty."),
         metric("post_arrival_cancel_rate", "Cancelled after the driver arrived",
                "sum(cancelled_after_arrival) / greatest(sum(cancelled_by_passenger) "
                "+ sum(cancelled_by_driver), 1)", fmt=PCT, kind="avg",
@@ -402,6 +405,9 @@ FUNNEL = dataset(
         metric("accepted", "Offers accepted", "sum(offers_accepted)", fmt=NUM, kind="count"),
         metric("declined", "Declined", "sum(offers_declined)", fmt=NUM, kind="count"),
         metric("expired", "Expired unanswered", "sum(offers_expired)", fmt=NUM, kind="count"),
+        metric("offers_wasted", "Offers that went nowhere",
+               "sum(offers_made) - sum(offers_accepted)", fmt=NUM, kind="count",
+               description="Offers made that nobody took. A count, so a zone with six offers cannot outrank a zone burning three hundred."),
         metric("acceptance_rate", "Acceptance rate",
                "sum(offers_accepted) / greatest(sum(offers_made), 1)", fmt=PCT, kind="avg"),
         metric("offers_per_match", "Offers per match",
@@ -709,16 +715,33 @@ CHARTS = [
                fmt=SECONDS, grain="PT1H"),
     timeseries("utilization-trend", "Driver utilization",
                "driver_utilization_hourly", "hour", ["utilization"],
-               "Share of online time spent on a trip, fleet-wide.",
+               "Share of online time spent on a trip, fleet-wide. READ THE "
+               "SEEDED WINDOW WITH CARE: h-bootstrap writes driver positions "
+               "only along trip paths and only as on_trip, so the history has "
+               "no idle telemetry and this reads 100% across it, then drops to "
+               "the real figure when live traffic starts. The cliff is the "
+               "seam between seeded and live, not a collapse in efficiency.",
                fmt=PCT, grain="PT1H", legend=False),
 
+    # Sorted on a COUNT, not the rate, and that is the whole point. Sorting
+    # by fulfilment ascending filled the top of this table with zones that
+    # had a single request and failed it - 0.0% next to 1 request, seven
+    # rows deep, pushing every zone actually losing rides off the screen.
+    #
+    # Grafana's twin solves it with HAVING sum(trips_ended) >= 20, which it
+    # can because it writes raw SQL. A Superset table cannot express a
+    # HAVING without reaching into the frontend's adhoc-filter internals, so
+    # it sorts by the number of rides lost instead. Both land on the zones
+    # worth acting on, and a count needs no threshold to argue about.
     table("zone-leaderboard", "Where demand goes unserved", "fulfilment_hourly",
           ["pickup_zone_id"],
-          ["fulfilment_rate", "requests", "no_driver_rate", "time_to_match_s"],
-          "Worst-served zone first, which is the one to act on. A table, not "
-          "a chart, because each column carries its own unit. The row limit "
-          "is above the 263 zones TLC defines, so nothing is cut off.",
-          sort_by="fulfilment_rate", order_desc=False),
+          ["unserved", "requests", "fulfilment_rate", "no_driver_rate",
+           "time_to_match_s"],
+          "Most rides lost first - a count, so a zone with one failed request "
+          "cannot outrank a zone losing forty. The rate is still here as a "
+          "column; it is just not what decides the order. The row limit is "
+          "above the 263 zones TLC defines, so nothing is cut off.",
+          sort_by="unserved"),
     table("od-leaderboard", "Top 100 origin-destination pairs", "od_matrix_daily",
           ["pickup_zone_id", "dropoff_zone_id"],
           ["trips", "gross_revenue", "km_total"],
@@ -729,10 +752,12 @@ CHARTS = [
           sort_by="trips", row_limit=100),
     table("funnel-by-zone", "The matching funnel, by zone",
           "dispatch_funnel_hourly", ["pickup_zone_id"],
-          ["offers_per_match", "offers", "acceptance_rate", "eta_offered_s"],
-          "Sorted by how many drivers dispatch had to ask, so the zones where "
-          "the chain works hardest come first - not simply the busiest ones.",
-          sort_by="offers_per_match"),
+          ["offers_wasted", "offers", "offers_per_match", "acceptance_rate",
+           "eta_offered_s"],
+          "Where dispatch burns the most offers. Sorted on the count rather "
+          "than offers-per-match for the same reason the zone table is: a "
+          "zone with six offers and one match scores 6.00 and means nothing.",
+          sort_by="offers_wasted"),
 ]
 
 
