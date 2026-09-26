@@ -757,7 +757,13 @@ capacity: ## Measure bytes/row and project the full-scale footprint
 # output at all - the least diagnosable shape a failure can take.
 	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
 	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
-	quota=$$(grep -E '^CH_VOLUME_QUOTA_GB=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
+# The quota is read from the volume-quotas target above, not from a second
+# variable that has to be kept in step with it. CH_VOLUME_QUOTA_GB was that
+# second variable, it was never set in .env, and so this reported against a
+# 96 GB default while the quota actually applied was 112 - the projection
+# and the limit it was being judged against had drifted apart silently.
+	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' $(MAKEFILE_LIST) | head -1 | \
+		sed 's/.*://; s/g$$//' || true); \
 	quota=$${quota:-96}; \
 	if [ -z "$$full" ] || [ -z "$$now" ]; then \
 		printf "  $(R)FAIL$(X)    SEED_DRIVERS missing from .env or .env.example\n"; exit 1; \

@@ -140,3 +140,35 @@ def test_every_reason_dispatch_can_emit_is_in_the_migration_check():
     assert emitted <= allowed, f"not in the CHECK: {sorted(emitted - allowed)}"
     # Every allowed reason must be reachable, or the vocabulary is fiction.
     assert emitted == allowed, f"never emitted: {sorted(allowed - emitted)}"
+
+
+def test_the_trip_route_is_computed_before_any_offer_is_made():
+    """An offer must never outlive the trip it was made for.
+
+    assign() used to offer the ride first and compute the route second, so
+    a route that could not be computed left the trip as no_driver_found
+    with an accepted offer already written to PostgreSQL, announced on
+    Kafka, and filed in the warehouse. Quality bar Q8 found exactly two of
+    those in six hours of live traffic - a trip nobody took, with somebody
+    having taken it.
+
+    The ordering is safe because the trip route is pickup to dropoff and
+    does not depend on which driver accepts. Only the pickup leg does, and
+    that one may fail without invalidating the match.
+    """
+    source = (DISPATCH / "dispatch_service" / "__main__.py").read_text()
+    body = source[source.index("def assign("):]
+    body = body[: body.index("\ndef ")]
+
+    route = body.index("computed = routing.route(")
+    recorded = body.index("record_offers(trip_id, offers)")
+    announced = body.index("announce_offers(offer_producer")
+    chain = body.index("winner, offers = run_chain(")
+
+    assert route < chain, (
+        "the offer chain runs before the trip route is known - a routing "
+        "failure then contradicts an offer that was already accepted"
+    )
+    assert route < recorded and route < announced, (
+        "offers are persisted or announced before the route is known"
+    )

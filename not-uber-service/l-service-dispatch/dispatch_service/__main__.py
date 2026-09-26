@@ -530,6 +530,27 @@ def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: Avro
         _no_driver(producer, offer_producer, request, trip_id, zone_id, now, [], surge)
         return None
 
+    # The trip's own route comes BEFORE the offer chain, and the order is
+    # the point rather than an optimisation. It used to come after, so a
+    # route that could not be computed turned the trip into
+    # no_driver_found while an accepted offer was already on record - a
+    # trip nobody took, with somebody having taken it. Quality bar Q8
+    # found exactly two of those in six hours of live traffic.
+    #
+    # Reordering is sound because this route does not depend on WHICH
+    # driver accepts: it is pickup to dropoff. Only the pickup leg below
+    # depends on the winner, and that one is allowed to fail without
+    # invalidating the match. The failure path is also cheaper now - no
+    # offers are made for a trip that was never servable.
+    computed = routing.route(pickup_lat, pickup_lon, dropoff_lat, dropoff_lon, period)
+    if computed is None:
+        # The two points are not connected in the imported map. Treated the
+        # same as having nobody to send: the rider cannot be served.
+        log.warning("no route found", extra={"trip_id": trip_id})
+        _no_driver(producer, offer_producer, request, trip_id, zone_id, now, [], surge)
+        return None
+    route_km, predicted_s, route_wkt = computed
+
     # The offer chain. Every driver asked is recorded, including the ones
     # who said no - those refusals ARE the acceptance rate.
     winner, offers = run_chain(
@@ -549,19 +570,9 @@ def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: Avro
         (did, lon, lat) for did, lon, lat, _, _ in candidates if did == winner
     )
 
-    # The expensive part: a real path over the street network, weighted by
-    # how congested each segment is at this time of day. Only for the driver
-    # who accepted - routing every candidate would multiply this service's
-    # costliest call by the length of the chain.
-    computed = routing.route(pickup_lat, pickup_lon, dropoff_lat, dropoff_lon, period)
-    if computed is None:
-        # The two points are not connected in the imported map. Treated the
-        # same as having nobody to send: the rider cannot be served.
-        log.warning("no route found", extra={"trip_id": trip_id})
-        _no_driver(producer, offer_producer, request, trip_id, zone_id, now, [], surge)
-        return None
-
-    route_km, predicted_s, route_wkt = computed
+    # The pickup leg, for the driver who accepted. Routing every candidate
+    # would multiply this service's costliest call by the chain length, and
+    # this one is allowed to come back empty - the match still stands.
     pickup_leg = routing.route(driver_lat, driver_lon, pickup_lat, pickup_lon, period)
     pickup_km, pickup_s, pickup_wkt = pickup_leg if pickup_leg else (None, None, None)
     estimate = money(pricing.fare(base_fare, per_km, per_minute, route_km, predicted_s, surge))
