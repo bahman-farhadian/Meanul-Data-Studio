@@ -170,6 +170,43 @@ def _chart_units(panel: dict) -> set[str]:
     return units
 
 
+CHARTS = {"timeseries", "barchart", "trend"}
+
+
+def _overlaps(a: dict, b: dict) -> bool:
+    return (
+        a["x"] < b["x"] + b["w"]
+        and b["x"] < a["x"] + a["w"]
+        and a["y"] < b["y"] + b["h"]
+        and b["y"] < a["y"] + a["h"]
+    )
+
+
+def _check_layout(uid: str, panels: list[dict]) -> list[str]:
+    """No two panels may claim the same square of the grid.
+
+    Grafana does not refuse overlapping gridPos - it reflows them, so a
+    dashboard whose panels were renumbered by hand comes up looking fine on
+    one screen width and scrambled on another.
+    """
+    errors: list[str] = []
+    seen_ids: set = set()
+    for panel in panels:
+        pid = panel.get("id")
+        if pid in seen_ids:
+            errors.append(f"{uid}: two panels share id {pid}")
+        seen_ids.add(pid)
+    for i, first in enumerate(panels):
+        for second in panels[i + 1:]:
+            a, b = first.get("gridPos") or {}, second.get("gridPos") or {}
+            if a and b and _overlaps(a, b):
+                errors.append(
+                    f"{uid}: panels {first.get('id')} and {second.get('id')} "
+                    f"overlap at {a} / {b}"
+                )
+    return errors
+
+
 def check() -> list[str]:
     errors: list[str] = []
     allowed = distributed_tables()
@@ -231,13 +268,21 @@ def check() -> list[str]:
             # A chart with two units is two charts wearing one axis. The
             # smaller series is unreadable and a second y-axis only moves
             # the problem. Tables are exempt: a column carries its own unit.
-            if panel.get("type") in {"timeseries", "barchart", "trend"}:
+            if panel.get("type") in CHARTS:
                 units = _chart_units(panel)
+                if not units:
+                    errors.append(
+                        f"{uid} panel {panel.get('id')} ({panel.get('title')!r}): "
+                        "no unit - a share drawn as 0.42, a duration as 900, "
+                        "or money as 12045 makes the reader do the conversion"
+                    )
                 if len(units) > 1:
                     errors.append(
                         f"{uid} panel {panel.get('id')}: {sorted(units)} on one "
                         "chart - split it, never a second axis"
                     )
+        errors.extend(_check_layout(uid, dash.get("panels") or []))
+
         for var in (dash.get("templating") or {}).get("list") or []:
             q = var.get("query") or ""
             if isinstance(q, dict):

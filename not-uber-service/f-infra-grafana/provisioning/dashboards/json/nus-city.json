@@ -84,13 +84,13 @@
     },
     {
       "id": 2,
-      "title": "Demand score (selected zone)",
+      "title": "Demand score, and the surge it sets (selected zone)",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "",
+      "description": "Both are dimensionless, which is the only reason they share an axis: the score is roughly 0..1 and the multiplier starts at 1.0. The pair is the point - surge is derived from the score, so the two lines moving apart means the derivation is stale, not that demand changed.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -112,10 +112,27 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
       "id": 3,
@@ -125,7 +142,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "",
+      "description": "Both are counts of the same kind of thing, so one axis is honest. The gap between them is the imbalance surge exists to close.",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -147,10 +164,26 @@
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     },
     {
       "id": 4,
@@ -160,10 +193,10 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "",
+      "description": "1.0 is free-flow and higher is slower. Split from the sample counts below: a factor that lives between 1 and 2 is a flat line at the bottom of a chart scaled to hundreds of samples.",
       "gridPos": {
         "h": 8,
-        "w": 24,
+        "w": 12,
         "x": 0,
         "y": 18
       },
@@ -176,16 +209,85 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, congestion_factor, speed_samples, segments_updated\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "rawSql": "SELECT computed_at AS time, congestion_factor\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
       ],
       "fieldConfig": {
-        "defaults": {},
+        "defaults": {
+          "unit": "short",
+          "decimals": 3,
+          "min": 0.9,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          }
+        },
         "overrides": []
       },
-      "options": {}
+      "options": {
+        "legend": {
+          "showLegend": false,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 5,
+      "title": "How much evidence that factor rests on (selected zone)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Real position reports behind each reading, and the road segments it was applied to. A congestion factor computed from three samples is a guess with a decimal point.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 18
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT computed_at AS time, speed_samples, segments_updated\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
     }
   ],
   "links": [

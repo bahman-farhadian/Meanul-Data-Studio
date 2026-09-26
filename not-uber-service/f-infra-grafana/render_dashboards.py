@@ -145,6 +145,59 @@ def good_low(warn: float, bad: float) -> list[dict]:
     return bands(("green", None), ("yellow", warn), ("red", bad))
 
 
+def line(unit: str, *, decimals: int | None = None, steps: list | None = None,
+         minimum: float | None = None, maximum: float | None = None,
+         legend: bool = True) -> dict:
+    """A charted series with the unit it is measured in.
+
+    Every charting panel states one. A utilization drawn as 0.42 instead of
+    42%, a duration as 900 instead of 15 min, or revenue as 12045 instead of
+    $12,045 is the chart making the reader do the conversion - and doing it
+    differently on every panel.
+    """
+    config = fields(unit, decimals=decimals, steps=steps, minimum=minimum, maximum=maximum)
+    config["fieldConfig"]["defaults"]["custom"] = {
+        "drawStyle": "line",
+        "lineWidth": 2,
+        "fillOpacity": 10 if legend is False else 0,
+    }
+    config["options"] = {
+        "legend": {"showLegend": legend, "displayMode": "list", "placement": "bottom"},
+        "tooltip": {"mode": "multi" if legend else "single"},
+    }
+    return config
+
+
+# Colour follows the outcome, never its rank in the result, so a zone filter
+# that drops a series cannot repaint the ones that survive. Completed is the
+# only good outcome; the three failures are graded by how much of the
+# platform's promise was already spent when they happened.
+OUTCOME_COLOURS = {
+    "completed": "green",
+    "cancelled_by_passenger": "yellow",
+    "cancelled_by_driver": "orange",
+    "no_driver_found": "red",
+}
+
+
+def by_name(colours: dict[str, str]) -> list[dict]:
+    return [
+        {
+            "matcher": {"id": "byName", "options": name},
+            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": colour}}],
+        }
+        for name, colour in colours.items()
+    ]
+
+
+STACKED_BARS = {
+    "drawStyle": "bars",
+    "fillOpacity": 80,
+    "lineWidth": 0,
+    "stacking": {"mode": "normal", "group": "A"},
+}
+
+
 STAT = {
     "options": {
         "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
@@ -339,6 +392,12 @@ ORDER BY time
 """,
             0, 6, 12, 8,
             timeseries=True,
+            description=(
+                "Status changes reaching the warehouse, per bucket. A flat "
+                "zero here with services up means the sink stopped, not that "
+                "nobody is riding."
+            ),
+            extra=line("short", legend=False),
         ),
         panel(
             5,
@@ -355,6 +414,11 @@ ORDER BY time
 """,
             12, 6, 12, 8,
             timeseries=True,
+            description=(
+                "The heaviest stream in the stack, and the first place a "
+                "stalled fleet or a stalled sink shows."
+            ),
+            extra=line("short", legend=False),
         ),
         panel(
             6,
@@ -373,6 +437,21 @@ ORDER BY time
 """,
             0, 14, 24, 8,
             timeseries=True,
+            description=(
+                "Every ending, live. The same four outcomes the Marketplace "
+                "dashboard charts hourly, in the same colours - this one is "
+                "for watching a deploy, that one for judging a day."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {"unit": "short", "custom": STACKED_BARS},
+                    "overrides": by_name(OUTCOME_COLOURS),
+                },
+                "options": {
+                    "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                    "tooltip": {"mode": "multi", "sort": "desc"},
+                },
+            },
         ),
         panel(
             7,
@@ -512,6 +591,8 @@ ORDER BY time
 """,
             0, 16, 12, 8,
             timeseries=True,
+            description="Straight from the device, as reported.",
+            extra=line("velocitykmh", decimals=1, legend=False),
         ),
         panel(
             5,
@@ -530,6 +611,12 @@ ORDER BY time
 """,
             12, 16, 12, 8,
             timeseries=True,
+            description=(
+                "Ticks spent on a trip out of ticks spent online. A share, so "
+                "it is drawn as one - 0.42 is 42% of this driver's shift."
+            ),
+            extra=line("percentunit", decimals=1, minimum=0, maximum=1,
+                       steps=good_high(0.35, 0.55), legend=False),
         ),
     ],
 )
@@ -670,7 +757,7 @@ ORDER BY demand_score DESC
         ),
         panel(
             2,
-            "Demand score (selected zone)",
+            "Demand score, and the surge it sets (selected zone)",
             "timeseries",
             """
 SELECT computed_at AS time, demand_score, surge_multiplier
@@ -681,6 +768,14 @@ ORDER BY time
 """,
             0, 10, 12, 8,
             timeseries=True,
+            description=(
+                "Both are dimensionless, which is the only reason they share "
+                "an axis: the score is roughly 0..1 and the multiplier starts "
+                "at 1.0. The pair is the point - surge is derived from the "
+                "score, so the two lines moving apart means the derivation is "
+                "stale, not that demand changed."
+            ),
+            extra=line("short", decimals=2),
         ),
         panel(
             3,
@@ -695,20 +790,52 @@ ORDER BY time
 """,
             12, 10, 12, 8,
             timeseries=True,
+            description=(
+                "Both are counts of the same kind of thing, so one axis is "
+                "honest. The gap between them is the imbalance surge exists "
+                "to close."
+            ),
+            extra=line("short"),
         ),
         panel(
             4,
             "Congestion factor (selected zone)",
             "timeseries",
             """
-SELECT computed_at AS time, congestion_factor, speed_samples, segments_updated
+SELECT computed_at AS time, congestion_factor
 FROM nus.segment_traffic_history
 WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
 """,
-            0, 18, 24, 8,
+            0, 18, 12, 8,
             timeseries=True,
+            description=(
+                "1.0 is free-flow and higher is slower. Split from the sample "
+                "counts below: a factor that lives between 1 and 2 is a flat "
+                "line at the bottom of a chart scaled to hundreds of samples."
+            ),
+            extra=line("short", decimals=3, minimum=0.9, legend=False),
+        ),
+        panel(
+            5,
+            "How much evidence that factor rests on (selected zone)",
+            "timeseries",
+            """
+SELECT computed_at AS time, speed_samples, segments_updated
+FROM nus.segment_traffic_history
+WHERE zone_id = '${zone_id}'
+  AND $__timeFilter(computed_at)
+ORDER BY time
+""",
+            12, 18, 12, 8,
+            timeseries=True,
+            description=(
+                "Real position reports behind each reading, and the road "
+                "segments it was applied to. A congestion factor computed "
+                "from three samples is a guess with a decimal point."
+            ),
+            extra=line("short"),
         ),
     ],
 )
@@ -731,30 +858,57 @@ HISTORY = dashboard(
     panels=[
         panel(
             1,
-            "Completed trips and revenue (hourly, sum across shards)",
+            "Completed trips (hourly, sum across shards)",
             "timeseries",
             """
 SELECT
     hour AS time,
-    sum(completed_trips) AS completed_trips,
+    sum(completed_trips) AS completed_trips
+FROM nus.trip_stats_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+ORDER BY time
+""",
+            0, 0, 12, 8,
+            timeseries=True,
+            description=(
+                "Volume, on its own axis. This chart used to carry revenue "
+                "beside it - a count and an amount of money, one in the "
+                "thousands and one in the tens of thousands, sharing a scale "
+                "that made the smaller one a flat line along the bottom."
+            ),
+            extra=line("short", legend=False),
+        ),
+        panel(
+            2,
+            "Revenue (hourly, sum across shards)",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
     sum(revenue) AS revenue
 FROM nus.trip_stats_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
 """,
-            0, 0, 24, 8,
+            12, 0, 12, 8,
             timeseries=True,
+            description=(
+                "The same hours, measured in money. Summed from Decimal64(2) "
+                "across both shards, so it reconciles against Postgres rather "
+                "than carrying a float tail."
+            ),
+            extra=line("currencyUSD", decimals=2, legend=False),
         ),
         panel(
-            2,
-            "Daily completed trips and revenue (sum)",
+            3,
+            "Completed trips (daily, sum)",
             "timeseries",
             """
 SELECT
     toDateTime(day) AS time,
-    sum(completed_trips) AS completed_trips,
-    sum(revenue) AS revenue
+    sum(completed_trips) AS completed_trips
 FROM nus.trip_stats_daily
 WHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)
 GROUP BY day
@@ -762,9 +916,29 @@ ORDER BY time
 """,
             0, 8, 12, 8,
             timeseries=True,
+            description="The same measure a day at a time, for the weekly shape.",
+            extra=line("short", legend=False),
         ),
         panel(
-            3,
+            4,
+            "Revenue (daily, sum)",
+            "timeseries",
+            """
+SELECT
+    toDateTime(day) AS time,
+    sum(revenue) AS revenue
+FROM nus.trip_stats_daily
+WHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)
+GROUP BY day
+ORDER BY time
+""",
+            12, 8, 12, 8,
+            timeseries=True,
+            description="Rolled up from the hourly table, not recomputed from raw events.",
+            extra=line("currencyUSD", decimals=2, legend=False),
+        ),
+        panel(
+            5,
             "Trip duration p50 / p95 (quantileMerge)",
             "timeseries",
             """
@@ -777,11 +951,17 @@ WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
 """,
-            12, 8, 12, 8,
+            0, 16, 12, 8,
             timeseries=True,
+            description=(
+                "Both percentiles are seconds, which is the only reason they "
+                "share an axis. quantileMerge, never quantile: the stored "
+                "column is an aggregate state, not a number."
+            ),
+            extra=line("s"),
         ),
         panel(
-            4,
+            6,
             "Driver utilization (busy / online ticks, sum)",
             "timeseries",
             """
@@ -794,11 +974,18 @@ GROUP BY hour
 HAVING sum(online_ticks) > 0
 ORDER BY time
 """,
-            0, 16, 12, 8,
+            12, 16, 12, 8,
             timeseries=True,
+            description=(
+                "Fleet-wide share of online time spent on a trip. Summed "
+                "first and divided once, because the source is a "
+                "SummingMergeTree and a row is a partial sum."
+            ),
+            extra=line("percentunit", decimals=1, minimum=0, maximum=1,
+                       steps=good_high(0.35, 0.55), legend=False),
         ),
         panel(
-            5,
+            7,
             "Distinct drivers and riders (uniqMerge)",
             "timeseries",
             """
@@ -811,11 +998,17 @@ WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
 """,
-            12, 16, 12, 8,
+            0, 24, 12, 8,
             timeseries=True,
+            description=(
+                "Two counts of people, so one axis. uniqMerge, because the "
+                "stored column is a sketch: adding two hours' counts would "
+                "double anyone who rode in both."
+            ),
+            extra=line("short"),
         ),
         panel(
-            6,
+            8,
             "Overrun share of completed trips (hourly, sum)",
             "timeseries",
             """
@@ -828,11 +1021,18 @@ GROUP BY hour
 HAVING sum(completed_trips) > 0
 ORDER BY time
 """,
-            0, 24, 12, 8,
+            12, 24, 12, 8,
             timeseries=True,
+            description=(
+                "Trips that took longer than the route promised, as a share "
+                "of trips completed. How often the promise was wrong; the "
+                "Marketplace dashboard charts by how much."
+            ),
+            extra=line("percentunit", decimals=1, minimum=0, maximum=1,
+                       steps=good_low(0.35, 0.55), legend=False),
         ),
         panel(
-            7,
+            9,
             "Top pickup zones today (daily rollup, sum)",
             "table",
             """
@@ -847,10 +1047,10 @@ GROUP BY pickup_zone_id
 ORDER BY completed_trips DESC
 LIMIT 20
 """,
-            12, 24, 12, 8,
+            0, 32, 24, 8,
         ),
         panel(
-            8,
+            10,
             "Origin-destination (daily, sum)",
             "table",
             """
@@ -865,7 +1065,7 @@ GROUP BY pickup_zone_id, dropoff_zone_id
 ORDER BY completed_trips DESC
 LIMIT 30
 """,
-            0, 32, 24, 10,
+            0, 40, 24, 10,
         ),
     ],
 )
@@ -894,35 +1094,6 @@ LIMIT 30
 #   rate and a count, are two charts - the smaller series is invisible
 #   otherwise, and a second y-axis just moves the lie.
 # ---------------------------------------------------------------------------
-
-# Colour follows the outcome, never its rank in the result, so a zone filter
-# that drops a series cannot repaint the ones that survive. Completed is the
-# only good outcome; the three failures are graded by how much of the
-# platform's promise was already spent when they happened.
-OUTCOME_COLOURS = {
-    "completed": "green",
-    "cancelled_by_passenger": "yellow",
-    "cancelled_by_driver": "orange",
-    "no_driver_found": "red",
-}
-
-
-def by_name(colours: dict[str, str]) -> list[dict]:
-    return [
-        {
-            "matcher": {"id": "byName", "options": name},
-            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": colour}}],
-        }
-        for name, colour in colours.items()
-    ]
-
-
-STACKED_BARS = {
-    "drawStyle": "bars",
-    "fillOpacity": 80,
-    "lineWidth": 0,
-    "stacking": {"mode": "normal", "group": "A"},
-}
 
 MARKETPLACE = dashboard(
     uid="nus-marketplace",

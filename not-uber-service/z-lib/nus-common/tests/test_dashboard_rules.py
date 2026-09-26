@@ -82,6 +82,45 @@ def test_two_units_on_one_chart_are_visible_to_the_checker() -> None:
     assert CHECK._chart_units(mixed) == {"s", "currencyUSD"}
 
 
+def test_overlapping_panels_are_refused() -> None:
+    """Grafana reflows an overlap instead of refusing it, so the check must."""
+    panels = [
+        {"id": 1, "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}},
+        {"id": 2, "gridPos": {"x": 6, "y": 4, "w": 12, "h": 8}},
+    ]
+    assert CHECK._check_layout("x", panels), "an overlap was accepted"
+
+
+def test_panels_side_by_side_are_accepted() -> None:
+    panels = [
+        {"id": 1, "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}},
+        {"id": 2, "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}},
+        {"id": 3, "gridPos": {"x": 0, "y": 8, "w": 24, "h": 8}},
+    ]
+    assert CHECK._check_layout("x", panels) == []
+
+
+def test_two_panels_with_one_id_are_refused() -> None:
+    panels = [
+        {"id": 1, "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8}},
+        {"id": 1, "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8}},
+    ]
+    assert any("share id" in e for e in CHECK._check_layout("x", panels))
+
+
+def test_every_charting_panel_states_a_unit() -> None:
+    """Across every dashboard, not only the new one."""
+    for path in sorted(JSON_DIR.glob("*.json")):
+        dash = json.loads(path.read_text())
+        for panel in dash.get("panels") or []:
+            if panel.get("type") not in CHECK.CHARTS:
+                continue
+            assert CHECK._chart_units(panel), (
+                f"{dash['uid']} panel {panel['id']} ({panel['title']!r}) "
+                "declares no unit"
+            )
+
+
 def test_every_marketplace_panel_states_what_it_means() -> None:
     dash = json.loads((JSON_DIR / "nus-marketplace.json").read_text())
     panels = dash.get("panels") or []
