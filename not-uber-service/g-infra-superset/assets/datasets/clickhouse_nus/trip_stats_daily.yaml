@@ -1,0 +1,195 @@
+# Money, at day grain. revenue and payout_total are Decimal64(2) and
+# summed exactly, because float addition is not associative and this
+# column is summed inside background merges in an order nobody
+# controls. Take rate below casts to float on the RATIO and never on
+# the money.
+# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+table_name: 'trip_stats_daily'
+schema: 'nus'
+uuid: 'b5d7df7b-9c96-5857-ba76-39d135567da4'
+database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
+version: '1.0.0'
+main_dttm_col: 'day'
+description: 'Completed trips, revenue, driver pay, surge and overruns per day and pickup zone.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+columns:
+  - column_name: 'day'
+    verbose_name: null
+    type: 'DATE'
+    is_dttm: true
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'pickup_zone_id'
+    verbose_name: null
+    type: 'STRING'
+    is_dttm: false
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'completed_trips'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'revenue'
+    verbose_name: null
+    type: 'DECIMAL'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'payout_total'
+    verbose_name: null
+    type: 'DECIMAL'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'surge_sum'
+    verbose_name: null
+    type: 'DOUBLE'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'route_km_total'
+    verbose_name: null
+    type: 'DOUBLE'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'overrun_trips'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+metrics:
+  - metric_name: 'trips'
+    verbose_name: 'Completed trips'
+    metric_type: 'count'
+    expression: 'sum(completed_trips)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'gross_revenue'
+    verbose_name: 'Revenue'
+    metric_type: 'sum'
+    expression: 'sum(revenue)'
+    description: null
+    d3format: '$,.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'payout'
+    verbose_name: 'Driver pay'
+    metric_type: 'sum'
+    expression: 'sum(payout_total)'
+    description: null
+    d3format: '$,.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'platform_fee'
+    verbose_name: 'Platform fee'
+    metric_type: 'sum'
+    expression: 'sum(revenue) - sum(payout_total)'
+    description: null
+    d3format: '$,.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'take_rate'
+    verbose_name: 'Take rate'
+    metric_type: 'avg'
+    expression: 'toFloat64(sum(revenue) - sum(payout_total)) / greatest(toFloat64(sum(revenue)), 1)'
+    description: 'What the platform keeps. Decimal divided by Decimal truncates to the left operand''s scale, so the cast is on the ratio.'
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'avg_surge'
+    verbose_name: 'Average surge'
+    metric_type: 'avg'
+    expression: 'sum(surge_sum) / greatest(sum(completed_trips), 1)'
+    description: 'Surge added up and divided by trips - never an average of averages.'
+    d3format: ',.2f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'overrun_rate'
+    verbose_name: 'Slower than predicted'
+    metric_type: 'avg'
+    expression: 'sum(overrun_trips) / greatest(sum(completed_trips), 1)'
+    description: null
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'km_total'
+    verbose_name: 'Distance driven'
+    metric_type: 'sum'
+    expression: 'sum(route_km_total)'
+    description: null
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null

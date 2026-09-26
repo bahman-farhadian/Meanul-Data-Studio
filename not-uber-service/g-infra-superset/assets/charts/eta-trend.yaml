@@ -1,0 +1,11 @@
+slice_name: 'Pickup ETA: every offer vs the accepted one'
+description: 'Read the gap. Offers go out nearest-first, so the accepting driver is among the furthest asked and the accepted line sitting above the offered line is the chain working.'
+uuid: '8e7a29c6-f0c3-5655-a7e5-0590c7317a40'
+dataset_uuid: '14a85160-f570-562c-84b0-0cf132d40c30'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["eta_offered_s", "eta_accepted_s"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.0f", "seriesType": "line", "markerEnabled": false, "show_legend": true, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

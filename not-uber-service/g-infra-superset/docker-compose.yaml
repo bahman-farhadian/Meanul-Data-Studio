@@ -111,6 +111,30 @@ services:
     volumes:
       - ./superset_config.py:/app/pythonpath/superset_config.py:ro
       - ./init:/init:ro
+      # The datasets, charts and dashboard, as plain YAML under source
+      # control. Read-only: the import reads these files, and a chart edited
+      # in the browser is never written back to them.
+      - ./assets:/app/assets:ro
+      - superset-home:/app/superset_home
+    networks:
+      - backbone
+
+  # One-shot: the verification half of the one above. Kept separate so it
+  # can be run at any time against a warm stack without re-importing
+  # anything, and so `make verify` can fail on it.
+  superset-verify:
+    build: *superset-build
+    image: nus/superset:${NUS_VERSION:-0.1.0}
+    profiles: ["init"]
+    cpus: ${SUPERSET_INIT_CPUS:-0.5}
+    mem_limit: ${SUPERSET_INIT_MEM:-2g}
+    memswap_limit: ${SUPERSET_INIT_MEM:-2g}
+    entrypoint: ["python", "/init/verify-assets.py"]
+    environment: *superset-env
+    volumes:
+      - ./superset_config.py:/app/pythonpath/superset_config.py:ro
+      - ./init:/init:ro
+      - ./assets:/app/assets:ro
       - superset-home:/app/superset_home
     networks:
       - backbone

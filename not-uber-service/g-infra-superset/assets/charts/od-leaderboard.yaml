@@ -1,0 +1,11 @@
+slice_name: 'Busiest origin-destination pairs'
+description: 'Directly comparable against the real TLC od_pair_calibration the demand generator was built from.'
+uuid: 'f3342d69-4e3d-5100-9dc6-39173ab0b27f'
+dataset_uuid: '49cdf60f-3bcd-5e5d-9265-38ebd4c54537'
+version: '1.0.0'
+viz_type: 'table'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"query_mode": "aggregate", "groupby": ["pickup_zone_id", "dropoff_zone_id"], "metrics": ["trips", "gross_revenue", "km_total"], "adhoc_filters": [], "row_limit": 25, "order_desc": true, "time_range": "No filter", "include_search": true, "show_cell_bars": true, "color_pn": false, "viz_type": "table", "datasource": "1__table"}

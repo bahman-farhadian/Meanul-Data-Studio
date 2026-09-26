@@ -1,0 +1,11 @@
+slice_name: 'Driver utilization'
+description: 'Share of online time spent on a trip, fleet-wide.'
+uuid: 'bb795561-9366-5fa1-95ed-3315cd90c9e6'
+dataset_uuid: '462681bd-1e53-5cba-a7f0-6f6e48ff358c'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["utilization"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.1%", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

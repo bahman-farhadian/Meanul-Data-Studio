@@ -1,0 +1,11 @@
+slice_name: 'Trip duration p50 / p95'
+description: 'Both are seconds. quantileMerge, never quantile: the stored column is a sketch, not a number.'
+uuid: '6e874ac6-8d60-56b9-8145-ace3b6f0b271'
+dataset_uuid: '61968db3-6d87-5e78-a2ee-e36e15dffd12'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["p50_s", "p95_s"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.0f", "seriesType": "line", "markerEnabled": false, "show_legend": true, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

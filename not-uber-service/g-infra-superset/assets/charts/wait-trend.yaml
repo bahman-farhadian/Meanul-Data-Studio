@@ -1,0 +1,11 @@
+slice_name: 'Time to match, and rider wait at the kerb'
+description: 'Two series on one axis only because both are seconds.'
+uuid: '68403ce6-0d33-56a0-b76d-f14b4a349190'
+dataset_uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["time_to_match_s", "rider_wait_s"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.0f", "seriesType": "line", "markerEnabled": false, "show_legend": true, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

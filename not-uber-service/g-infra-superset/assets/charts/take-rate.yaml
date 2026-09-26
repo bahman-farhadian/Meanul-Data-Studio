@@ -1,0 +1,11 @@
+slice_name: 'Take rate'
+description: 'What the platform keeps of every fare.'
+uuid: '3fe73b18-cc06-5995-80db-9a0ea66bb232'
+dataset_uuid: 'b5d7df7b-9c96-5857-ba76-39d135567da4'
+version: '1.0.0'
+viz_type: 'big_number_total'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"metric": "take_rate", "adhoc_filters": [], "time_range": "No filter", "y_axis_format": ",.1%", "header_font_size": 0.4, "subheader_font_size": 0.125, "subheader": "What the platform keeps of every fare.", "viz_type": "big_number_total", "datasource": "1__table"}

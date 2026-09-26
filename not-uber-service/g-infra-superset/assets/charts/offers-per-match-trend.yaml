@@ -1,0 +1,11 @@
+slice_name: 'Offers per accepted match'
+description: 'How many drivers dispatch had to ask. Rises before fulfilment falls.'
+uuid: '5a814cbe-2cbf-58b8-a865-b558b83c4d7f'
+dataset_uuid: '14a85160-f570-562c-84b0-0cf132d40c30'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["offers_per_match"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.2f", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

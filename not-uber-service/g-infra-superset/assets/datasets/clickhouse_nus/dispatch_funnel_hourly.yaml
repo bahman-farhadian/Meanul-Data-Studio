@@ -1,0 +1,253 @@
+# The matching funnel. Dispatch offers a ride to one candidate at a
+# time with a deadline, so acceptance rate, offers per match and
+# time-to-match come from here and from nowhere else - none of them
+# existed while dispatch simply assigned a driver.
+# 'expired' and 'declined' are kept apart on purpose: a driver who
+# said no is a different supply signal from a phone left face-down.
+# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+table_name: 'dispatch_funnel_hourly'
+schema: 'nus'
+uuid: '14a85160-f570-562c-84b0-0cf132d40c30'
+database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
+version: '1.0.0'
+main_dttm_col: 'hour'
+description: 'Every offer dispatch made, and what the driver said, per hour and zone.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+columns:
+  - column_name: 'hour'
+    verbose_name: null
+    type: 'DATETIME'
+    is_dttm: true
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'pickup_zone_id'
+    verbose_name: null
+    type: 'STRING'
+    is_dttm: false
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'offers_made'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'offers_accepted'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'offers_declined'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'offers_expired'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'offers_cancelled'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'eta_seconds_sum'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'eta_offers'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'accepted_eta_sum'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'response_s_sum'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'responses'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+metrics:
+  - metric_name: 'offers'
+    verbose_name: 'Offers made'
+    metric_type: 'count'
+    expression: 'sum(offers_made)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'accepted'
+    verbose_name: 'Offers accepted'
+    metric_type: 'count'
+    expression: 'sum(offers_accepted)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'declined'
+    verbose_name: 'Declined'
+    metric_type: 'count'
+    expression: 'sum(offers_declined)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'expired'
+    verbose_name: 'Expired unanswered'
+    metric_type: 'count'
+    expression: 'sum(offers_expired)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'acceptance_rate'
+    verbose_name: 'Acceptance rate'
+    metric_type: 'avg'
+    expression: 'sum(offers_accepted) / greatest(sum(offers_made), 1)'
+    description: null
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'offers_per_match'
+    verbose_name: 'Offers per match'
+    metric_type: 'avg'
+    expression: 'sum(offers_made) / greatest(sum(offers_accepted), 1)'
+    description: 'How many drivers were asked before one took the ride. Rises before fulfilment falls.'
+    d3format: ',.2f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'eta_offered_s'
+    verbose_name: 'Pickup ETA offered'
+    metric_type: 'avg'
+    expression: 'sum(eta_seconds_sum) / greatest(sum(eta_offers), 1)'
+    description: null
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'eta_accepted_s'
+    verbose_name: 'Pickup ETA accepted'
+    metric_type: 'avg'
+    expression: 'sum(accepted_eta_sum) / greatest(sum(offers_accepted), 1)'
+    description: 'Read the gap, not the level: offers go out nearest-first, so the accepting driver is among the furthest asked.'
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'response_s'
+    verbose_name: 'Time to answer'
+    metric_type: 'avg'
+    expression: 'sum(response_s_sum) / greatest(sum(responses), 1)'
+    description: null
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null

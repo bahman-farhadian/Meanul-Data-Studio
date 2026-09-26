@@ -1,0 +1,11 @@
+slice_name: 'Where demand goes unserved'
+description: 'Zones by how badly they are served. A table, not a chart, because each column carries its own unit.'
+uuid: '7796ff96-7839-5642-8e4c-0161abc4a3da'
+dataset_uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'
+version: '1.0.0'
+viz_type: 'table'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["requests", "fulfilment_rate", "no_driver_rate", "time_to_match_s"], "adhoc_filters": [], "row_limit": 25, "order_desc": false, "time_range": "No filter", "include_search": true, "show_cell_bars": true, "color_pn": false, "viz_type": "table", "datasource": "1__table"}

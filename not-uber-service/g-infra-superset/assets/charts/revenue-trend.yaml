@@ -1,0 +1,11 @@
+slice_name: 'Revenue'
+description: 'Money on its own axis - a count and an amount do not share one.'
+uuid: 'd42bb5ce-0551-5d07-8b2c-ca29e5d2f817'
+dataset_uuid: 'b5d7df7b-9c96-5857-ba76-39d135567da4'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "day", "time_grain_sqla": "P1D", "metrics": ["gross_revenue"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": "$,.0f", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

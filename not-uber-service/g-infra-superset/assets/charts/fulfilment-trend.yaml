@@ -1,0 +1,11 @@
+slice_name: 'Fulfilment rate over time'
+description: 'One series, so the title names it and no legend is needed.'
+uuid: '851122e1-6991-5ab6-8466-a0453c8117ad'
+dataset_uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["fulfilment_rate"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.1%", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

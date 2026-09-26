@@ -1,0 +1,11 @@
+slice_name: 'Acceptance rate over time'
+description: 'Offers accepted out of offers made, per hour.'
+uuid: '09a6326f-93ce-5ad4-b32b-8d400cb300e5'
+dataset_uuid: '14a85160-f570-562c-84b0-0cf132d40c30'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["acceptance_rate"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.1%", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

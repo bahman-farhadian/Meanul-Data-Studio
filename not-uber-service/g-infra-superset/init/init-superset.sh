@@ -23,12 +23,21 @@ superset fab create-admin \
 echo "== loading the built-in roles and permissions =="
 superset init
 
-# Datasets, charts and a dashboard were designed here previously - see git
-# history for g-infra-superset/assets/ - but are deliberately not imported
-# at this stage. This piece currently provisions Superset itself and its
-# two database connections only; dashboard content depends on tables and
-# data-generation logic (pieces h onward) not yet verified correct, so
-# building against them now would mean redoing that work later.
+# The datasets, charts and dashboard live in assets/ as plain YAML, written
+# by render_assets.py the same way the Grafana dashboards are. --overwrite
+# makes this the way an edited chart is rolled out: change the file, run the
+# one-shot again. A chart edited in the browser is NOT written back to these
+# files - export it and commit it.
+echo "== importing the datasets, charts and dashboard =="
+superset import-directory /app/assets --overwrite
+
+# AFTER the import, deliberately, and this order is not interchangeable.
+# The bundle carries a database file so the datasets have a uuid to attach
+# to, and its uri has no password in it - a password in a committed file is
+# not an option. --overwrite applies that passwordless uri to the
+# connection, so whatever ran before it loses its password. Registering
+# afterwards is what makes the credential survive; reversing these two made
+# every chart fail with ClickHouse code 516 once already.
 echo "== registering the database connections =="
 python /init/register_database.py
 

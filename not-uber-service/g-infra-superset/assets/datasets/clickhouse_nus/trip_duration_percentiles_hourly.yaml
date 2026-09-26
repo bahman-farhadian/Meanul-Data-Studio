@@ -1,0 +1,92 @@
+# AggregatingMergeTree, not SummingMergeTree. The two state columns
+# hold quantile sketches, not numbers - they are readable only
+# through quantileMerge, and adding two of them together is
+# meaningless. They are therefore marked ungroupable and
+# unfilterable, so the only way to reach them is the metrics below.
+table_name: 'trip_duration_percentiles_hourly'
+schema: 'nus'
+uuid: '61968db3-6d87-5e78-a2ee-e36e15dffd12'
+database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
+version: '1.0.0'
+main_dttm_col: 'hour'
+description: 'Trip duration percentiles per hour and pickup zone.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+columns:
+  - column_name: 'hour'
+    verbose_name: null
+    type: 'DATETIME'
+    is_dttm: true
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'pickup_zone_id'
+    verbose_name: null
+    type: 'STRING'
+    is_dttm: false
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'p50_state'
+    verbose_name: null
+    type: 'OTHER'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: 'An aggregate state. Read with quantileMerge, never directly.'
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'p95_state'
+    verbose_name: null
+    type: 'OTHER'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: 'An aggregate state. Read with quantileMerge, never directly.'
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+metrics:
+  - metric_name: 'p50_s'
+    verbose_name: 'Median trip duration'
+    metric_type: 'avg'
+    expression: 'quantileMerge(0.5)(p50_state)'
+    description: null
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'p95_s'
+    verbose_name: 'p95 trip duration'
+    metric_type: 'avg'
+    expression: 'quantileMerge(0.95)(p95_state)'
+    description: 'The long tail riders actually complain about.'
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null

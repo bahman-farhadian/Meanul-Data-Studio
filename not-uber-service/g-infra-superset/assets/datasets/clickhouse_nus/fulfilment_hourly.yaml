@@ -1,0 +1,271 @@
+# The funnel that finally counts the trips that did NOT complete.
+# Every other rollup in this warehouse filters status = 'completed',
+# so cancellations and unmatched requests appeared in no aggregate at
+# all until this table existed. Bucketed on when the ride was ASKED
+# for, not when it ended - a fulfilment rate is about the demand that
+# arrived in an hour.
+# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+table_name: 'fulfilment_hourly'
+schema: 'nus'
+uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'
+database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
+version: '1.0.0'
+main_dttm_col: 'hour'
+description: 'Every request that reached an ending, per hour and pickup zone.'
+default_endpoint: null
+offset: 0
+cache_timeout: null
+catalog: null
+sql: ''
+params: null
+template_params: null
+filter_select_enabled: true
+fetch_values_predicate: null
+extra: null
+normalize_columns: false
+always_filter_main_dttm: false
+columns:
+  - column_name: 'hour'
+    verbose_name: null
+    type: 'DATETIME'
+    is_dttm: true
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'pickup_zone_id'
+    verbose_name: null
+    type: 'STRING'
+    is_dttm: false
+    is_active: true
+    groupby: true
+    filterable: true
+    expression: null
+    description: 'TLC LocationID of the pickup.'
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'trips_ended'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'completed'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'cancelled_by_passenger'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'cancelled_by_driver'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'no_driver_found'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'cancelled_after_arrival'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'match_s_sum'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'matched_trips'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'wait_s_sum'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'waited_trips'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+metrics:
+  - metric_name: 'requests'
+    verbose_name: 'Requests'
+    metric_type: 'count'
+    expression: 'sum(trips_ended)'
+    description: 'Every request that reached an ending, served or not.'
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'completed_trips'
+    verbose_name: 'Completed'
+    metric_type: 'count'
+    expression: 'sum(completed)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'unmatched'
+    verbose_name: 'No driver found'
+    metric_type: 'count'
+    expression: 'sum(no_driver_found)'
+    description: 'Nobody could be offered the ride at all. A supply failure, not a cancellation.'
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'rider_cancels'
+    verbose_name: 'Cancelled by rider'
+    metric_type: 'count'
+    expression: 'sum(cancelled_by_passenger)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'driver_cancels'
+    verbose_name: 'Cancelled by driver'
+    metric_type: 'count'
+    expression: 'sum(cancelled_by_driver)'
+    description: null
+    d3format: ',d'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'fulfilment_rate'
+    verbose_name: 'Fulfilment rate'
+    metric_type: 'avg'
+    expression: 'sum(completed) / greatest(sum(trips_ended), 1)'
+    description: 'Completed out of everything asked for. The one number that counts the requests nobody served.'
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'cancellation_rate'
+    verbose_name: 'Cancellation rate'
+    metric_type: 'avg'
+    expression: '(sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / greatest(sum(trips_ended), 1)'
+    description: 'Both sides together. A trip nobody could be found for is counted separately.'
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'no_driver_rate'
+    verbose_name: 'Unmatched rate'
+    metric_type: 'avg'
+    expression: 'sum(no_driver_found) / greatest(sum(trips_ended), 1)'
+    description: null
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'post_arrival_cancel_rate'
+    verbose_name: 'Cancelled after the driver arrived'
+    metric_type: 'avg'
+    expression: 'sum(cancelled_after_arrival) / greatest(sum(cancelled_by_passenger) + sum(cancelled_by_driver), 1)'
+    description: 'The line a real platform draws to charge a cancellation fee.'
+    d3format: ',.1%'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'time_to_match_s'
+    verbose_name: 'Time to match'
+    metric_type: 'avg'
+    expression: 'sum(match_s_sum) / greatest(sum(matched_trips), 1)'
+    description: 'Request to a driver being picked, in seconds.'
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'rider_wait_s'
+    verbose_name: 'Rider wait at the kerb'
+    metric_type: 'avg'
+    expression: 'sum(wait_s_sum) / greatest(sum(waited_trips), 1)'
+    description: 'Driver arriving to the rider getting in. What the ''arrived'' state exists to measure.'
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null

@@ -1,0 +1,11 @@
+slice_name: 'Completed trips'
+description: 'Volume on its own axis, beside revenue rather than on top of it.'
+uuid: '3e97b2ca-7f23-57db-aa52-61e22d565517'
+dataset_uuid: 'b5d7df7b-9c96-5857-ba76-39d135567da4'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "day", "time_grain_sqla": "P1D", "metrics": ["trips"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",d", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

@@ -1,0 +1,11 @@
+slice_name: 'Take rate over time'
+description: 'Exact Decimal sums, cast to float only for the ratio.'
+uuid: '234f39a2-2345-59f5-bbfb-d6bc57eb9d70'
+dataset_uuid: 'b5d7df7b-9c96-5857-ba76-39d135567da4'
+version: '1.0.0'
+viz_type: 'echarts_timeseries_line'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"x_axis": "day", "time_grain_sqla": "P1D", "metrics": ["take_rate"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.1%", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

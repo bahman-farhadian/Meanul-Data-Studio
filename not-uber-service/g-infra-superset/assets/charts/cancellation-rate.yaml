@@ -1,0 +1,11 @@
+slice_name: 'Cancellation rate'
+description: 'Rider and driver cancellations together, out of all requests.'
+uuid: '48eff4c6-ec80-5abd-a7d1-98f10615583b'
+dataset_uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'
+version: '1.0.0'
+viz_type: 'big_number_total'
+cache_timeout: null
+certified_by: null
+certification_details: null
+query_context: null
+params: {"metric": "cancellation_rate", "adhoc_filters": [], "time_range": "No filter", "y_axis_format": ",.1%", "header_font_size": 0.4, "subheader_font_size": 0.125, "subheader": "Rider and driver cancellations together, out of all requests.", "viz_type": "big_number_total", "datasource": "1__table"}
