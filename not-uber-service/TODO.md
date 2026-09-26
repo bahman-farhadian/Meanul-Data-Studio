@@ -796,23 +796,43 @@ stack: 675 of 3,274, 20.6%. Chain exhaustion cannot explain either - at
 time, and the measured `offers_per_match` is 1.89. The rest is
 `find_candidates` returning nothing at all.
 
-**The utilization number is what makes the supply explanation hard to
-keep.** `driver_utilization_hourly` reads **0.04**: 115,962 on-trip ticks
-against 2,970,579 total, with all 4,000 drivers reporting positions. A
-fleet that idle, over roughly 1,200 km2, should not leave a 5 km search
-empty one request in five. The per-tier Redis GEO sets are the suspect -
-whether drivers enter them at all, and whether they are removed and never
-put back - not the supply ratio.
-
-One command settles it, and it needs no guessing at key names, because a
-GEO set is a sorted set:
+**FOUND, 2026-09-27. It was never a supply problem.** The per-tier GEO
+sets on Dionysus held:
 
 ```
-docker compose exec -T redis-1 redis-cli -a "$(grep -E '^REDIS_PASSWORD=' .env | cut -d= -f2-)" -n 1 --no-auth-warning --scan --type zset
+economy    1871
+xl            0
+premium       0
 ```
 
-If the per-tier sets are absent or near-empty while 4,000 driver hashes
-sit in the same database, that is the whole 20%.
+h-bootstrap seeds the fleet 70/20/10 across the three tiers and writes
+exactly one vehicle per driver, so those zeroes are not the data. They are
+driver-service reading the roster before the cache was ready.
+
+`main()` waited for the FIRST `driver:*` key to appear, then loaded the
+roster once and never again. Vehicle profiles arrive on a different
+Debezium topic, so at that moment `vehicle:*` was still empty - and
+`load_roster` turned a missing vehicle into an economy car without a word.
+One moment decided the tier of all 4,000 drivers for the whole run.
+
+Dispatch matches within the requested tier, so every xl and premium
+request found no candidate and ended `no_driver_found`. That is why
+raising the fleet from 800 to 4,000 changed nothing: the empty tiers stay
+empty at any fleet size, and the economy drivers serving ~70% of demand
+sat idle, which is the 0.03-0.04 utilization.
+
+Fixed in `j-service-driver`: the startup gate now waits for BOTH caches to
+be full and to stop growing (equal counts is the truth here, not a
+threshold, because bootstrap writes one vehicle per driver in the same
+loop), and a missing vehicle profile is now fatal and logged rather than
+silently defaulted. The service also logs its tier mix at startup, so the
+next run says what it loaded instead of leaving it to be inferred from a
+GEO set weeks later.
+
+**Not yet re-measured.** Everything above is the mechanism and the fix; the
+fulfilment number this produces is a step 12 measurement and needs a
+rebuild (`make build`) and a fresh bring-up. Expect no_driver_found to fall
+by roughly the share of demand that is xl or premium.
 
 **Scale supply and demand together, which the dev profile does not.**
 Measured on Dionysus: 800 drivers against ~68 requests/minute is 11.8
