@@ -448,8 +448,23 @@ fleet, `driver_positions` dominates everything else in the stack.
 - Check `ORDER BY (driver_id, event_time)` against what the dashboards
   actually ask — live-ops queries a time window across all drivers, which
   that key does not serve well. Add a skip index or reconsider the key.
-- Measure real bytes/row at mid scale and project the full-scale footprint
-  against the 96 GB per-node quota, with headroom.
+- **MEASURED 2026-09-26, and it does not fit.** `make capacity` on a warm
+  dev stack projects roughly 115 GiB per node against a 96 GiB quota, and
+  `driver_positions` is ~86 GiB of that on its own: 40.3 bytes/row at
+  667 rows/s scaled to ~17,700 rows/s, held for its 3-day TTL.
+  `rider_positions` is NOT in that figure - passenger-service had not
+  reached its loop when the measurement was taken, so it reads zero and
+  the real total is higher. Re-measure with every producer running before
+  choosing a lever.
+- The levers, with the arithmetic, so the choice is not a guess:
+  `DRIVER_TICK_SECONDS` 3 -> 5 takes driver_positions to ~52 GiB; the
+  3-day TTL to 2 days takes it to ~57; both together ~34. Cutting
+  `trip_events` from 365 days to 180 takes it from 22 GiB to 11. Sampling
+  positions rather than storing every report is the fourth option and the
+  only one that changes what the data can answer, so it is the last
+  resort rather than the first.
+- Target is 67 GiB per node, which is the 30% headroom line. A warehouse
+  planned to exactly fill its disk cannot merge.
 - Partition `trips` by month on `requested_at` in Postgres, so the
   archiver drops partitions instead of deleting rows. Moved here from the
   old step 2 list: it is a capacity decision, not a schema-design one.
