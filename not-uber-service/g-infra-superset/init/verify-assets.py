@@ -17,10 +17,19 @@ Two questions, both of which have to be yes:
      error to whoever opens it first. Running them here, one query per
      dataset, moves that discovery into the deploy.
 
-What this does NOT claim: that every chart renders. A chart can have a
-correct metric and still come back empty from a time range or a filter.
-The bar here is that the data is present and the SQL is valid, which is
-what a machine can honestly check.
+  3. Does every CHART return anything over the window it actually uses?
+     A metric that runs is not a chart that works. time_range "Last week"
+     resolves to 00:00 seven days back -> 00:00 TODAY, so the Revenue and
+     Completed trips tiles summed a window that excluded the current day
+     and showed the seeded figures while a full day of live trips sat
+     outside. Every metric passed. A correct sum over a wrong window looks
+     exactly like a number, so the window is resolved through Superset's
+     own parser and the chart's query is run over it.
+
+What this does NOT claim: that every chart renders. A chart can return the
+right rows and still draw badly from a wrong field name in an override.
+The bar here is that the data is present, the SQL is valid, and the window
+a chart uses actually contains it.
 
 Run through the one-shot:  docker compose run --rm superset-verify
 """
@@ -32,6 +41,7 @@ import sys
 from pathlib import Path
 
 from superset.app import create_app
+from superset.utils.date_parser import get_since_until
 
 ASSETS = Path("/app/assets")
 
@@ -199,6 +209,83 @@ def main() -> int:
                 errors.append(
                     f"{table}: no rows in the window - a chart over it renders empty"
                 )
+
+        print()
+        print("== every chart, over the window it actually uses ==")
+        by_uuid = {scalars(path)["uuid"]: path for path in dataset_files}
+        for path in chart_files:
+            config = scalars(path)
+            dataset = by_uuid.get(config["dataset_uuid"])
+            if dataset is None:
+                continue
+            dconf = scalars(dataset)
+            params = config.get("params") or {}
+            table, dttm = dconf["table_name"], dconf.get("main_dttm_col")
+            expressions = dict(metrics_of(dataset))
+
+            try:
+                since, until = get_since_until(params.get("time_range") or "No filter")
+            except Exception as exc:  # noqa: BLE001 - an unparseable range is the finding
+                print(f"  FAILED   {config['slice_name']}: time_range {exc}")
+                errors.append(f"{config['slice_name']}: time_range cannot be parsed")
+                continue
+
+            wanted = params.get("metrics") or (
+                [params["metric"]] if params.get("metric") else []
+            )
+            selected = [
+                f"{expressions[name]} AS {name}" for name in wanted if name in expressions
+            ]
+            if not selected:
+                continue
+            grouping = list(params.get("groupby") or [])
+            if params.get("x_axis") and params["x_axis"] not in grouping:
+                grouping.insert(0, params["x_axis"])
+
+            where = ["1 = 1"]
+            if dttm and since:
+                where.append(f"{dttm} >= toDateTime('{since:%Y-%m-%d %H:%M:%S}')")
+            if dttm and until:
+                where.append(f"{dttm} < toDateTime('{until:%Y-%m-%d %H:%M:%S}')")
+
+            limit = int(params.get("row_limit") or 10000)
+            sql = (
+                "SELECT " + ", ".join(grouping + selected)
+                + f" FROM nus.{table} WHERE " + " AND ".join(where)
+                + (f" GROUP BY {', '.join(grouping)}" if grouping else "")
+                + f" LIMIT {limit + 1}"
+            )
+            try:
+                frame = database.get_df(sql)
+            except Exception as exc:  # noqa: BLE001
+                first = str(exc).strip().splitlines()[0][:130]
+                print(f"  FAILED   {config['slice_name']}: {first}")
+                errors.append(f"{config['slice_name']}: its query does not run - {first}")
+                continue
+
+            rows = len(frame)
+            window = f"{since:%m-%d %H:%M}..{until:%m-%d %H:%M}" if since else "all time"
+            if rows == 0:
+                print(f"  EMPTY    {config['slice_name']:<38} [{window}]")
+                errors.append(
+                    f"{config['slice_name']}: returns nothing over its own window "
+                    f"({params.get('time_range')!r}) - the metric runs, the chart is blank"
+                )
+            elif rows > limit:
+                # Not a failure: a top-N table truncates on purpose. Worth
+                # saying out loud, because Superset shows the reader a
+                # partial-data warning and nothing else explains it.
+                print(
+                    f"  cut      {config['slice_name']:<38} [{window}]  "
+                    f"more than {limit} rows - Superset will say 'partial data'"
+                )
+            else:
+                head = "  ".join(
+                    f"{c}={frame.iloc[0][c]:,.2f}" if frame[c].dtype.kind == "f"
+                    else f"{c}={frame.iloc[0][c]}"
+                    for c in list(frame.columns)[-2:]
+                )
+                print(f"  ok       {config['slice_name']:<38} [{window}]  {rows:>4} rows  {head}")
 
     print()
     if errors:
