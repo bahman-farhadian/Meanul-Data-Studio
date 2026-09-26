@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
@@ -35,6 +36,7 @@ def _load(name: str, filename: str):
 
 CHECK = _load("nus_check_dashboards", "check-dashboards.py")
 RENDER = _load("nus_render_dashboards", "render_dashboards.py")
+PROBE = _load("nus_panel_probe", "panel-probe.py")
 
 
 def test_a_rate_of_raw_columns_is_refused() -> None:
@@ -144,3 +146,65 @@ def test_the_committed_json_is_what_the_generator_writes() -> None:
 
 def test_the_marketplace_dashboard_passes_the_full_check() -> None:
     assert CHECK.check() == []
+
+
+def test_the_probe_covers_every_panel_that_carries_a_query() -> None:
+    """A prober that silently skips panels is worse than none."""
+    expected = 0
+    for path in sorted(JSON_DIR.glob("*.json")):
+        dash = json.loads(path.read_text())
+        for panel in dash.get("panels") or []:
+            for target in panel.get("targets") or []:
+                if (target.get("rawSql") or "").strip():
+                    expected += 1
+    assert expected > 0
+
+    import contextlib
+    import io
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        assert PROBE.main() == 0
+    sql = out.getvalue()
+    assert sql.count("AS panel FORMAT TSVRaw;") == expected
+    assert f"=== {expected} panels ran without error ===" in sql
+
+
+def test_no_grafana_macro_survives_expansion() -> None:
+    """A macro left in place is a syntax error, not a panel that runs."""
+    import contextlib
+    import io
+
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        PROBE.main()
+    sql = out.getvalue()
+    for macro in ("$__timeFilter", "$__timeInterval", "$__fromTime", "$__toTime", "${"):
+        assert macro not in sql, f"{macro} was not expanded"
+
+
+def test_a_rollup_panel_may_not_be_quiet_but_a_live_one_may() -> None:
+    """The exemption is the panel's own window, not a list to maintain."""
+    assert PROBE.may_be_quiet("SELECT * FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 MINUTE")
+    assert PROBE.may_be_quiet("SELECT * FROM nus.hotspot_history WHERE zone_id = '${zone_id}'")
+    assert not PROBE.may_be_quiet(
+        "SELECT sum(completed) / sum(trips_ended) FROM nus.fulfilment_hourly "
+        "WHERE $__timeFilter(hour)"
+    )
+
+    marketplace = json.loads((JSON_DIR / "nus-marketplace.json").read_text())
+    for panel in marketplace["panels"]:
+        sql = (panel.get("targets") or [{}])[0].get("rawSql") or ""
+        assert not PROBE.may_be_quiet(sql), (
+            f"marketplace panel {panel['id']} would be exempt from the "
+            "non-empty bar; every one of them reads a rollup"
+        )
+
+
+def test_the_panel_probe_is_wired_into_verification() -> None:
+    root = (NUS / "Makefile").read_text()
+    assert re.search(r"^verify-dash:.*\bverify-grafana\b", root, re.M), (
+        "make verify-dash does not run the panel probe"
+    )
+    grafana_make = (NUS / "f-infra-grafana" / "Makefile").read_text()
+    assert "panel-probe.py" in grafana_make

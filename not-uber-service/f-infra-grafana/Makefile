@@ -65,6 +65,34 @@ tiles-health: ## OSM tiles answer through HAProxy (Grafana's map origin)
 grafana-check: ## Dashboards query only ClickHouse Distributed tables
 	@python3 f-infra-grafana/check-dashboards.py
 
+# The counterpart of verify-superset, and for the same reason: grafana-check
+# proves a panel's SQL is well-formed and reads the right tables, but not
+# that it RUNS. A renamed column or a function this ClickHouse version does
+# not have is a panel that renders an error to whoever opens it first.
+#
+# stderr is folded into the captured output on purpose. clickhouse-client
+# stops at the first bad statement and exits non-zero; without 2>&1 and the
+# `|| true` the recipe would die before printing anything, which is exactly
+# how `make capacity` once failed with Error 1 and no output at all.
+.PHONY: verify-grafana
+verify-grafana: ## Every provisioned panel's query, run against the live warehouse
+	$(call say,Grafana panels)
+	@out=$$(python3 f-infra-grafana/panel-probe.py \
+		| $(COMPOSE) exec -T ch-s1r1 clickhouse-client \
+			--user "$(call getenv,CH_USER)" \
+			--password "$(call getenv,CH_PASSWORD)" \
+			--database nus --multiquery 2>&1 || true); \
+	printf '%s\n' "$$out"; \
+	if printf '%s' "$$out" | grep -qE 'FAIL|DB::Exception'; then \
+		printf "\n  $(R)A panel did not run, or returned nothing.$(X)\n"; \
+		printf "  clickhouse-client stops at the first bad statement, so the\n"; \
+		printf "  last panel named above is the one to look at.\n"; \
+		exit 1; \
+	fi; \
+	printf "\n  $(G)Every panel ran and returned rows.$(X)\n"; \
+	printf "  This does not prove a panel RENDERS - a wrong field name in an\n"; \
+	printf "  override still needs eyes on the dashboard.\n"
+
 # NYC OSM extract → OpenMapTiles MBTiles for tileserver-gl. Idempotent.
 # The script lives in tiles/prepare.sh so a missing optional .env key
 # cannot become a silent `pipefail` Error 1 (this Makefile uses bash -eu

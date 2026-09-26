@@ -608,7 +608,7 @@ lb-config: ## Render haproxy.cfg with REDIS_PASSWORD (BEFORE lb-a/lb-b first sta
 verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch verify-dash verify-data ## Every check below, in order
 
 .PHONY: verify-dash
-verify-dash: grafana-health tiles-health superset-health verify-superset ## Grafana, OSM tiles, and every Superset asset with its metrics run
+verify-dash: grafana-health tiles-health verify-grafana superset-health verify-superset ## Grafana and Superset: health, tiles, and every panel and metric run
 
 .PHONY: verify-walk
 verify-walk: ## Street-follow and chord/sea checks against the shipped walk/geo code
