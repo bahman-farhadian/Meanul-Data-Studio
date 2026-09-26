@@ -61,17 +61,21 @@ ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{
 -- a house style.
 PARTITION BY event_date
 ORDER BY (driver_id, event_time)
--- Position history is huge and loses value quickly - the trip record
--- keeps what matters for longer (trip_events, 365 days). Three months
--- was the original call, before real fleet scale (~106,000 drivers) was
--- actually flowing: at that volume this table alone is on the order of
--- 15-20GB/day per ClickHouse node, and 90 days of it would be several
--- times this host's entire data disk. Three days is what real-time
--- driver-side debugging actually needs (Grafana's own live view reads
--- Redis, not this) and fits real disk with room to spare - re-check
--- against actual observed growth after a day of real traffic rather
--- than trusting this estimate forever.
-TTL event_date + INTERVAL 3 DAY;
+-- Position history is huge and loses value quickly, and this number has
+-- now been measured rather than estimated. The comment this replaces said
+-- three days "fits real disk with room to spare - re-check against actual
+-- observed growth". make capacity did that re-check and it did not fit:
+-- at 38.4 bytes/row and 645 rows/s scaled to a real fleet, three days is
+-- 79 GiB per node on its own - 83% of a 96 GB quota before any other
+-- table, and more than the 30% headroom line allows by itself.
+--
+-- Two days, therefore. The live map reads Redis rather than this table
+-- (see f-infra-grafana), so what this retains is driver-side debugging
+-- history, and two days of that is still two days. It takes the table to
+-- 53 GiB and the whole warehouse to 59 - comfortably inside the quota
+-- with room for a merge to run, which a warehouse planned to exactly fill
+-- its disk does not have.
+TTL event_date + INTERVAL 2 DAY;
 
 CREATE TABLE IF NOT EXISTS nus.driver_positions ON CLUSTER nus_cluster
 AS nus.driver_positions_local

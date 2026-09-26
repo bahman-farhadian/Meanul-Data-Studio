@@ -478,6 +478,43 @@ fleet, `driver_positions` dominates everything else in the stack.
   - position TTL 3 days -> 1 gives 26.4 and 37.8 total (39%, ample).
   - raise the ClickHouse quota above 96 GB/node, if the data disk has the
     room. Not yet checked - `df -h` on NUS_VOLUME_ROOT is the input.
+- **DONE 2026-09-26: option C.** ClickHouse quota 96g -> 112g per node and
+  the position TTL 3 days -> 2. That is 58.8 GiB against 112 (52%) and
+  808 GB of 888 committed across the whole stack (91%).
+
+### Whole-stack storage, measured
+
+`NUS_VOLUME_ROOT` is on `/dev/nvme1n1p1`, 888 GB. Committed quota after
+option C: kafka 3x96 = 288, clickhouse 4x112 = 448, postgres 3x24 = 72,
+total 808 GB = 91% of the disk. An XFS project quota caps a directory, it
+does not reserve space - so over-committing does not fail safely, it fails
+by filling the disk out from under whichever component grows last.
+
+**Kafka is heavily over-provisioned and that is where the slack is.**
+Measured 842 MB per broker at dev scale; scaled by the fleet ratio that is
+roughly 22 GB against a 96 GB quota - a 4x margin. Cutting kafka to 64g
+per broker would free 96 GB and take the whole commitment to 712 GB (80%),
+which is the difference between tight and comfortable. Worth doing, but on
+a rate-based measurement of its own rather than this rough scaling -
+Kafka's quotas have never been measured, unlike ClickHouse's now.
+
+**`cdc.drivers` is the single largest thing in Kafka**, at 289 MB across
+three partitions against roughly 480 MB for all twelve `driver_location`
+partitions together. The cause is architectural, not a bug:
+driver-service persists last-known position with `UPDATE drivers SET
+last_lat, last_lon, last_seen_at` every tick, and `nus.drivers` is in
+Debezium's `table.include.list`, so every position write also becomes a
+CDC message. Driver positions therefore travel the pipeline twice. The
+compacted topic retains only the latest row per driver, which is what
+cache-updater actually needs, so the cost is the intermediate updates
+before compaction rather than the end state. Options if it matters at full
+scale: persist position to PostgreSQL less often than every tick, or
+accept the duplication. Not decided; measure at the next scale rung.
+
+**PostgreSQL was not measured** - the `du` returned nothing, so the
+Patroni image keeps its data somewhere other than
+`/var/lib/postgresql/data`. Find the real path before trusting the 24 GB
+quota.
 - Partition `trips` by month on `requested_at` in Postgres, so the
   archiver drops partitions instead of deleting rows. Moved here from the
   old step 2 list: it is a capacity decision, not a schema-design one.
