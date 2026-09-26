@@ -439,7 +439,28 @@ all zeros.
 ---
 
 ## Step 6 — Warehouse fitness for full scale
-DONE — 2026-09-26, Dionysus. `make capacity` reads **63.55 GiB per node
+REOPENED — 2026-09-27. `make capacity` now reads **80.22 GiB per node
+against the 112 GB quota, 71.6%, verdict FAIL** - past the 30% headroom
+this step set. Nothing regressed: the driver-tier fix raised fulfilment
+from 0.63 to 0.70, more trips run, and `rider_positions` is only written
+while a rider is ON a trip. Its measured rate went 14.7 -> 18.4 -> 46.7
+rows/s across three readings and has not settled.
+
+A healthier marketplace costs more disk, which is the right problem to
+have and still a decision to make. The cheapest correct lever: **cut
+`rider_positions` TTL from 7 days to 2, matching `driver_positions`**.
+Both are position telemetry; keeping the smaller one three and a half
+times longer was never argued for. That takes 13.05 GiB per node to 3.73
+and the total to roughly 70.9 GiB, 63% - and it keeps passing if the rate
+climbs again, which 7 days does not.
+
+The alternative, 112 -> 128 GB, takes whole-stack commitment from 808/888
+to 872/888 (98%) and should wait for the Kafka quota cut that is already
+agreed.
+
+---
+
+Previously: DONE — 2026-09-26, Dionysus. `make capacity` reads **63.55 GiB per node
 against a 112 GB quota — 56.7%, verdict ok**, with every producer live and
 the rates settled over a 30-minute window.
 
@@ -783,6 +804,38 @@ returns rows.
 **Test:** LOCAL — `make verify-walk`.
 
 **Done when:** pytest exits 0 and the docs match what is actually shipped.
+
+---
+
+## Step 11b — The seeded history has no idle telemetry
+
+Found 2026-09-27 while checking the dashboards. `h-bootstrap` writes
+`driver_positions` only along trip paths and only with status `on_trip` -
+there is no idle or en_route_pickup telemetry anywhere in the seeded week.
+
+So every metric whose denominator is "time online" reads 100% across the
+whole historical window and then falls to the real figure (~9%) the moment
+live traffic starts. `driver_utilization_hourly` is the one that shows it,
+on three panels: Grafana nus-history 6, nus-driver 5, and Superset's
+"Driver utilization". The charts are honest; the history has no
+denominator.
+
+Not a structural defect, which is why no step-7 bar catches it - every row
+is valid, unique and self-consistent. It is a GENERATION-quality gap, and
+it belongs with the calibration work: the seeded week should look like the
+live system, and on this measure it does not.
+
+Two ways out, neither free:
+
+- Seed idle positions too. Faithful, and `driver_positions` is already the
+  heaviest table in the stack by an order of magnitude - a week of idle
+  telemetry for the whole fleet is the single most expensive thing this
+  project could choose to store.
+- Leave it and say so on the panels, so nobody reads the cliff as a
+  collapse in fleet efficiency.
+
+**Decide before step 13**, because the full-scale run is where a week of
+idle telemetry would actually hurt.
 
 ---
 
