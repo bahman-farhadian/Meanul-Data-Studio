@@ -289,6 +289,29 @@ services:
       # topic from the start once, which for driver_location is the whole
       # retention window.
       KSQL_KSQL_STREAMS_AUTO_OFFSET_RESET: earliest
+      # What a SQL client is actually allowed to ask. ksqlDB ships both of
+      # these false, which means the most ordinary thing a client can do -
+      # open a stream and look at it - is refused outright:
+      #
+      #   SELECT * FROM trip_requests;             "Pull queries on streams
+      #                                             are disabled"
+      #   SELECT * FROM zone_counts;               refused, no key predicate
+      #   SELECT * FROM trip_requests EMIT CHANGES;  never terminates, so a
+      #                                             client waiting for the
+      #                                             query to finish hangs
+      #
+      # That last one is what DBeaver reported as a bare TimeoutException
+      # with no hint that the stream was healthy and full of data. Measured
+      # on this image, same stream, eight messages: refused, refused, hung
+      # at 15s - then 8 rows in under a second with both of these true.
+      #
+      # The cost, stated: a pull query over a stream SCANS the topic, so an
+      # unbounded SELECT over driver_location reads the whole retention
+      # window on a server with half a CPU. A client that sends a fetch size
+      # sends a LIMIT with it, which bounds the scan; a human typing
+      # SELECT * with no LIMIT does not.
+      KSQL_KSQL_QUERY_PULL_STREAM_ENABLED: "true"
+      KSQL_KSQL_QUERY_PULL_TABLE_SCAN_ENABLED: "true"
       KSQL_HEAP_OPTS: -Xmx1g -Xms1g
       KSQL_OPTS: -Djava.security.auth.login.config=/etc/ksqldb-secrets/jaas_config.file
       KSQL_AUTHENTICATION_METHOD: BASIC

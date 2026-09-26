@@ -9,16 +9,24 @@ The expected names are READ OUT OF THE DDL, never listed here. A check with
 its own copy of the list passes the day someone adds a stream and forgets
 to add it in two places - which is the failure it exists to catch.
 
-Three things fail the run:
+Four things fail the run:
 
   * a declared stream or table that ksqlDB does not have
   * nothing declared at all, or nothing registered at all
   * a persistent query that is not RUNNING
+  * a server setting that makes the streams unreadable from a SQL client
 
-The third is the one that would otherwise hide. A CTAS whose query has died
-leaves the table listed and visible, answering with state frozen at the
-moment it stopped - a dashboard reading it sees numbers, just not current
-ones.
+The third would otherwise hide. A CTAS whose query has died leaves the
+table listed and visible, answering with state frozen at the moment it
+stopped - a dashboard reading it sees numbers, just not current ones.
+
+The fourth is here because "the stream exists" and "a person can read it"
+turned out to be different claims. ksqlDB ships pull queries over streams
+and table scans DISABLED, so `SELECT * FROM trip_requests;` is refused and
+`... EMIT CHANGES` without a LIMIT never terminates - which reaches the
+client as a bare TimeoutException naming nothing. Registering the streams
+and leaving those settings alone passed every other check here while
+DBeaver showed an error and no data.
 """
 
 from __future__ import annotations
@@ -61,6 +69,25 @@ def show(what: str) -> list[dict]:
     return body[0].get(what.lower(), []) if body else []
 
 
+# The settings that decide whether a SQL client can read any of this, and
+# the value each has to hold. All three ship as something else.
+CLIENT_SETTINGS = {
+    "ksql.query.pull.stream.enabled": "true",
+    "ksql.query.pull.table.scan.enabled": "true",
+    "ksql.streams.auto.offset.reset": "earliest",
+}
+
+
+def properties() -> dict[str, str]:
+    body = call("/ksql", {"ksql": "SHOW PROPERTIES;"})
+    if not body:
+        return {}
+    return {
+        item["name"]: str(item.get("value"))
+        for item in body[0].get("properties", [])
+    }
+
+
 def declared() -> dict[str, set[str]]:
     """Every name ksql/*.sql says should exist, uppercased as ksqlDB stores it."""
     found: dict[str, set[str]] = {"STREAM": set(), "TABLE": set()}
@@ -100,6 +127,19 @@ def main() -> int:
         for name in sorted(set(registered) - want[kind]):
             print(f"  extra    {name}  (registered but not in ksql/*.sql)")
         print()
+
+    effective = properties()
+    print("settings a SQL client depends on:")
+    for name, want in CLIENT_SETTINGS.items():
+        got = effective.get(name)
+        mark = "ok     " if got == want else "WRONG  "
+        print(f"  {mark}  {name:<38} = {got!r}")
+        if got != want:
+            errors.append(
+                f"{name} is {got!r}, not {want!r} - a client opening a stream "
+                "is refused or hangs"
+            )
+    print()
 
     queries = show("QUERIES")
     print(f"persistent queries: {len(queries)}")

@@ -254,3 +254,40 @@ def test_ksql_is_wired_into_bring_up_and_verification() -> None:
     assert "/ksql/check-ksql.py" in kafka_make, (
         "verify-ksqldb still prints SHOW STREAMS instead of failing on an empty server"
     )
+
+
+def test_the_server_is_configured_for_a_sql_client() -> None:
+    """Registering the streams is not the same as making them readable.
+
+    ksqlDB ships pull queries over streams and table scans disabled, and
+    auto.offset.reset at latest. With those defaults the three things a SQL
+    client does are all broken: a bare SELECT on a stream is refused, a bare
+    SELECT on a table is refused, and EMIT CHANGES without a LIMIT never
+    terminates - which reaches the client as a TimeoutException naming
+    nothing. Measured on the pinned image: refused, refused, hung at 15s;
+    then 8 rows in under a second with all three set.
+
+    The values live in one place - the compose file - and the checker reads
+    them off the live server. This ties the two together so neither can
+    drift alone.
+    """
+    compose = (KSQL_DIR.parent / "docker-compose.yaml").read_text()
+    checker = (KSQL_DIR / "check-ksql.py").read_text()
+
+    required = {
+        "KSQL_KSQL_QUERY_PULL_STREAM_ENABLED": '"true"',
+        "KSQL_KSQL_QUERY_PULL_TABLE_SCAN_ENABLED": '"true"',
+        "KSQL_KSQL_STREAMS_AUTO_OFFSET_RESET": "earliest",
+    }
+    for key, value in required.items():
+        assert f"{key}: {value}" in compose, (
+            f"ksqldb-server does not set {key} to {value}"
+        )
+
+    for name in ("ksql.query.pull.stream.enabled",
+                 "ksql.query.pull.table.scan.enabled",
+                 "ksql.streams.auto.offset.reset"):
+        assert name in checker, (
+            f"verify-ksqldb does not check {name}, so it would pass against a "
+            "server no client can read"
+        )
