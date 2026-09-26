@@ -80,3 +80,50 @@ def test_localhost_fetches_only_run_inside_a_container():
 def test_the_guard_can_actually_see_the_makefiles():
     """A regex that silently matches nothing would pass both tests above."""
     assert _fetch_lines(), "found no curl/wget lines at all - the guard is blind"
+
+
+def _recipe_lines(path: Path) -> list[tuple[int, str]]:
+    """Lines inside a recipe: tab-indented, in a target's body."""
+    out: list[tuple[int, str]] = []
+    in_recipe = False
+    for number, line in enumerate(path.read_text().splitlines(), start=1):
+        if line.startswith("\t"):
+            in_recipe = True
+            out.append((number, line))
+            continue
+        if line.strip() and not line.startswith("#"):
+            in_recipe = False
+        if in_recipe:
+            out.append((number, line))
+    return out
+
+
+def test_no_comment_interrupts_a_continued_recipe():
+    """A `#` at column 0 inside a backslash continuation splits the recipe.
+
+    make then runs the fragments as separate shells. The second one has none
+    of the variables the first one set, and under `bash -eu` it dies with
+    "full: unbound variable" while echoing the recipe it was told not to
+    echo - a failure that looks nothing like its cause.
+
+    This is not hypothetical: make capacity broke exactly this way, after a
+    comment was added between two lines of one continued command. Prose
+    about a recipe belongs above the target, where it cannot interrupt
+    anything.
+    """
+    offenders: list[str] = []
+    for path in _makefiles():
+        lines = path.read_text().splitlines()
+        for i, line in enumerate(lines[:-1]):
+            if not line.rstrip().endswith("\\"):
+                continue
+            if not line.startswith("\t"):
+                continue
+            nxt = lines[i + 1]
+            if nxt.lstrip().startswith("#") and not nxt.startswith("\t"):
+                offenders.append(f"{path.relative_to(NUS)}:{i + 2}")
+    assert not offenders, (
+        "a comment interrupts a continued recipe at: "
+        + ", ".join(offenders)
+        + " - move it above the target"
+    )

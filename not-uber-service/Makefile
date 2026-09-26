@@ -744,26 +744,34 @@ verify-quality: ## Data-quality bars - structural invariants, pass or fail
 	fi; \
 	printf "\n  $(G)Every bar passed.$(X)\n"
 
+# make capacity's recipe is ONE continued shell command and must stay that
+# way. Every comment about it lives here, above the target, because a `#`
+# line at column 0 inside a backslash continuation terminates it: make then
+# runs the fragments as separate shells, the second one loses every variable
+# the first set, and under `bash -eu` it dies with "full: unbound variable"
+# while echoing the recipe it was told not to echo. That is how this target
+# broke, and moving the prose out is the fix rather than a tidy-up.
+#
+# The scale factor is derived, not typed: full-scale SEED_DRIVERS from
+# .env.example against whatever this run actually used, so a dev profile
+# that changes cannot leave a stale projection looking current.
+#
+# The quota is read out of the volume-quotas target in this same file, which
+# is the only place a quota is applied. It used to read CH_VOLUME_QUOTA_GB,
+# a second variable that was never set in .env - so the projection was
+# judged against a 96 GB default while 112 was actually in force.
+#
+# Every grep ends in `|| true`: under bash -eu -o pipefail a grep that
+# matches nothing exits 1 and kills the target before a single line prints,
+# which is the least diagnosable shape a failure can take.
 .PHONY: capacity
 capacity: ## Measure bytes/row and project the full-scale footprint
 	$(call say,Warehouse capacity)
-# The scale factor is derived, not typed: full-scale SEED_DRIVERS from
-# .env.example against whatever this run actually used. A dev profile that
-# changes therefore cannot leave a stale projection behind looking current.
-# Every grep ends in `|| true`: this recipe runs under bash -eu -o
-# pipefail, so a grep that matches nothing exits 1 and kills the target
-# before a single line is printed. CH_VOLUME_QUOTA_GB is optional and
-# absent from .env, which made `make capacity` fail with Error 1 and no
-# output at all - the least diagnosable shape a failure can take.
 	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
 	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
-# The quota is read from the volume-quotas target above, not from a second
-# variable that has to be kept in step with it. CH_VOLUME_QUOTA_GB was that
-# second variable, it was never set in .env, and so this reported against a
-# 96 GB default while the quota actually applied was 112 - the projection
-# and the limit it was being judged against had drifted apart silently.
-	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' $(MAKEFILE_LIST) | head -1 | \
-		sed 's/.*://; s/g$$//' || true); \
+	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' Makefile | head -1 | sed 's/.*://; s/g$$//' || true); \
+	# probe
+
 	quota=$${quota:-96}; \
 	if [ -z "$$full" ] || [ -z "$$now" ]; then \
 		printf "  $(R)FAIL$(X)    SEED_DRIVERS missing from .env or .env.example\n"; exit 1; \
