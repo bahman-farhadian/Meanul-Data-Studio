@@ -319,6 +319,34 @@ services:
     networks:
       - backbone
 
+  # One-shot: register every stream and table from ksql/*.sql. Run it AFTER
+  # kafka-topics-init - a stream over a topic that does not exist yet is
+  # refused - and after ksqldb-server reports healthy. Re-runs are safe, the
+  # same way ch-ddl-init and kafka-topics-init are: this is how a newly
+  # declared stream is rolled out.
+  #
+  # The ksqlDB server image, not a fourth pinned tag: it is already pulled,
+  # and it is the only image here with a python3 that can reach the REST
+  # API. Nothing of the server runs - only the script.
+  ksql-init:
+    image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
+    profiles: ["init"]
+    cpus: ${KSQL_INIT_CPUS:-0.25}
+    mem_limit: ${KSQL_INIT_MEM:-512m}
+    memswap_limit: ${KSQL_INIT_MEM:-512m}
+    entrypoint: ["python3", "/apply-ksql.py"]
+    environment:
+      TZ: ${TZ:-UTC}
+      KSQL_URL: http://nus-ksqldb-server:8088
+      KSQL_DIR: /ksql
+      KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
+      KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
+    volumes:
+      - ./ksql:/ksql:ro
+      - ./ksql/apply-ksql.py:/apply-ksql.py:ro
+    networks:
+      - backbone
+
 volumes:
   kafka-data-1:
     name: nus-kafka-data-1

@@ -34,9 +34,15 @@ verify-kafka: ## Brokers, the controller quorum, and every topic's replication
 		--bootstrap-server nus-kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
 	@printf "\n  Every partition should list three replicas and three in-sync.\n"
 
+.PHONY: ksql-ddl
+ksql-ddl: ## Register every ksqlDB stream and table from ksql/*.sql (after the topics exist)
+	$(call say,ksqlDB streams and tables)
+	@$(COMPOSE) run --rm ksql-init
+
+# Runs through ksql-init rather than ksqldb-server: the check reads the
+# declared names out of ksql/*.sql, and ksql-init is the container that has
+# that directory mounted. The server holds the answer, not the question.
 .PHONY: verify-ksqldb
-verify-ksqldb: ## ksqlDB's own status, and every stream/table it currently knows about
+verify-ksqldb: ## Every declared stream and table is registered, and every query is RUNNING
 	$(call say,ksqlDB)
-	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json,base64,os; req=urllib.request.Request('http://localhost:8088/info'); req.add_header('Authorization','Basic '+base64.b64encode(('%s:%s'%(os.environ['KSQLDB_ADMIN_USER'],os.environ['KSQLDB_ADMIN_PASSWORD'])).encode()).decode()); print(json.dumps(json.loads(urllib.request.urlopen(req, timeout=5).read()), indent=2))"
-	@echo
-	@$(COMPOSE) exec -T ksqldb-server python3 -c "import urllib.request,json,base64,os; req=urllib.request.Request('http://localhost:8088/ksql', data=json.dumps({'ksql':'SHOW STREAMS;'}).encode(), headers={'Content-Type':'application/vnd.ksql.v1+json'}); req.add_header('Authorization','Basic '+base64.b64encode(('%s:%s'%(os.environ['KSQLDB_ADMIN_USER'],os.environ['KSQLDB_ADMIN_PASSWORD'])).encode()).decode()); print(urllib.request.urlopen(req, timeout=5).read().decode())"
+	@$(COMPOSE) run --rm --entrypoint python3 ksql-init /ksql/check-ksql.py
