@@ -8,4 +8,4 @@ cache_timeout: null
 certified_by: null
 certification_details: null
 query_context: null
-params: {"x_axis": "day", "time_grain_sqla": "P1D", "metrics": ["take_rate"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",.1%", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}
+params: {"x_axis": "day", "time_grain_sqla": "P1D", "metrics": ["take_rate"], "groupby": [], "adhoc_filters": [], "granularity_sqla": "day", "row_limit": 10000, "time_range": "Last week", "x_axis_sort_asc": true, "y_axis_format": ",.1%", "seriesType": "line", "markerEnabled": false, "show_legend": false, "rich_tooltip": true, "tooltipSortByMetric": true, "viz_type": "echarts_timeseries_line", "datasource": "1__table"}

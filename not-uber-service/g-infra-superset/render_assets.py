@@ -551,7 +551,16 @@ DATASETS = [FULFILMENT, FUNNEL, TRIPS_DAILY, OD, UTILIZATION, DURATIONS]
 # only moves the lie somewhere harder to see.
 # ==========================================================================
 
-NO_FILTER = "No filter"
+# Every chart is bounded to a week. "No filter" scans whatever the table's
+# retention holds - thirty days for the rollups - which is thirty times the
+# work for a question nobody asked, and this project's full-scale scope is
+# seven days of history anyway.
+TIME_RANGE = "Last week"
+
+# Superset needs to be told WHICH column the time range applies to; without
+# it the range is silently a no-op. It is the dataset's own main_dttm_col,
+# read from the dataset rather than repeated, so the two cannot disagree.
+DTTM = {d["table_name"]: d["main_dttm_col"] for d in DATASETS}
 
 
 def big_number(slug, name, dataset_name, metric_name, fmt, description):
@@ -561,7 +570,8 @@ def big_number(slug, name, dataset_name, metric_name, fmt, description):
         params={
             "metric": metric_name,
             "adhoc_filters": [],
-            "time_range": NO_FILTER,
+            "granularity_sqla": DTTM[dataset_name],
+            "time_range": TIME_RANGE,
             "y_axis_format": fmt,
             "header_font_size": 0.4,
             "subheader_font_size": 0.125,
@@ -579,8 +589,9 @@ def timeseries(slug, name, dataset_name, x_axis, metrics, description, *,
         "metrics": metrics,
         "groupby": groupby or [],
         "adhoc_filters": [],
+        "granularity_sqla": DTTM[dataset_name],
         "row_limit": 10000,
-        "time_range": NO_FILTER,
+        "time_range": TIME_RANGE,
         "x_axis_sort_asc": True,
         "y_axis_format": fmt,
         "seriesType": series,
@@ -598,18 +609,37 @@ def timeseries(slug, name, dataset_name, x_axis, metrics, description, *,
 
 
 def table(slug, name, dataset_name, groupby, metrics, description, *,
-          order_desc=True, row_limit=25):
+          sort_by, order_desc=True, row_limit=300):
+    """An aggregate table, sorted by a metric this file names.
+
+    WHY sort_by IS REQUIRED. Left unset, Superset orders by metrics[0] with
+    the direction order_desc implies - and then the row limit keeps whatever
+    that happened to put first. "Where demand goes unserved" listed
+    requests ascending, so it showed the twenty-five QUIETEST zones: the
+    exact opposite of its title, with no error anywhere. Read out of the
+    compiled table plugin, whose precedence is series_limit_metric, then
+    legacy_order_by, then metrics[0].
+
+    So the metric is written into legacy_order_by AND timeseries_limit_metric
+    AND put first in metrics. All three spellings then agree, and no version
+    of that precedence can pick a different column.
+    """
+    assert sort_by in metrics, (slug, sort_by, metrics)
+    ordered = [sort_by] + [m for m in metrics if m != sort_by]
     return chart(
         slug, name=name, viz="table", dataset_name=dataset_name,
         description=description,
         params={
             "query_mode": "aggregate",
             "groupby": groupby,
-            "metrics": metrics,
+            "metrics": ordered,
             "adhoc_filters": [],
+            "granularity_sqla": DTTM[dataset_name],
             "row_limit": row_limit,
             "order_desc": order_desc,
-            "time_range": NO_FILTER,
+            "legacy_order_by": sort_by,
+            "timeseries_limit_metric": sort_by,
+            "time_range": TIME_RANGE,
             "include_search": True,
             "show_cell_bars": True,
             "color_pn": False,
@@ -684,18 +714,25 @@ CHARTS = [
 
     table("zone-leaderboard", "Where demand goes unserved", "fulfilment_hourly",
           ["pickup_zone_id"],
-          ["requests", "fulfilment_rate", "no_driver_rate", "time_to_match_s"],
-          "Zones by how badly they are served. A table, not a chart, because "
-          "each column carries its own unit.",
-          order_desc=False),
-    table("od-leaderboard", "Busiest origin-destination pairs", "od_matrix_daily",
-          ["pickup_zone_id", "dropoff_zone_id"], ["trips", "gross_revenue", "km_total"],
+          ["fulfilment_rate", "requests", "no_driver_rate", "time_to_match_s"],
+          "Worst-served zone first, which is the one to act on. A table, not "
+          "a chart, because each column carries its own unit. The row limit "
+          "is above the 263 zones TLC defines, so nothing is cut off.",
+          sort_by="fulfilment_rate", order_desc=False),
+    table("od-leaderboard", "Top 100 origin-destination pairs", "od_matrix_daily",
+          ["pickup_zone_id", "dropoff_zone_id"],
+          ["trips", "gross_revenue", "km_total"],
           "Directly comparable against the real TLC od_pair_calibration the "
-          "demand generator was built from."),
+          "demand generator was built from. Deliberately the top hundred - "
+          "263 zones make 69,169 possible pairs - so Superset's partial-data "
+          "notice here is the title being kept, not a fault.",
+          sort_by="trips", row_limit=100),
     table("funnel-by-zone", "The matching funnel, by zone",
           "dispatch_funnel_hourly", ["pickup_zone_id"],
-          ["offers", "acceptance_rate", "offers_per_match", "eta_offered_s"],
-          "Where the chain is working hardest for each ride."),
+          ["offers_per_match", "offers", "acceptance_rate", "eta_offered_s"],
+          "Sorted by how many drivers dispatch had to ask, so the zones where "
+          "the chain works hardest come first - not simply the busiest ones.",
+          sort_by="offers_per_match"),
 ]
 
 

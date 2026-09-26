@@ -1,5 +1,5 @@
 slice_name: 'The matching funnel, by zone'
-description: 'Where the chain is working hardest for each ride.'
+description: 'Sorted by how many drivers dispatch had to ask, so the zones where the chain works hardest come first - not simply the busiest ones.'
 uuid: 'e48c5e5d-516e-54c9-af3e-6ae4ae95e14a'
 dataset_uuid: '14a85160-f570-562c-84b0-0cf132d40c30'
 version: '1.0.0'
@@ -8,4 +8,4 @@ cache_timeout: null
 certified_by: null
 certification_details: null
 query_context: null
-params: {"query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["offers", "acceptance_rate", "offers_per_match", "eta_offered_s"], "adhoc_filters": [], "row_limit": 25, "order_desc": true, "time_range": "No filter", "include_search": true, "show_cell_bars": true, "color_pn": false, "viz_type": "table", "datasource": "1__table"}
+params: {"query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["offers_per_match", "offers", "acceptance_rate", "eta_offered_s"], "adhoc_filters": [], "granularity_sqla": "hour", "row_limit": 300, "order_desc": true, "legacy_order_by": "offers_per_match", "timeseries_limit_metric": "offers_per_match", "time_range": "Last week", "include_search": true, "show_cell_bars": true, "color_pn": false, "viz_type": "table", "datasource": "1__table"}

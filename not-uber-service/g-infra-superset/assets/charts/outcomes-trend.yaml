@@ -8,4 +8,4 @@ cache_timeout: null
 certified_by: null
 certification_details: null
 query_context: null
-params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["completed_trips", "rider_cancels", "driver_cancels", "unmatched"], "groupby": [], "adhoc_filters": [], "row_limit": 10000, "time_range": "No filter", "x_axis_sort_asc": true, "y_axis_format": ",d", "seriesType": "bar", "markerEnabled": false, "show_legend": true, "rich_tooltip": true, "tooltipSortByMetric": true, "stack": "Stack", "opacity": 0.9, "viz_type": "echarts_timeseries_bar", "datasource": "1__table"}
+params: {"x_axis": "hour", "time_grain_sqla": "PT1H", "metrics": ["completed_trips", "rider_cancels", "driver_cancels", "unmatched"], "groupby": [], "adhoc_filters": [], "granularity_sqla": "hour", "row_limit": 10000, "time_range": "Last week", "x_axis_sort_asc": true, "y_axis_format": ",d", "seriesType": "bar", "markerEnabled": false, "show_legend": true, "rich_tooltip": true, "tooltipSortByMetric": true, "stack": "Stack", "opacity": 0.9, "viz_type": "echarts_timeseries_bar", "datasource": "1__table"}

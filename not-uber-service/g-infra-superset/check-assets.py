@@ -233,6 +233,52 @@ def check() -> list[str]:
         if not params.get("viz_type"):
             errors.append(f"{path.name}: params carry no viz_type")
 
+        # A table with a row limit and no stated sort keeps whatever the
+        # database happened to return first. "Where demand goes unserved"
+        # ordered by requests ascending and listed the QUIETEST zones -
+        # the opposite of its title, with no error anywhere. The plugin's
+        # precedence is series_limit_metric, then legacy_order_by, then
+        # metrics[0], so all the spellings present have to agree.
+        if params.get("viz_type") == "table":
+            metrics = params.get("metrics") or []
+            stated = {
+                params.get(key)
+                for key in ("series_limit_metric", "legacy_order_by",
+                            "timeseries_limit_metric")
+                if params.get(key)
+            }
+            if not stated:
+                errors.append(
+                    f"{path.name}: a table with row_limit "
+                    f"{params.get('row_limit')} states no sort metric; the "
+                    "limit would keep an arbitrary slice"
+                )
+            elif len(stated) > 1:
+                errors.append(
+                    f"{path.name}: sort metric spelled two ways: {sorted(stated)}"
+                )
+            elif metrics and stated != {metrics[0]}:
+                errors.append(
+                    f"{path.name}: sorts by {stated.pop()!r} but metrics[0] is "
+                    f"{metrics[0]!r} - a version that falls back to metrics[0] "
+                    "would order by a different column"
+                )
+            for name in stated:
+                if name not in metrics:
+                    errors.append(
+                        f"{path.name}: sorts by {name!r}, which is not one of "
+                        "its metrics"
+                    )
+
+        # A time range that names no column is silently not applied, so the
+        # chart scans the table's whole retention while claiming a window.
+        if params.get("time_range") and params["time_range"] != "No filter":
+            if not params.get("granularity_sqla") and not params.get("x_axis"):
+                errors.append(
+                    f"{path.name}: time_range {params['time_range']!r} with no "
+                    "granularity_sqla or x_axis - the window is not applied"
+                )
+
     # ---- every dashboard references charts that exist, and uses them all
     placed: set[str] = set()
     for path in dashboards:

@@ -160,3 +160,83 @@ def test_the_assets_are_mounted_and_verified() -> None:
 
     root = (NUS / "Makefile").read_text()
     assert "verify-superset" in root, "make verify-dash does not check the assets"
+
+
+def test_every_table_states_the_sort_its_title_promises() -> None:
+    """A row limit without a sort keeps an arbitrary slice.
+
+    "Where demand goes unserved" shipped ordering by requests ASCENDING and
+    listed the twenty-five quietest zones - the opposite of its title, with
+    no error anywhere to say so.
+    """
+    seen = 0
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        params = CHECK.load(path).get("params") or {}
+        if params.get("viz_type") != "table":
+            continue
+        seen += 1
+        metrics = params["metrics"]
+        stated = {
+            params.get(k) for k in
+            ("series_limit_metric", "legacy_order_by", "timeseries_limit_metric")
+            if params.get(k)
+        }
+        assert stated, f"{path.name} states no sort metric"
+        assert len(stated) == 1, f"{path.name} spells the sort two ways: {stated}"
+        assert stated == {metrics[0]}, (
+            f"{path.name} sorts by {stated} but metrics[0] is {metrics[0]!r}"
+        )
+    assert seen >= 3, f"expected the three leaderboards, found {seen}"
+
+
+def test_a_table_with_no_sort_is_refused(tmp_path) -> None:
+    """The failing direction of the rule."""
+    bad = RENDER.chart(
+        "probe", name="Probe", viz="table", dataset_name="fulfilment_hourly",
+        description="a table that keeps an arbitrary slice",
+        params={"query_mode": "aggregate", "groupby": ["pickup_zone_id"],
+                "metrics": ["requests"], "row_limit": 25,
+                "granularity_sqla": "hour", "time_range": "Last week"},
+    )
+    written = tmp_path / "charts" / "probe.yaml"
+    written.parent.mkdir()
+    written.write_text(
+        RENDER.to_yaml({k: v for k, v in bad.items() if not k.startswith("_")})
+    )
+    params = CHECK.load(written)["params"]
+    assert params["viz_type"] == "table"
+    assert not any(
+        params.get(k) for k in
+        ("series_limit_metric", "legacy_order_by", "timeseries_limit_metric")
+    ), "the probe chart was supposed to have no sort"
+
+
+def test_every_chart_bounds_what_it_scans() -> None:
+    """A time range that names no column is silently not applied."""
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        params = CHECK.load(path).get("params") or {}
+        window = params.get("time_range")
+        assert window and window != "No filter", (
+            f"{path.name} scans the table's whole retention"
+        )
+        assert params.get("granularity_sqla") or params.get("x_axis"), (
+            f"{path.name} sets time_range {window!r} but names no time column"
+        )
+
+
+def test_the_time_column_is_the_datasets_own() -> None:
+    """Read from the dataset, never repeated, so the two cannot disagree."""
+    dttm = {}
+    for path in sorted(ASSETS.glob("datasets/*/*.yaml")):
+        config = CHECK.load(path)
+        dttm[config["uuid"]] = config["main_dttm_col"]
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        config = CHECK.load(path)
+        params = config.get("params") or {}
+        expected = dttm[config["dataset_uuid"]]
+        for key in ("granularity_sqla", "x_axis"):
+            if params.get(key):
+                assert params[key] == expected, (
+                    f"{path.name} uses {key}={params[key]!r} but its dataset's "
+                    f"time column is {expected!r}"
+                )
