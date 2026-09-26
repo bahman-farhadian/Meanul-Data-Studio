@@ -60,17 +60,58 @@ STATUS_EFFECT = {
 }
 
 
+def cache_counts(redis) -> tuple[int, int]:
+    """How many driver and vehicle profiles the cache currently holds.
+
+    Both are filled by cache-updater from Debezium's first pass, from two
+    separate topics that arrive interleaved - so a count taken mid-fill says
+    nothing. settled_caches below is what makes it mean something.
+    """
+    drivers = sum(1 for _ in redis.scan_iter(match="driver:*", count=1000))
+    vehicles = sum(1 for _ in redis.scan_iter(match="vehicle:*", count=1000))
+    return drivers, vehicles
+
+
+def settled_caches(redis):
+    """A check for wait_for: both caches full, and no longer growing.
+
+    h-bootstrap writes exactly one vehicle per driver in the same loop, so
+    equal counts is the truth rather than a threshold. The "no longer
+    growing" half matters because the two topics fill at the same time: a
+    moment where vehicles happens to have caught up with drivers is not the
+    same as both being done, and taking it as done is what left the fleet
+    with no xl or premium cars at all.
+    """
+    last: dict[str, int] = {}
+
+    def check() -> bool:
+        drivers, vehicles = cache_counts(redis)
+        steady = last.get("drivers") == drivers and drivers > 0
+        last["drivers"] = drivers
+        return steady and drivers == vehicles
+
+    return check
+
+
 def load_roster(
     redis, grid: CityGrid, rng: random.Random, zone_ids: list[str]
-) -> dict[str, Driver]:
-    """Read the drivers out of Redis.
+) -> tuple[dict[str, Driver], int]:
+    """Read the drivers out of Redis, and say how many lost their car.
 
     Redis, not PostgreSQL: the profiles are in the cache because
     cache-updater put them there, and section 1 of the main README says the
     read path is the cache. If the cache is empty the service has started too
     early, and the caller is expected to wait and try again.
+
+    The second return value is the number of drivers whose vehicle profile
+    was missing. It used to be nobody's business: a missing vehicle quietly
+    became an economy car, the roster is loaded exactly once and never
+    reloaded, and the whole fleet therefore spent a run in one tier. Dispatch
+    matches within the requested tier, so every xl and premium request went
+    unmatched - which reads downstream as a supply problem and is not one.
     """
     drivers: dict[str, Driver] = {}
+    missing_vehicles = 0
     for key in redis.scan_iter(match="driver:*", count=500):
         raw = redis.get(key)
         if not raw:
@@ -91,11 +132,13 @@ def load_roster(
         vehicle_type = "economy"
         if vehicle_raw:
             vehicle_type = json.loads(vehicle_raw).get("vehicle_type") or "economy"
+        else:
+            missing_vehicles += 1
         drivers[driver_id] = Driver(
             driver_id=driver_id, lat=float(lat), lon=float(lon), home_zone_id=home,
             vehicle_type=vehicle_type,
         )
-    return drivers
+    return drivers, missing_vehicles
 
 
 def read_hotspots(redis, zone_ids: list[str]) -> dict[str, float]:
@@ -318,9 +361,15 @@ def main() -> int:
     # for the first minute or so after a fresh bootstrap there are no drivers
     # to load yet. Wait for them rather than exiting: this is a normal state
     # of a stack that has just come up, not a failure.
+    # BOTH profiles, and settled - not the first driver:* key to appear.
+    # Waiting on drivers alone let this service start while vehicle:* was
+    # still empty, and a missing vehicle used to become an economy car in
+    # silence. The roster is read once and never re-read, so that one moment
+    # decided the tier of every driver for the whole run: 1,871 economy, and
+    # zero xl, zero premium, against a fleet seeded 70/20/10.
     wait_for(
-        lambda: bool(next(redis_driver.scan_iter(match="driver:*", count=1), None)),
-        description="cache-updater to fill the driver profiles (Redis driver:*)",
+        settled_caches(redis_driver),
+        description="cache-updater to fill the driver AND vehicle profiles",
         attempts=120,
         delay_seconds=5.0,
         shutdown=shutdown,
@@ -347,10 +396,28 @@ def main() -> int:
     # take tens of minutes with the host otherwise idle).
     routing.build_road_point_pools(grid, road_point_pool_size, road_point_pool_workers)
 
-    drivers = load_roster(redis_driver, grid, rng, zone_ids)
+    drivers, missing_vehicles = load_roster(redis_driver, grid, rng, zone_ids)
     if not drivers:
         log.error("driver keys appeared but none could be read")
         return 1
+    if missing_vehicles:
+        # Loud, and fatal. Carrying on would put every one of these drivers
+        # in the economy tier for the rest of the run, and the restart costs
+        # seconds against a run that would otherwise be measuring the wrong
+        # marketplace from end to end.
+        log.error(
+            "drivers have no vehicle profile; restarting rather than "
+            "defaulting them all to economy",
+            extra={"drivers": len(drivers), "without_a_vehicle": missing_vehicles},
+        )
+        return 1
+    log.info(
+        "fleet tiers",
+        extra={
+            tier: sum(1 for d in drivers.values() if d.vehicle_type == tier)
+            for tier in redis_client.VEHICLE_TYPES
+        },
+    )
     log.info("fleet loaded", extra={"drivers": len(drivers), "movement": "street-path-vertices"})
 
     # Start with the intended share of the fleet already working, so the
