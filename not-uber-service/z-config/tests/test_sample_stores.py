@@ -13,6 +13,7 @@ import random
 import secrets
 import subprocess
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -341,9 +342,15 @@ def test_broker_cache_and_databases(sample_env):
     assert abs(seen[0]["lat"] - trail[0][0]) < 1e-6
 
     clickhouse.client().command("CREATE DATABASE IF NOT EXISTS nus")
+    # A cut-down copy of e-infra-clickhouse/ddl/002_positions.sql - enough
+    # columns to take a real Batches row, in the order clickhouse_sink
+    # declares them. event_id leads it there and has to lead it here: the
+    # sink names its columns explicitly, so a table missing one is a
+    # ProgrammingError, not a silently shifted row.
     clickhouse.client().command(
         """
         CREATE TABLE IF NOT EXISTS nus.driver_positions (
+            event_id UUID,
             driver_id String,
             trip_id Nullable(String),
             status Enum8('offline' = 1, 'idle' = 2, 'en_route_pickup' = 3, 'on_trip' = 4),
@@ -363,6 +370,7 @@ def test_broker_cache_and_databases(sample_env):
         batches.add(
             "nus.driver_positions",
             [
+                str(uuid.uuid4()),
                 "drv-0000001",
                 trip.trip_id,
                 "on_trip",
