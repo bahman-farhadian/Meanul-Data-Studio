@@ -439,6 +439,27 @@ all zeros.
 ---
 
 ## Step 6 — Warehouse fitness for full scale
+DONE — 2026-09-26, Dionysus. `make capacity` reads **63.55 GiB per node
+against a 112 GB quota — 56.7%, verdict ok**, with every producer live and
+the rates settled over a 30-minute window.
+
+| table | rows/s now | at full scale | TTL | per node |
+| --- | --- | --- | --- | --- |
+| `driver_positions` | 653 | 17,310 | 2 d | 53.20 GiB |
+| `rider_positions` | 16.7 | 442 | 7 d | 5.00 GiB |
+| `trip_events` | 1.16 | 30.8 | 30 d | 4.43 GiB |
+| `dispatch_offers` | 0.34 | 8.9 | 30 d | 0.69 GiB |
+| `hotspot_history` | 8.5 | 8.5 (unscaled) | 30 d | 0.22 GiB |
+| `segment_traffic_history` | 0.53 | 0.5 (unscaled) | 30 d | 0.04 GiB |
+
+TTL drops directories rather than rewriting parts: `driver_positions`,
+`rider_positions` and `trip_events` each hold two daily partitions.
+
+Whole-stack commitment is 808 GB of the 888 GB on `/dev/nvme1n1p1` (91%) —
+kafka 3x96, clickhouse 4x112, postgres 3x24. Kafka measured 842 MB per
+broker, roughly 22 GB projected, so it is the slack if ClickHouse ever
+needs more. PostgreSQL's 24 GB is still unmeasured.
+
 
 The heaviest table decides whether the full-scale run survives. At full
 fleet, `driver_positions` dominates everything else in the stack.
@@ -544,6 +565,23 @@ down in the ClickHouse README, and TTL drops partitions rather than rows.
 ---
 
 ## Step 7 — Data-collection quality bars
+DONE — 2026-09-26, Dionysus. All **15 bars pass** against live traffic
+(`make verify-quality`, exits 0). Every bar is structural, so the same
+numbers hold at any scale.
+
+The bars found three real defects that nothing else had surfaced, which is
+the argument for having them:
+
+- **Q5** — `rider_no_show` was reachable before the driver had arrived,
+  because the pre-arrival reason list still contained it. One row in a few
+  thousand.
+- **Q8** — trips in `no_driver_found` carrying an accepted offer. Dispatch
+  offered the ride before computing the route, so a routing failure left
+  the contradiction behind. Two rows in six hours.
+- **Q0** — added after finding that all fourteen other bars reported `ok`
+  against a completely empty warehouse, since every one of them counts
+  violations.
+
 
 Today's bars prove rows exist and align. None score whether the generated
 data is any *good*. Add numeric bars (ASSESSMENT §7 already has the frame):
