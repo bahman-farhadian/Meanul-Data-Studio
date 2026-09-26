@@ -839,6 +839,50 @@ idle telemetry would actually hurt.
 
 ---
 
+## Step 11c — Measured 2026-09-27, three answers
+
+**PostgreSQL is 128 MB against its 24 GB quota.** The biggest tables are
+the road graph - `ways` 40 MB, `ways_vertices_pgr` 22 MB - and the graph
+does not grow with the fleet. **This does not settle the quota.** Unlike
+Kafka, whose retention is time-bounded, the OLTP tables scale with drivers
+and with trips: 4,000 drivers and ~1,200 trips today against 106,000 and
+655,000/day at full scale. The measurement is recorded; the projection is
+step 13's, and cutting the quota on a dev-scale reading is exactly what
+this file's own rule forbids.
+
+Two notes on the query that produced it: it was run on a REPLICA, so
+`pg_stat_user_tables` read zero everywhere (those counters are per node),
+and it filtered `nspname = 'public'`, which is why only four tables came
+back. `pg_database_size` covers every schema, so the 128 MB total stands.
+
+**city-service is behind on `driver_location` and on nothing else.**
+Per-partition lag, all twelve partitions: 780-975. `rider_location` 20-58,
+`trip_lifecycle` 4-9. Uniform, not one stuck partition.
+
+The comparison that names the cause: **clickhouse-sink reads the same
+topic with 66-97 lag per partition** - ten times less, same messages, same
+broker. So the topic is not too fast; city-service's per-message work is
+too heavy. It does a zone lookup and a speed sample per position where the
+sink batches and inserts.
+
+That is why `hotspot_score` sits at a median of 0 and surge at a mean of
+1.03: the demand picture is stale, so the multiplier never moves, and
+"Does surge lift acceptance" has one band to draw. Not a correctness bug -
+a provisioning one, and it belongs with the scale-up because the fix is a
+choice: more CPU for city-service, more instances, or scoring on a sample
+of `driver_location` rather than every message. An aggregate score over a
+sample is statistically sound and is the only one of the three that also
+works at 18,000 positions a second.
+
+**Superset's headline tiles were wrong, and it was mine.** `time_range:
+"Last week"` resolves to 00:00 seven days back -> **00:00 TODAY**, so
+every daily-grain chart dropped the current day. Revenue and Completed
+trips read the seeded day exactly - 1,166 and $28,473.37 against a true
+3,297 and $66,099.68. Fixed with an explicit window that reaches `now`,
+and the test refuses any of the friendly names that end at midnight.
+
+---
+
 ## Step 12 — Staged scale-up
 
 **Fulfilment is 0.611 at 4,000 drivers, and the fleet is 96% idle at the
