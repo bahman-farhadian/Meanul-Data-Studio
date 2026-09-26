@@ -465,6 +465,19 @@ fleet, `driver_positions` dominates everything else in the stack.
   resort rather than the first.
 - Target is 67 GiB per node, which is the 30% headroom line. A warehouse
   planned to exactly fill its disk cannot merge.
+- **DONE 2026-09-26: the five 365-day TTLs are now 90 days**, on the
+  measured argument that seven days of history does not need a year of
+  retention. That takes 32.5 GiB per node down to 8.0.
+- **STILL OPEN: the projection is 90.6 GiB against a 96 GiB quota** - 94%,
+  inside the quota but far past the 30% headroom line. The driver tick
+  stays at 3 seconds by decision, so `driver_positions` remains 79 GiB of
+  it, which is 87% of the whole remaining figure. One of these closes it:
+  - position TTL 3 days -> 2 gives 52.8 GiB there and 64.2 total (67%,
+    passes). 002_positions.sql's own comment already invites exactly this
+    re-check, and says the live map reads Redis rather than this table.
+  - position TTL 3 days -> 1 gives 26.4 and 37.8 total (39%, ample).
+  - raise the ClickHouse quota above 96 GB/node, if the data disk has the
+    room. Not yet checked - `df -h` on NUS_VOLUME_ROOT is the input.
 - Partition `trips` by month on `requested_at` in Postgres, so the
   archiver drops partitions instead of deleting rows. Moved here from the
   old step 2 list: it is a capacity decision, not a schema-design one.
