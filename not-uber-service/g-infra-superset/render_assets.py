@@ -784,27 +784,38 @@ MARKETPLACE = dashboard(
         "the other three are demand the platform failed to meet, and the zone "
         "table says where.",
         [("fulfilment-trend", 6, 50), ("outcomes-trend", 6, 50)],
-        [("zone-leaderboard", 12, 55)],
+        # A table is the densest thing on this dashboard and was the
+        # shortest: 55 showed ten rows of a result that carries up to 263.
+        # Height is what a table is for.
+        [("zone-leaderboard", 12, 85)],
 
         "## The matching funnel\n\n"
         "Dispatch offers a ride to one driver at a time with a deadline. "
         "These are the numbers that decision produces, and none of them "
         "existed while dispatch simply assigned a driver.",
-        [("acceptance-trend", 4, 50), ("offers-per-match-trend", 4, 50),
-         ("eta-trend", 4, 50)],
-        [("funnel-by-zone", 12, 50)],
+        # Three across is the right scan pattern for a funnel, but the ETA
+        # chart carries two series and its legend was landing on the plot.
+        [("acceptance-trend", 4, 58), ("offers-per-match-trend", 4, 58),
+         ("eta-trend", 4, 58)],
+        [("funnel-by-zone", 12, 85)],
 
         "## How long riders waited\n\n"
         "Request to match, driver arriving to rider getting in, and the trip "
         "itself. The middle one is what the 'arrived' state was added to make "
         "answerable at all.",
-        [("wait-trend", 6, 50), ("duration-percentiles", 6, 50)],
+        [("wait-trend", 6, 55), ("duration-percentiles", 6, 55)],
 
         "## Money and the fleet\n\n"
         "Revenue and volume are different scales, so they get two charts "
         "rather than two axes on one.",
         [("revenue-trend", 4, 50), ("trips-trend", 4, 50), ("take-rate-trend", 4, 50)],
-        [("utilization-trend", 6, 50), ("od-leaderboard", 6, 50)],
+        # Utilization gets the full width: it is one series over time and
+        # reads as a trend, not as a number to compare against a neighbour.
+        # The OD table gets its own row for the same reason the other two
+        # tables did - it was sharing a row at half width and showing eight
+        # of a hundred rows.
+        [("utilization-trend", 12, 45)],
+        [("od-leaderboard", 12, 85)],
     ],
 )
 

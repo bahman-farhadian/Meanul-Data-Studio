@@ -115,6 +115,51 @@ def main() -> int:
                 print(f"    MISSING  {name} ({uuid})")
                 errors.append(f"{label[:-1]} {name} was not imported")
 
+        # Matching uuids is not the same as matching CONTENT, and the
+        # difference is not academic: the uuids are derived from a slug, so
+        # they survive every edit to a chart. A Superset still running last
+        # week's definitions therefore held all twenty of them and this
+        # check said ok - while the dashboard showed a table sorted the
+        # wrong way and a title that had been changed two commits earlier.
+        #
+        # superset import-directory is why it can happen at all: it catches
+        # its own failure, logs it, and exits 0. Nothing upstream notices.
+        print()
+        print("== does what Superset holds still match the files ==")
+        stale = 0
+        for path in chart_files:
+            config = scalars(path)
+            slice_ = (
+                db.session.query(Slice)
+                .filter_by(uuid=config["uuid"])
+                .one_or_none()
+            )
+            if slice_ is None:
+                continue
+            drift = []
+            if slice_.slice_name != config["slice_name"]:
+                drift.append(f"name {slice_.slice_name!r} != {config['slice_name']!r}")
+            declared = config.get("params") or {}
+            stored = json.loads(slice_.params or "{}")
+            for field in ("metrics", "row_limit", "legacy_order_by", "time_range",
+                          "groupby", "viz_type"):
+                if field in declared and stored.get(field) != declared[field]:
+                    drift.append(
+                        f"{field} {stored.get(field)!r} != {declared[field]!r}"
+                    )
+            if drift:
+                stale += 1
+                print(f"  STALE    {config['slice_name']}")
+                for line in drift:
+                    print(f"           {line}")
+        if stale:
+            errors.append(
+                f"{stale} chart(s) in Superset do not match assets/ - the import "
+                "did not apply; superset import-directory exits 0 even when it fails"
+            )
+        else:
+            print(f"  ok       all {len(chart_files)} charts match the files")
+
         database = (
             db.session.query(Database)
             .filter_by(database_name="ClickHouse (nus)")

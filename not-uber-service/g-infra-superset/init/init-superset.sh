@@ -28,8 +28,23 @@ superset init
 # makes this the way an edited chart is rolled out: change the file, run the
 # one-shot again. A chart edited in the browser is NOT written back to these
 # files - export it and commit it.
+# Piped through a check, because `superset import-directory` CATCHES its own
+# failure, logs it, and exits 0 - so `set -e` never sees it and a bring-up
+# reports success while Superset keeps whatever it had before. That is not a
+# theory: a dashboard ran for a full session with a table sorted the wrong
+# way and a chart title two commits out of date, and every check passed,
+# because the uuids are derived from slugs and survive any edit.
 echo "== importing the datasets, charts and dashboard =="
-superset import-directory /app/assets --overwrite
+import_log=$(mktemp)
+superset import-directory /app/assets --overwrite 2>&1 | tee "$import_log"
+if grep -qiE "An error occurred|CommandInvalidError|ValidationError" "$import_log"; then
+    echo
+    echo "The asset import failed. Superset still holds whatever it had before."
+    echo "The error is above - import-directory swallows it and exits 0."
+    rm -f "$import_log"
+    exit 1
+fi
+rm -f "$import_log"
 
 # AFTER the import, deliberately, and this order is not interchangeable.
 # The bundle carries a database file so the datasets have a uuid to attach
