@@ -689,12 +689,19 @@ def test_partition_granularity_follows_the_ttl():
             continue
         days = int(ttl.group(1))
         monthly = "PARTITION BY toYYYYMM" in body
-        if days <= 31:
+        # The threshold is 90 days, not 31. A partition has to be
+        # substantially shorter than the TTL, not merely shorter: with a
+        # 30-day expiry and monthly partitions, nothing drops until an
+        # entire month has aged out, so the table holds up to sixty days to
+        # honour a thirty-day contract. Below 90 days, daily.
+        if days < 90:
             assert not monthly, (
                 f"{table} expires after {days} days but partitions by month - "
-                "that TTL can never drop a partition"
+                "the expiry cannot drop a partition until a whole month has "
+                "aged out, so the table retains far more than it promises"
             )
         else:
             assert monthly, (
-                f"{table} keeps {days} days but does not partition by month"
+                f"{table} keeps {days} days; daily would give it {days} parts "
+                "for no benefit"
             )
