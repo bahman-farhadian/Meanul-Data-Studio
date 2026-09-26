@@ -14,8 +14,24 @@ superset-init: ## Superset's own tables, admin user, roles and ClickHouse connec
 	$(call say,Superset initialisation)
 	@$(COMPOSE) run --rm superset-init
 
+.PHONY: superset-assets
+superset-assets: ## Re-write assets/ from render_assets.py, then validate it (local, no stack)
+	$(call say,Superset assets)
+	@python3 g-infra-superset/render_assets.py
+	@python3 g-infra-superset/check-assets.py
+
+.PHONY: superset-import
+superset-import: ## Re-import the datasets, charts and dashboard onto a running Superset
+	$(call say,Superset asset import)
+	@$(COMPOSE) run --rm superset-init
+
 .PHONY: superset-health
 superset-health: ## Superset answers on its health endpoint
 	$(call say,Superset)
 	@$(COMPOSE) exec -T superset curl -sS http://localhost:8088/health 2>/dev/null || true
 	@printf "\n  Empty panels are fine before bootstrap; an error is not.\n"
+
+.PHONY: verify-superset
+verify-superset: ## Every declared asset is imported, and every metric runs on real data
+	$(call say,Superset assets)
+	@$(COMPOSE) run --rm superset-verify
