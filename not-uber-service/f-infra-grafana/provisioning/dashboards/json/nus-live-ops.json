@@ -33,6 +33,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 6,
         "w": 16,
@@ -80,6 +81,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 3,
         "w": 8,
@@ -133,6 +135,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 3,
         "w": 8,
@@ -186,6 +189,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -220,6 +224,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 8,
         "w": 12,
@@ -254,6 +259,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -288,6 +294,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 12,
         "w": 14,
@@ -374,6 +381,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 12,
         "w": 10,
@@ -408,6 +416,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
+      "description": "",
       "gridPos": {
         "h": 8,
         "w": 24,
@@ -464,6 +473,12 @@
       "title": "History",
       "type": "link",
       "url": "/d/nus-history",
+      "keepTime": true
+    },
+    {
+      "title": "Marketplace",
+      "type": "link",
+      "url": "/d/nus-marketplace",
       "keepTime": true
     }
   ]

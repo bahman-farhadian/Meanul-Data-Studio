@@ -95,12 +95,14 @@ def panel(
     h: int,
     timeseries: bool = False,
     extra: dict | None = None,
+    description: str = "",
 ) -> dict:
     p = {
         "id": pid,
         "title": title,
         "type": ptype,
         "datasource": DS,
+        "description": description,
         "gridPos": {"h": h, "w": w, "x": x, "y": y},
         "targets": [target(sql, timeseries=timeseries)],
         "fieldConfig": {"defaults": {}, "overrides": []},
@@ -108,6 +110,58 @@ def panel(
     }
     if extra:
         p.update(extra)
+    return p
+
+
+# A KPI is read as "is this number where it should be", so it ships with the
+# band it is judged against rather than as a bare figure. The thresholds are
+# the operating targets this project states, not decoration: steps are read
+# bottom-up by Grafana, and the first step's value is always null.
+def fields(unit: str, *, decimals: int | None = None, steps: list | None = None,
+           minimum: float | None = None, maximum: float | None = None) -> dict:
+    defaults: dict = {"unit": unit}
+    if decimals is not None:
+        defaults["decimals"] = decimals
+    if minimum is not None:
+        defaults["min"] = minimum
+    if maximum is not None:
+        defaults["max"] = maximum
+    if steps is not None:
+        defaults["thresholds"] = {"mode": "absolute", "steps": steps}
+    return {"fieldConfig": {"defaults": defaults, "overrides": []}}
+
+
+def bands(*pairs: tuple[str, float | None]) -> list[dict]:
+    return [{"color": colour, "value": value} for colour, value in pairs]
+
+
+# Higher is better: red below the first bound, green above the last.
+def good_high(warn: float, good: float) -> list[dict]:
+    return bands(("red", None), ("yellow", warn), ("green", good))
+
+
+# Lower is better - a cancellation rate, a wait, an error.
+def good_low(warn: float, bad: float) -> list[dict]:
+    return bands(("green", None), ("yellow", warn), ("red", bad))
+
+
+STAT = {
+    "options": {
+        "reduceOptions": {"calcs": ["lastNotNull"], "fields": "", "values": False},
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto",
+    }
+}
+
+
+def stat(pid, title, sql, x, y, w, h, *, unit, steps, decimals=2, description=""):
+    """One number with the band it is judged against, and its own sparkline."""
+    p = panel(pid, title, "stat", sql, x, y, w, h, description=description)
+    p.update(STAT)
+    p.update(fields(unit, decimals=decimals, steps=steps))
     return p
 
 
@@ -166,6 +220,7 @@ def dashboard(
             {"title": "Trip", "type": "link", "url": "/d/nus-trip", "keepTime": True},
             {"title": "City", "type": "link", "url": "/d/nus-city", "keepTime": True},
             {"title": "History", "type": "link", "url": "/d/nus-history", "keepTime": True},
+            {"title": "Marketplace", "type": "link", "url": "/d/nus-marketplace", "keepTime": True},
         ],
     }
 
@@ -816,7 +871,558 @@ LIMIT 30
 )
 
 
-ALL = [LIVE_OPS, DRIVER, TRIP, CITY, HISTORY]
+
+# ---------------------------------------------------------------------------
+# Marketplace
+#
+# The five dashboards before this one answer "is the platform running":
+# live ops, the driver and trip inspectors, the city, and the rollups. None
+# of them answers "is the marketplace working", which is a different
+# question with its own numbers - a platform can have every service healthy
+# and still fail three riders in ten.
+#
+# Two rules hold across every panel here, and check-dashboards.py enforces
+# both:
+#
+#   Every rate is sum(x) / sum(y), never avg(rate). The tables underneath
+#   are SummingMergeTree: a row is a partial sum until a merge that may not
+#   have happened yet, so an average over rows is an average over an
+#   arbitrary grouping. Summing first and dividing once is the only spelling
+#   that is correct at every merge state.
+#
+#   No panel puts two different scales on one chart. Trips and revenue, or a
+#   rate and a count, are two charts - the smaller series is invisible
+#   otherwise, and a second y-axis just moves the lie.
+# ---------------------------------------------------------------------------
+
+# Colour follows the outcome, never its rank in the result, so a zone filter
+# that drops a series cannot repaint the ones that survive. Completed is the
+# only good outcome; the three failures are graded by how much of the
+# platform's promise was already spent when they happened.
+OUTCOME_COLOURS = {
+    "completed": "green",
+    "cancelled_by_passenger": "yellow",
+    "cancelled_by_driver": "orange",
+    "no_driver_found": "red",
+}
+
+
+def by_name(colours: dict[str, str]) -> list[dict]:
+    return [
+        {
+            "matcher": {"id": "byName", "options": name},
+            "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": colour}}],
+        }
+        for name, colour in colours.items()
+    ]
+
+
+STACKED_BARS = {
+    "drawStyle": "bars",
+    "fillOpacity": 80,
+    "lineWidth": 0,
+    "stacking": {"mode": "normal", "group": "A"},
+}
+
+MARKETPLACE = dashboard(
+    uid="nus-marketplace",
+    title="NUS / Marketplace",
+    description=(
+        "Fulfilment, cancellations, the matching funnel, take rate and ETA "
+        "accuracy. Every rate is sum()/sum() over the rollups, never an "
+        "average of rates."
+    ),
+    tags=["nus", "marketplace"],
+    time_from="now-24h",
+    refresh="1m",
+    live=False,
+    panels=[
+        stat(
+            1,
+            "Fulfilment rate",
+            """
+SELECT sum(completed) / sum(trips_ended) AS fulfilment_rate
+FROM nus.fulfilment_hourly
+WHERE $__timeFilter(hour)
+HAVING sum(trips_ended) > 0
+""",
+            0, 0, 6, 5,
+            unit="percentunit",
+            steps=good_high(0.80, 0.90),
+            description=(
+                "Completed trips as a share of every request that reached an "
+                "ending, bucketed on when the ride was ASKED for. This is the "
+                "one number that counts requests nobody served - every other "
+                "rollup in this warehouse filters status = 'completed' and so "
+                "cannot see them."
+            ),
+        ),
+        stat(
+            2,
+            "Cancellation rate",
+            """
+SELECT
+    (sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / sum(trips_ended)
+        AS cancellation_rate
+FROM nus.fulfilment_hourly
+WHERE $__timeFilter(hour)
+HAVING sum(trips_ended) > 0
+""",
+            6, 0, 6, 5,
+            unit="percentunit",
+            steps=good_low(0.10, 0.20),
+            description=(
+                "Both sides together. A trip that ended because nobody could "
+                "be found is NOT a cancellation - it is counted separately, "
+                "because the fix for it is supply, not behaviour."
+            ),
+        ),
+        stat(
+            3,
+            "Driver acceptance rate",
+            """
+SELECT sum(offers_accepted) / sum(offers_made) AS acceptance_rate
+FROM nus.dispatch_funnel_hourly
+WHERE $__timeFilter(hour)
+HAVING sum(offers_made) > 0
+""",
+            12, 0, 6, 5,
+            unit="percentunit",
+            steps=good_high(0.45, 0.60),
+            description=(
+                "Offers accepted out of offers made. Dispatch offers a ride "
+                "to one candidate at a time with a deadline; this number did "
+                "not exist while dispatch simply assigned."
+            ),
+        ),
+        stat(
+            4,
+            "Take rate",
+            """
+SELECT
+    toFloat64(sum(revenue) - sum(payout_total)) / toFloat64(sum(revenue))
+        AS take_rate
+FROM nus.trip_stats_hourly
+WHERE $__timeFilter(hour)
+HAVING sum(revenue) > 0
+""",
+            18, 0, 6, 5,
+            unit="percentunit",
+            steps=good_low(0.25, 0.30),
+            description=(
+                "What the platform keeps of every fare. Both sums are "
+                "Decimal64(2) and exact; the cast to Float64 happens on the "
+                "RATIO, never on the money - Decimal divided by Decimal "
+                "truncates to the left operand's scale, which would quietly "
+                "round the answer to two places."
+            ),
+        ),
+        panel(
+            5,
+            "Fulfilment rate by hour",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
+    sum(completed) / sum(trips_ended) AS fulfilment_rate
+FROM nus.fulfilment_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+HAVING sum(trips_ended) > 0
+ORDER BY time
+""",
+            0, 5, 12, 8,
+            timeseries=True,
+            description=(
+                "One series, so the title names it and no legend box is "
+                "needed. The band behind it is the same one the stat above "
+                "is judged against."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "percentunit",
+                        "min": 0,
+                        "max": 1,
+                        "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+                        "thresholds": {"mode": "absolute", "steps": good_high(0.80, 0.90)},
+                    },
+                    "overrides": [],
+                },
+                "options": {"legend": {"showLegend": False}, "tooltip": {"mode": "single"}},
+            },
+        ),
+        panel(
+            6,
+            "How every request ended (hourly)",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
+    sum(completed)               AS completed,
+    sum(cancelled_by_passenger)  AS cancelled_by_passenger,
+    sum(cancelled_by_driver)     AS cancelled_by_driver,
+    sum(no_driver_found)         AS no_driver_found
+FROM nus.fulfilment_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+ORDER BY time
+""",
+            12, 5, 12, 8,
+            timeseries=True,
+            description=(
+                "Counts, stacked, so the height is demand and the colours are "
+                "what happened to it. Each outcome keeps its colour whatever "
+                "else is on the chart."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {"unit": "short", "custom": STACKED_BARS},
+                    "overrides": by_name(OUTCOME_COLOURS),
+                },
+                "options": {
+                    "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                    "tooltip": {"mode": "multi", "sort": "desc"},
+                },
+            },
+        ),
+        panel(
+            7,
+            "Time to match, and rider wait at the kerb",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
+    sum(match_s_sum) / sum(matched_trips) AS time_to_match_s,
+    sum(wait_s_sum)  / sum(waited_trips)  AS rider_wait_s
+FROM nus.fulfilment_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+HAVING sum(matched_trips) > 0 AND sum(waited_trips) > 0
+ORDER BY time
+""",
+            0, 13, 12, 8,
+            timeseries=True,
+            description=(
+                "Two series on one axis only because both are seconds. Wait "
+                "at the kerb is the gap between the driver arriving and the "
+                "rider getting in - the measure the 'arrived' state was added "
+                "to make answerable, and what a real platform charges a "
+                "per-minute wait fee against."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0},
+                    },
+                    "overrides": by_name({"time_to_match_s": "blue", "rider_wait_s": "purple"}),
+                },
+                "options": {
+                    "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                    "tooltip": {"mode": "multi"},
+                },
+            },
+        ),
+        panel(
+            8,
+            "Why trips were cancelled",
+            "barchart",
+            """
+SELECT
+    cancellation_reason AS reason,
+    count() AS trips
+FROM nus.trip_facts FINAL
+WHERE $__timeFilter(event_time)
+  AND final_status IN ('cancelled_by_passenger', 'cancelled_by_driver')
+  AND cancellation_reason IS NOT NULL
+GROUP BY reason
+ORDER BY trips DESC
+""",
+            12, 13, 12, 8,
+            description=(
+                "Support and analytics need 'the rider never came out' apart "
+                "from 'the driver found something better': very different "
+                "problems that look identical without the reason. FINAL is "
+                "deliberate - trip_facts is a ReplacingMergeTree, so a count "
+                "without it is an upper bound, and every trip's rows land on "
+                "one shard, which is what makes a local FINAL correct here."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {"unit": "short", "custom": {"fillOpacity": 80, "lineWidth": 0}},
+                    "overrides": [],
+                },
+                "options": {
+                    "orientation": "horizontal",
+                    "xTickLabelRotation": 0,
+                    "legend": {"showLegend": False},
+                    "tooltip": {"mode": "single"},
+                },
+            },
+        ),
+        panel(
+            9,
+            "Driver acceptance rate by hour",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
+    sum(offers_accepted) / sum(offers_made) AS acceptance_rate
+FROM nus.dispatch_funnel_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+HAVING sum(offers_made) > 0
+ORDER BY time
+""",
+            0, 21, 8, 8,
+            timeseries=True,
+            description="Offers accepted out of offers made, per hour.",
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "percentunit",
+                        "min": 0,
+                        "max": 1,
+                        "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+                        "thresholds": {"mode": "absolute", "steps": good_high(0.45, 0.60)},
+                    },
+                    "overrides": [],
+                },
+                "options": {"legend": {"showLegend": False}, "tooltip": {"mode": "single"}},
+            },
+        ),
+        panel(
+            10,
+            "Offers per accepted match",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
+    sum(offers_made) / sum(offers_accepted) AS offers_per_match
+FROM nus.dispatch_funnel_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+HAVING sum(offers_accepted) > 0
+ORDER BY time
+""",
+            8, 21, 8, 8,
+            timeseries=True,
+            description=(
+                "How many drivers dispatch had to ask before one took the "
+                "ride. Rising means the chain is working harder for the same "
+                "trip, which is the earliest visible sign of thin supply - "
+                "well before fulfilment falls."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "short",
+                        "decimals": 2,
+                        "min": 0,
+                        "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 10},
+                        "thresholds": {"mode": "absolute", "steps": good_low(2.5, 4.0)},
+                    },
+                    "overrides": [],
+                },
+                "options": {"legend": {"showLegend": False}, "tooltip": {"mode": "single"}},
+            },
+        ),
+        panel(
+            11,
+            "Pickup ETA: every offer vs the accepted one",
+            "timeseries",
+            """
+SELECT
+    hour AS time,
+    sum(eta_seconds_sum) / sum(eta_offers)      AS eta_offered_s,
+    sum(accepted_eta_sum) / sum(offers_accepted) AS eta_accepted_s
+FROM nus.dispatch_funnel_hourly
+WHERE $__timeFilter(hour)
+GROUP BY hour
+HAVING sum(eta_offers) > 0 AND sum(offers_accepted) > 0
+ORDER BY time
+""",
+            16, 21, 8, 8,
+            timeseries=True,
+            description=(
+                "Both in seconds, so one axis is honest. Read the GAP, not "
+                "the levels: dispatch offers nearest-first, so the driver who "
+                "accepts is by construction among the furthest asked, and the "
+                "accepted line sitting above the offered line is the chain "
+                "working as designed rather than a fault."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0},
+                    },
+                    "overrides": by_name({"eta_offered_s": "blue", "eta_accepted_s": "orange"}),
+                },
+                "options": {
+                    "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                    "tooltip": {"mode": "multi"},
+                },
+            },
+        ),
+        panel(
+            12,
+            "Does surge lift acceptance",
+            "barchart",
+            """
+SELECT
+    multiIf(surge_multiplier < 1.05, '1.00 (flat)',
+            surge_multiplier < 1.25, '1.05 - 1.25',
+            surge_multiplier < 1.50, '1.25 - 1.50',
+            surge_multiplier < 2.00, '1.50 - 2.00',
+                                     '2.00 +')       AS surge_band,
+    countIf(status = 'accepted') / count()           AS acceptance_rate
+FROM nus.dispatch_offers
+WHERE $__timeFilter(offered_at)
+  AND surge_multiplier IS NOT NULL
+GROUP BY surge_band
+HAVING count() > 0
+ORDER BY surge_band
+""",
+            0, 29, 12, 8,
+            description=(
+                "The question surge exists to answer. Bucketed at the OFFER, "
+                "using the multiplier that was in force when the driver was "
+                "asked - not recomputed later. A flat line across the bands "
+                "means surge is not buying supply, whatever the price says."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "percentunit",
+                        "min": 0,
+                        "max": 1,
+                        "custom": {"fillOpacity": 80, "lineWidth": 0},
+                    },
+                    "overrides": [],
+                },
+                "options": {
+                    "orientation": "vertical",
+                    "xTickLabelRotation": 0,
+                    "legend": {"showLegend": False},
+                    "tooltip": {"mode": "single"},
+                },
+            },
+        ),
+        panel(
+            13,
+            "Duration error: actual minus predicted",
+            "timeseries",
+            """
+SELECT
+    toStartOfHour(ended_at) AS time,
+    quantile(0.5)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))
+        AS p50_error_s,
+    quantile(0.9)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))
+        AS p90_error_s
+FROM nus.trip_facts
+WHERE $__timeFilter(event_time)
+  AND final_status = 'completed'
+  AND predicted_duration_s IS NOT NULL
+  AND actual_duration_s IS NOT NULL
+GROUP BY time
+ORDER BY time
+""",
+            12, 29, 12, 8,
+            timeseries=True,
+            description=(
+                "pgRouting promises a duration before the trip starts; this "
+                "is what it cost. Zero is a perfect promise and positive "
+                "means the traffic model is behind the street. Cast to Int64 "
+                "before subtracting: both columns are unsigned, and an "
+                "unsigned difference wraps a small early arrival into four "
+                "billion seconds. No FINAL here on purpose - a duplicate "
+                "shifts a quantile by nothing, and FINAL over a raw table "
+                "every hour is not free."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {
+                        "unit": "s",
+                        "custom": {"drawStyle": "line", "lineWidth": 2, "fillOpacity": 0},
+                    },
+                    "overrides": by_name({"p50_error_s": "blue", "p90_error_s": "red"}),
+                },
+                "options": {
+                    "legend": {"showLegend": True, "displayMode": "list", "placement": "bottom"},
+                    "tooltip": {"mode": "multi"},
+                },
+            },
+        ),
+        panel(
+            14,
+            "Where demand goes unserved",
+            "table",
+            """
+SELECT
+    pickup_zone_id,
+    sum(trips_ended)                       AS requests,
+    sum(completed) / sum(trips_ended)      AS fulfilment_rate,
+    sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,
+    sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s
+FROM nus.fulfilment_hourly
+WHERE $__timeFilter(hour)
+GROUP BY pickup_zone_id
+HAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0
+ORDER BY fulfilment_rate ASC
+LIMIT 25
+""",
+            0, 37, 24, 9,
+            description=(
+                "Worst zone first, because that is the one to act on. The "
+                "HAVING floor keeps a zone with three requests and one "
+                "failure off the top of the list - at 25 zones deep, small "
+                "denominators are the only way to get noise up here."
+            ),
+            extra={
+                "fieldConfig": {
+                    "defaults": {"unit": "short"},
+                    "overrides": [
+                        {
+                            "matcher": {"id": "byName", "options": "fulfilment_rate"},
+                            "properties": [
+                                {"id": "unit", "value": "percentunit"},
+                                {"id": "decimals", "value": 3},
+                                {
+                                    "id": "custom.cellOptions",
+                                    "value": {"type": "color-background", "mode": "gradient"},
+                                },
+                                {
+                                    "id": "thresholds",
+                                    "value": {"mode": "absolute", "steps": good_high(0.80, 0.90)},
+                                },
+                            ],
+                        },
+                        {
+                            "matcher": {"id": "byName", "options": "no_driver_rate"},
+                            "properties": [
+                                {"id": "unit", "value": "percentunit"},
+                                {"id": "decimals", "value": 3},
+                            ],
+                        },
+                        {
+                            "matcher": {"id": "byName", "options": "time_to_match_s"},
+                            "properties": [
+                                {"id": "unit", "value": "s"},
+                                {"id": "decimals", "value": 1},
+                            ],
+                        },
+                    ],
+                },
+                "options": {"showHeader": True, "footer": {"show": False}},
+            },
+        ),
+    ],
+)
+
+
+ALL = [LIVE_OPS, DRIVER, TRIP, CITY, HISTORY, MARKETPLACE]
 
 
 def write() -> list[Path]:

@@ -1,0 +1,1126 @@
+{
+  "uid": "nus-marketplace",
+  "title": "NUS / Marketplace",
+  "description": "Fulfilment, cancellations, the matching funnel, take rate and ETA accuracy. Every rate is sum()/sum() over the rollups, never an average of rates.",
+  "tags": [
+    "nus",
+    "marketplace"
+  ],
+  "timezone": "America/New_York",
+  "schemaVersion": 39,
+  "version": 11,
+  "refresh": "1m",
+  "liveNow": false,
+  "editable": false,
+  "graphTooltip": 1,
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Fulfilment rate",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Completed trips as a share of every request that reached an ending, bucketed on when the ride was ASKED for. This is the one number that counts requests nobody served - every other rollup in this warehouse filters status = 'completed' and so cannot see them.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT sum(completed) / sum(trips_ended) AS fulfilment_rate\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(trips_ended) > 0\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.8
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 2,
+      "title": "Cancellation rate",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Both sides together. A trip that ended because nobody could be found is NOT a cancellation - it is counted separately, because the fix for it is supply, not behaviour.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    (sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / sum(trips_ended)\n        AS cancellation_rate\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(trips_ended) > 0\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.1
+              },
+              {
+                "color": "red",
+                "value": 0.2
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Driver acceptance rate",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Offers accepted out of offers made. Dispatch offers a ride to one candidate at a time with a deadline; this number did not exist while dispatch simply assigned.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT sum(offers_accepted) / sum(offers_made) AS acceptance_rate\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(offers_made) > 0\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.45
+              },
+              {
+                "color": "green",
+                "value": 0.6
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 4,
+      "title": "Take rate",
+      "type": "stat",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "What the platform keeps of every fare. Both sums are Decimal64(2) and exact; the cast to Float64 happens on the RATIO, never on the money - Decimal divided by Decimal truncates to the left operand's scale, which would quietly round the answer to two places.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 0
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    toFloat64(sum(revenue) - sum(payout_total)) / toFloat64(sum(revenue))\n        AS take_rate\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(revenue) > 0\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.25
+              },
+              {
+                "color": "red",
+                "value": 0.3
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 5,
+      "title": "Fulfilment rate by hour",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "One series, so the title names it and no legend box is needed. The band behind it is the same one the stat above is judged against.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(completed) / sum(trips_ended) AS fulfilment_rate\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(trips_ended) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.8
+              },
+              {
+                "color": "green",
+                "value": 0.9
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 6,
+      "title": "How every request ended (hourly)",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Counts, stacked, so the height is demand and the colours are what happened to it. Each outcome keeps its colour whatever else is on the chart.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(completed)               AS completed,\n    sum(cancelled_by_passenger)  AS cancelled_by_passenger,\n    sum(cancelled_by_driver)     AS cancelled_by_driver,\n    sum(no_driver_found)         AS no_driver_found\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 80,
+            "lineWidth": 0,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            }
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "completed"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "green"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cancelled_by_passenger"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "yellow"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "cancelled_by_driver"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "no_driver_found"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      }
+    },
+    {
+      "id": 7,
+      "title": "Time to match, and rider wait at the kerb",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Two series on one axis only because both are seconds. Wait at the kerb is the gap between the driver arriving and the rider getting in - the measure the 'arrived' state was added to make answerable, and what a real platform charges a per-minute wait fee against.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(match_s_sum) / sum(matched_trips) AS time_to_match_s,\n    sum(wait_s_sum)  / sum(waited_trips)  AS rider_wait_s\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(matched_trips) > 0 AND sum(waited_trips) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time_to_match_s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rider_wait_s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "purple"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "title": "Why trips were cancelled",
+      "type": "barchart",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Support and analytics need 'the rider never came out' apart from 'the driver found something better': very different problems that look identical without the reason. FINAL is deliberate - trip_facts is a ReplacingMergeTree, so a count without it is an upper bound, and every trip's rows land on one shard, which is what makes a local FINAL correct here.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    cancellation_reason AS reason,\n    count() AS trips\nFROM nus.trip_facts FINAL\nWHERE $__timeFilter(event_time)\n  AND final_status IN ('cancelled_by_passenger', 'cancelled_by_driver')\n  AND cancellation_reason IS NOT NULL\nGROUP BY reason\nORDER BY trips DESC\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "horizontal",
+        "xTickLabelRotation": 0,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "title": "Driver acceptance rate by hour",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Offers accepted out of offers made, per hour.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 21
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(offers_accepted) / sum(offers_made) AS acceptance_rate\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(offers_made) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.45
+              },
+              {
+                "color": "green",
+                "value": 0.6
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "title": "Offers per accepted match",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "How many drivers dispatch had to ask before one took the ride. Rising means the chain is working harder for the same trip, which is the earliest visible sign of thin supply - well before fulfilment falls.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 21
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(offers_made) / sum(offers_accepted) AS offers_per_match\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(offers_accepted) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 2,
+          "min": 0,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2.5
+              },
+              {
+                "color": "red",
+                "value": 4.0
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "title": "Pickup ETA: every offer vs the accepted one",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Both in seconds, so one axis is honest. Read the GAP, not the levels: dispatch offers nearest-first, so the driver who accepts is by construction among the furthest asked, and the accepted line sitting above the offered line is the chain working as designed rather than a fault.",
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(eta_seconds_sum) / sum(eta_offers)      AS eta_offered_s,\n    sum(accepted_eta_sum) / sum(offers_accepted) AS eta_accepted_s\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(eta_offers) > 0 AND sum(offers_accepted) > 0\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "eta_offered_s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "eta_accepted_s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "orange"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 12,
+      "title": "Does surge lift acceptance",
+      "type": "barchart",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "The question surge exists to answer. Bucketed at the OFFER, using the multiplier that was in force when the driver was asked - not recomputed later. A flat line across the bands means surge is not buying supply, whatever the price says.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 29
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    multiIf(surge_multiplier < 1.05, '1.00 (flat)',\n            surge_multiplier < 1.25, '1.05 - 1.25',\n            surge_multiplier < 1.50, '1.25 - 1.50',\n            surge_multiplier < 2.00, '1.50 - 2.00',\n                                     '2.00 +')       AS surge_band,\n    countIf(status = 'accepted') / count()           AS acceptance_rate\nFROM nus.dispatch_offers\nWHERE $__timeFilter(offered_at)\n  AND surge_multiplier IS NOT NULL\nGROUP BY surge_band\nHAVING count() > 0\nORDER BY surge_band\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "custom": {
+            "fillOpacity": 80,
+            "lineWidth": 0
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "orientation": "vertical",
+        "xTickLabelRotation": 0,
+        "legend": {
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "title": "Duration error: actual minus predicted",
+      "type": "timeseries",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "pgRouting promises a duration before the trip starts; this is what it cost. Zero is a perfect promise and positive means the traffic model is behind the street. Cast to Int64 before subtracting: both columns are unsigned, and an unsigned difference wraps a small early arrival into four billion seconds. No FINAL here on purpose - a duplicate shifts a quantile by nothing, and FINAL over a raw table every hour is not free.",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 29
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 0,
+          "queryType": "timeseries",
+          "rawSql": "SELECT\n    toStartOfHour(ended_at) AS time,\n    quantile(0.5)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))\n        AS p50_error_s,\n    quantile(0.9)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))\n        AS p90_error_s\nFROM nus.trip_facts\nWHERE $__timeFilter(event_time)\n  AND final_status = 'completed'\n  AND predicted_duration_s IS NOT NULL\n  AND actual_duration_s IS NOT NULL\nGROUP BY time\nORDER BY time\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p50_error_s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "blue"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p90_error_s"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "showLegend": true,
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 14,
+      "title": "Where demand goes unserved",
+      "type": "table",
+      "datasource": {
+        "type": "grafana-clickhouse-datasource",
+        "uid": "nus-clickhouse"
+      },
+      "description": "Worst zone first, because that is the one to act on. The HAVING floor keeps a zone with three requests and one failure off the top of the list - at 25 zones deep, small denominators are the only way to get noise up here.",
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 37
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-clickhouse-datasource",
+            "uid": "nus-clickhouse"
+          },
+          "editorType": "sql",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(trips_ended)                       AS requests,\n    sum(completed) / sum(trips_ended)      AS fulfilment_rate,\n    sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,\n    sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY pickup_zone_id\nHAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0\nORDER BY fulfilment_rate ASC\nLIMIT 25\n",
+          "refId": "A",
+          "pluginVersion": "4.21.2"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "fulfilment_rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "gradient"
+                }
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "red",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.8
+                    },
+                    {
+                      "color": "green",
+                      "value": 0.9
+                    }
+                  ]
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "no_driver_rate"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "time_to_match_s"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "footer": {
+          "show": false
+        }
+      }
+    }
+  ],
+  "links": [
+    {
+      "title": "Live ops",
+      "type": "link",
+      "url": "/d/nus-live-ops",
+      "keepTime": true
+    },
+    {
+      "title": "Driver",
+      "type": "link",
+      "url": "/d/nus-driver",
+      "keepTime": true
+    },
+    {
+      "title": "Trip",
+      "type": "link",
+      "url": "/d/nus-trip",
+      "keepTime": true
+    },
+    {
+      "title": "City",
+      "type": "link",
+      "url": "/d/nus-city",
+      "keepTime": true
+    },
+    {
+      "title": "History",
+      "type": "link",
+      "url": "/d/nus-history",
+      "keepTime": true
+    },
+    {
+      "title": "Marketplace",
+      "type": "link",
+      "url": "/d/nus-marketplace",
+      "keepTime": true
+    }
+  ]
+}

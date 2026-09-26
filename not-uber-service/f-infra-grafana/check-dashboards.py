@@ -37,6 +37,28 @@ TABLE_REF = re.compile(
     r"(?i)(?:FROM|JOIN)\s+(?:nus\.)?([a-z][a-z0-9_]*)"
 )
 
+# SummingMergeTree: a row is a PARTIAL sum until a merge that may not have
+# happened yet. Averaging over rows therefore averages over an arbitrary
+# grouping, and the answer changes as merges run. Every ratio taken from one
+# of these has to sum first and divide once.
+ROLLUPS = {
+    "trip_stats_hourly",
+    "trip_stats_daily",
+    "od_matrix_daily",
+    "fulfilment_hourly",
+    "dispatch_funnel_hourly",
+    "driver_utilization_hourly",
+    "active_entities_hourly",
+}
+AGGREGATE = re.compile(
+    r"(?i)\b(sum|count|countIf|sumIf|uniq|uniqExact|uniqMerge|quantile|"
+    r"quantileMerge|min|max|avgWeighted)\s*\("
+)
+# An average of a stored rate, or of a partially merged sum. There is no
+# correct use of it on these tables, so it is refused outright rather than
+# argued about per panel.
+AVERAGE = re.compile(r"(?i)\bavg(If|Merge|)\s*\(")
+
 LIVE_REQUIRED = {"trip_events", "driver_positions"}
 HISTORICAL_ANY = {
     "trip_stats_daily",
@@ -110,6 +132,44 @@ def _check_live_ops_open_trips(dash: dict) -> list[str]:
     return errors
 
 
+def _check_ratios(uid: str, pid, sql: str) -> list[str]:
+    """Every division must have an aggregate on both sides.
+
+    Catches the two ways a rate goes wrong on a SummingMergeTree: dividing
+    two raw columns (each a partial sum), and averaging a ratio that was
+    stored per row. Both look right and drift with merge history.
+    """
+    errors: list[str] = []
+    if AVERAGE.search(sql):
+        errors.append(
+            f"{uid} panel {pid}: avg() over a rollup averages partial sums - "
+            "use sum(x) / sum(y)"
+        )
+    for match in re.finditer(r"/", sql):
+        before = sql[max(0, match.start() - 80):match.start()]
+        after = sql[match.end():match.end() + 80]
+        if not (AGGREGATE.search(before) and AGGREGATE.search(after)):
+            errors.append(
+                f"{uid} panel {pid}: division without an aggregate on both "
+                f"sides: ...{sql[max(0, match.start() - 40):match.end() + 40].strip()}..."
+            )
+    return errors
+
+
+def _chart_units(panel: dict) -> set[str]:
+    """Every unit a charting panel puts on one set of axes."""
+    config = panel.get("fieldConfig") or {}
+    units = set()
+    unit = (config.get("defaults") or {}).get("unit")
+    if unit:
+        units.add(unit)
+    for override in config.get("overrides") or []:
+        for prop in override.get("properties") or []:
+            if prop.get("id") == "unit" and prop.get("value"):
+                units.add(prop["value"])
+    return units
+
+
 def check() -> list[str]:
     errors: list[str] = []
     allowed = distributed_tables()
@@ -160,10 +220,24 @@ def check() -> list[str]:
                     )
                 if re.search(r"nus\.[a-z0-9_]+_local\b", sql):
                     errors.append(f"{uid} queries a *_local table: {sql[:80]!r}")
-                for name in TABLE_REF.findall(sql):
+                tables = set(TABLE_REF.findall(sql))
+                for name in tables:
                     seen_tables.add(name)
                     if name not in allowed:
                         errors.append(f"{uid} unknown table {name!r} (not a Distributed name in ddl/)")
+                if tables & ROLLUPS or "/" in sql:
+                    errors.extend(_check_ratios(uid, panel.get("id"), sql))
+
+            # A chart with two units is two charts wearing one axis. The
+            # smaller series is unreadable and a second y-axis only moves
+            # the problem. Tables are exempt: a column carries its own unit.
+            if panel.get("type") in {"timeseries", "barchart", "trend"}:
+                units = _chart_units(panel)
+                if len(units) > 1:
+                    errors.append(
+                        f"{uid} panel {panel.get('id')}: {sorted(units)} on one "
+                        "chart - split it, never a second axis"
+                    )
         for var in (dash.get("templating") or {}).get("list") or []:
             q = var.get("query") or ""
             if isinstance(q, dict):
@@ -204,6 +278,23 @@ def check() -> list[str]:
             if "maptiler" in blob.lower() or "cartocdn.com" in blob:
                 errors.append(
                     f"{path.name}: geomap must not call a third-party tile CDN"
+                )
+
+    marketplace = JSON_DIR / "nus-marketplace.json"
+    if not marketplace.is_file():
+        errors.append("nus-marketplace.json is missing - the KPI tier is unprovisioned")
+    else:
+        dash = json.loads(marketplace.read_text())
+        blob = marketplace.read_text()
+        for needle in ("fulfilment_hourly", "dispatch_funnel_hourly"):
+            if needle not in blob:
+                errors.append(f"nus-marketplace does not read {needle}")
+        for panel in dash.get("panels") or []:
+            if not (panel.get("description") or "").strip():
+                errors.append(
+                    f"nus-marketplace panel {panel.get('id')} "
+                    f"({panel.get('title')!r}) has no description - a KPI "
+                    "nobody can define is a KPI nobody should act on"
                 )
 
     history = JSON_DIR / "nus-history.json"
