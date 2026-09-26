@@ -274,6 +274,21 @@ services:
       KSQL_KSQL_INTERNAL_TOPIC_MIN_INSYNC_REPLICAS: "2"
       KSQL_KSQL_STREAMS_REPLICATION_FACTOR: "3"
       KSQL_KSQL_STREAMS_TOPIC_MIN_INSYNC_REPLICAS: "2"
+      # Where a brand-new query starts reading. ksqlDB ships 'latest', which
+      # means a SELECT ... EMIT CHANGES on a stream returns nothing until the
+      # next message arrives - so DBeaver opens a low-rate stream like
+      # trip_requests or dispatch_offers, waits, and reports a
+      # TimeoutException with no hint that the stream is perfectly healthy.
+      # Measured on this exact image: 31 seconds of nothing at 'latest',
+      # four rows in one second at 'earliest', same stream, same query.
+      #
+      # It applies only when a consumer group has no committed offset yet -
+      # a query that has run before resumes where it left off, so this
+      # changes where queries BEGIN, not how they recover. The cost to know
+      # about: a new persistent query over a high-volume topic reads that
+      # topic from the start once, which for driver_location is the whole
+      # retention window.
+      KSQL_KSQL_STREAMS_AUTO_OFFSET_RESET: earliest
       KSQL_HEAP_OPTS: -Xmx1g -Xms1g
       KSQL_OPTS: -Djava.security.auth.login.config=/etc/ksqldb-secrets/jaas_config.file
       KSQL_AUTHENTICATION_METHOD: BASIC
