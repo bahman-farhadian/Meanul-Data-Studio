@@ -106,9 +106,14 @@ SELECT
     formatReadableSize(sum(per_node))                             AS per_node_projected,
     formatReadableSize({quota_gb:Float64} * 1024 * 1024 * 1024)   AS quota,
     round(100 * sum(per_node) / ({quota_gb:Float64} * 1024 * 1024 * 1024), 1) AS pct_of_quota,
-    if(sum(per_node) < {quota_gb:Float64} * 1024 * 1024 * 1024 * 0.7,
-       'ok', 'FAIL')                                              AS verdict,
-    '30% headroom' AS pass_line
+    -- A rate of zero projects to zero, which would report ok against a
+    -- measurement that never happened - the same false pass Q0 exists to
+    -- stop in the quality bars. This is read from a WARM stack or it is
+    -- not read at all.
+    multiIf(sum(per_node) = 0, 'NO DATA - run this on a warm stack',
+            sum(per_node) < {quota_gb:Float64} * 1024 * 1024 * 1024 * 0.7,
+            'ok', 'FAIL')                                         AS verdict,
+    '30% headroom, and a non-zero rate' AS pass_line
 FROM (
     SELECT p.bytes_per_row * t.rows_per_s * {scale:Float64} * d.ttl_days * 86400 / 2 AS per_node
     FROM (

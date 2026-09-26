@@ -19,6 +19,24 @@ WITH
 -- ClickHouse does not deduplicate: ReplacingMergeTree collapses only
 -- eventually, only within a partition, and only on merge. If this fails,
 -- nothing below it means anything.
+-- Q0 first, because every bar after it counts VIOLATIONS - and a count of
+-- violations is zero on an empty warehouse. On a freshly created cluster
+-- all fourteen bars below reported ok against nothing at all, which is a
+-- worse answer than no answer: it says the data is sound when there is no
+-- data. Checked as "are there rows" rather than "are there recent rows",
+-- because straight after bootstrap the only rows are seeded history whose
+-- timestamps are deliberately in the past.
+nothing_to_judge AS (
+    -- Every comparison is parenthesised. Without the parens on the first
+    -- one, `+` binds tighter than `=` and the whole thing reads as
+    -- count(trip_events) = (0 + 1 + 1 + 1), which answered 0 on an empty
+    -- warehouse and reported ok - the exact false pass this bar exists to
+    -- prevent, in the bar itself.
+    SELECT ((SELECT count() FROM nus.trip_events) = 0)
+         + ((SELECT count() FROM nus.dispatch_offers) = 0)
+         + ((SELECT count() FROM nus.driver_positions) = 0)
+         + ((SELECT count() FROM nus.trip_facts) = 0) AS n
+),
 dupes AS (
     SELECT
         (SELECT count() - uniqExact(event_id) FROM nus.trip_events)
@@ -119,7 +137,8 @@ orphan_offers AS (
 -- not wrap into a huge positive.
 SELECT bar, measured, pass_line, if(measured = 0, 'ok', 'FAIL') AS verdict
 FROM (
-    SELECT 'Q1  every event id is unique'        AS bar, toInt64((SELECT n FROM dupes))                  AS measured, 'duplicates = 0' AS pass_line
+    SELECT 'Q0  there is data to judge'          AS bar, toInt64((SELECT n FROM nothing_to_judge))      AS measured, 'empty tables = 0' AS pass_line
+    UNION ALL SELECT 'Q1  every event id is unique',      toInt64((SELECT n FROM dupes)),                 'duplicates = 0'
     UNION ALL SELECT 'Q2  no blank event id',             toInt64((SELECT n FROM blank_ids)),             'blank = 0'
     UNION ALL SELECT 'Q3  no negative milestone lag',     toInt64((SELECT n FROM bad_lags)),              'negative = 0'
     UNION ALL SELECT 'Q4  arrival follows acceptance',    toInt64((SELECT n FROM bad_arrival)),           'out of order = 0'
