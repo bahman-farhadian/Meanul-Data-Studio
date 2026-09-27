@@ -446,17 +446,40 @@ from 0.63 to 0.70, more trips run, and `rider_positions` is only written
 while a rider is ON a trip. Its measured rate went 14.7 -> 18.4 -> 46.7
 rows/s across three readings and has not settled.
 
-A healthier marketplace costs more disk, which is the right problem to
-have and still a decision to make. The cheapest correct lever: **cut
-`rider_positions` TTL from 7 days to 2, matching `driver_positions`**.
-Both are position telemetry; keeping the smaller one three and a half
-times longer was never argued for. That takes 13.05 GiB per node to 3.73
-and the total to roughly 70.9 GiB, 63% - and it keeps passing if the rate
-climbs again, which 7 days does not.
+**RESOLVED 2026-09-27, and not by retention alone.** Cutting a TTL does
+not reduce what is stored - it deletes what was answered. The right shape
+is a short life for the raw rows and a long one for the answer, which is
+what 012_position_rollups.sql adds:
 
-The alternative, 112 -> 128 GB, takes whole-stack commitment from 808/888
-to 872/888 (98%) and should wait for the Kafka quota cut that is already
-agreed.
+- `driver_activity_hourly` and `rider_activity_hourly`, keyed on
+  (hour, zone_id), AggregatingMergeTree, no TTL.
+- Both position tables now expire in **2 days**; rider_positions was 7.
+
+The property that matters is that the rollups are bounded by the CITY, not
+by the fleet: 256 zones x 24 hours is **6,144 rows a day whether there are
+4,000 drivers or 106,000**. The raw stream is bounded by every device
+ticking; the rollup is not.
+
+Measured on a real ClickHouse built from this DDL: **50,000 driver
+positions collapsed to 9 rollup rows**, with `sum(positions)` exactly
+50,000 and `uniqMerge(drivers)` exactly 400 against a true 400. The rider
+side: 30,000 rows to 9, riders and trips both exact.
+
+Projection from the measured rates:
+
+| | per node | of 112 GB |
+| --- | --- | --- |
+| before | 80.21 GiB | 71.6% FAIL |
+| rider_positions 7 -> 2 days | 70.88 GiB | 63.3% |
+| plus both rollups, a year of them | 71.01 GiB | **63.4% ok** |
+
+The rollups cost 128 MiB a year and buy back history that used to stop at
+the TTL: fleet presence, distinct drivers, speed and status mix per zone
+per hour, kept indefinitely, where before there was nothing past two days.
+
+`driver_positions` is now the only lever left worth pulling - it is 57 of
+the 71 GiB. Its rollup exists now, so cutting it to one day is a decision
+about the live map rather than about losing history. Not taken here.
 
 ---
 
