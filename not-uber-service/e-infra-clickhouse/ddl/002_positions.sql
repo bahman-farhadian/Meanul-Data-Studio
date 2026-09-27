@@ -109,12 +109,23 @@ ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{
 -- under a monthly partition never drops anything.
 PARTITION BY event_date
 ORDER BY (rider_id, event_time)
--- Only a travelling rider reports at all (passenger-service), and only
--- for the length of one trip - real volume here is tiny next to
--- driver_positions regardless of fleet size, so this can afford to keep
--- more history for the same reason driver_positions can't; still cut
--- down from 90 days for consistency with its paired table above.
-TTL event_date + INTERVAL 7 DAY;
+-- Two days, matching driver_positions.
+--
+-- This said seven, on the reasoning that "real volume here is tiny next
+-- to driver_positions regardless of fleet size". Measurement disagreed.
+-- Once the driver-tier fix made trips actually complete, the rate went
+-- 14.7 -> 18.4 -> 46.7 rows/s across three readings and the projection
+-- went from 6 GiB per node to 13 - more than the entire trip history, for
+-- a stream that only the live map and the trip inspector read. A rider
+-- reports only while travelling, which is exactly why this scales with
+-- FULFILMENT rather than with fleet size, and fulfilment is the thing
+-- this project keeps improving.
+--
+-- Cutting a retention deletes what was answered, so this is only half the
+-- change: what day three was being kept for now lives in
+-- rider_activity_hourly (012_position_rollups.sql), at 6,144 rows a day
+-- whatever the scale.
+TTL event_date + INTERVAL 2 DAY;
 
 CREATE TABLE IF NOT EXISTS nus.rider_positions ON CLUSTER nus_cluster
 AS nus.rider_positions_local

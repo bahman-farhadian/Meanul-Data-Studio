@@ -705,3 +705,68 @@ def test_partition_granularity_follows_the_ttl():
                 f"{table} keeps {days} days; daily would give it {days} parts "
                 "for no benefit"
             )
+
+
+def test_raw_telemetry_is_rolled_up_before_it_expires():
+    """A short retention must not be the only thing shrinking the disk.
+
+    Cutting a TTL does not reduce what is stored - it deletes what was
+    answered. Both position tables expire in two days, so each one needs a
+    rollup that survives them, and the rollup has to be bounded by the CITY
+    rather than by the fleet: 256 zones x 24 hours is 6,144 rows a day
+    whether there are 4,000 drivers or 106,000.
+    """
+    import re
+
+    ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
+    # Comment lines are dropped before matching: one of them contains
+    # "three days; under a monthly partition", and a semicolon inside a
+    # comment ends a statement as far as a regex is concerned.
+    ddl = "\n".join(
+        line
+        for path in sorted(ddl_dir.glob("*.sql"))
+        for line in path.read_text().splitlines()
+        if not line.lstrip().startswith("--")
+    )
+
+    for raw, rollup in (("driver_positions", "driver_activity_hourly"),
+                        ("rider_positions", "rider_activity_hourly")):
+        body = re.search(
+            rf"CREATE TABLE IF NOT EXISTS nus\.{raw}_local.*?;", ddl, re.S
+        )
+        assert body, f"{raw}_local is not declared"
+        ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body.group(0))
+        assert ttl and int(ttl.group(1)) <= 2, (
+            f"{raw} keeps {ttl.group(1) if ttl else 'no'} days of raw telemetry"
+        )
+
+        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup}_local" in ddl, (
+            f"{raw} expires in two days and nothing rolls it up first"
+        )
+        assert f"CREATE MATERIALIZED VIEW IF NOT EXISTS nus.{rollup}_mv" in ddl
+        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup} ON CLUSTER" in ddl
+
+        rolled = re.search(
+            rf"CREATE TABLE IF NOT EXISTS nus\.{rollup}_local(.*?);", ddl, re.S
+        ).group(1)
+        # Bounded by the city: keyed on the hour and the zone, nothing
+        # per-driver or per-rider, or it would scale with the fleet again.
+        assert "ORDER BY (hour, zone_id)" in rolled, (
+            f"{rollup} is not keyed by (hour, zone_id), so it grows with the fleet"
+        )
+        assert "TTL" not in rolled, (
+            f"{rollup} expires; it is the thing that is supposed to outlive the raw rows"
+        )
+
+
+def test_the_rollups_sum_and_never_store_an_average():
+    """Same rule as every other rollup: sums beside their counts."""
+    ddl = (NUS / "e-infra-clickhouse" / "ddl" / "012_position_rollups.sql").read_text()
+    for total, count in (("speed_kmh_sum", "speed_samples"),
+                         ("accuracy_m_sum", "accuracy_samples")):
+        assert total in ddl and count in ddl, (
+            f"{total} has no {count} beside it, so the mean cannot be taken"
+        )
+    assert "avg(" not in ddl, "a stored average cannot be re-aggregated"
+    # uniq is the one thing that cannot be a plain sum.
+    assert "uniqState(driver_id)" in ddl and "uniqState(rider_id)" in ddl
