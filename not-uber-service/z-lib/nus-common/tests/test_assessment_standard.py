@@ -772,21 +772,65 @@ def test_the_rollups_sum_and_never_store_an_average():
     assert "uniqState(driver_id)" in ddl and "uniqState(rider_id)" in ddl
 
 
-def test_bars_that_cross_two_topics_wait_for_them_to_settle():
-    """A bar must be structural, not a stopwatch.
+# A bar that reads two tables on a live stream reads them at two different
+# moments, and the gap between those moments is not a defect. Two bars were
+# written without allowing for it and both reported one on a healthy stack:
+# Q14 counted trips that were mid-dispatch, Q13 counted trips whose fact had
+# not been read yet. Either a bar carries a settle window, or it is on this
+# list with the reason it does not need one.
+NO_SETTLE_NEEDED = {
+    # Only ever asks whether a table is empty; timing cannot change that.
+    "nothing_to_judge",
+    # Each table is counted inside its OWN single subquery, so every
+    # comparison is against a consistent snapshot of one table.
+    "dupes",
+    "blank_ids",
+    # Two states that contradict each other at any instant: a trip cannot
+    # both have ended no_driver_found and hold an accepted offer. A trip
+    # still being dispatched is in neither population.
+    "accepted_but_unmatched",
+}
 
-    Q14 pairs dispatch_offers against trip_events, and those arrive on two
-    different topics in a fixed order: the offer is written first, and the
-    trip's earliest lifecycle row is 'matched' or 'no_driver_found', both
-    of which come only after the offer chain resolves. Every trip being
-    dispatched at the sampling instant therefore has offers and no trip
-    row - correctly. Without a settle window the bar reports that as a
-    defect, and it did.
+
+def _quality_ctes() -> dict[str, str]:
+    """Each named CTE in quality.sql, with its comment lines removed."""
+    text = (NUS / "z-config" / "quality.sql").read_text()
+    body = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("--")
+    )
+    found = {}
+    for match in re.finditer(r"^(\w+) AS \((.*?)^\),?$", body, re.S | re.M):
+        found[match.group(1)] = match.group(2)
+    return found
+
+
+def test_every_bar_reading_two_tables_allows_for_the_gap_between_the_reads():
+    """The failure that hit twice, made into a rule.
+
+    ClickHouse reads each table at its own moment. On a live stream the
+    second read sees rows the first did not, so a bar that pairs two
+    tables measures the traffic in between unless it waits for both sides
+    to settle - or is one of the few whose answer cannot depend on timing.
     """
-    quality = (NUS / "z-config" / "quality.sql").read_text()
-    orphan = quality[quality.index("orphan_offers AS ("):]
-    orphan = orphan[: orphan.index(")\n")]
-    assert "offered_at <" in orphan and "INTERVAL" in orphan, (
-        "Q14 compares two topics with no settle window, so it measures "
-        "how busy dispatch was at the instant it ran"
+    ctes = _quality_ctes()
+    assert len(ctes) >= 14, f"only parsed {sorted(ctes)}"
+
+    for name, body in ctes.items():
+        tables = set(re.findall(r"nus\.(\w+)", body))
+        if len(tables) < 2 or name in NO_SETTLE_NEEDED:
+            continue
+        assert "INTERVAL" in body, (
+            f"{name} pairs {sorted(tables)} with no settle window, so it "
+            "measures what arrived between the two reads"
+        )
+
+
+def test_the_two_bars_that_learned_this_still_carry_it():
+    ctes = _quality_ctes()
+    assert "INTERVAL" in ctes["orphan_offers"], "Q14 lost its settle window"
+    assert "INTERVAL" in ctes["facts_missing"], "Q13 lost its settle window"
+    # Q13 as a subtraction could read zero while trips were both missing
+    # and duplicated, because the two errors cancel.
+    assert "NOT IN" in ctes["facts_missing"], (
+        "Q13 is a subtraction of two counts again; it needs to name the gap"
     )

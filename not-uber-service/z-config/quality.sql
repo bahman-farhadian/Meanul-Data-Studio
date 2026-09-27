@@ -117,13 +117,32 @@ payout_over_fare AS (
     SELECT countIf(driver_payout > fare_final) AS n
     FROM nus.trip_facts FINAL WHERE fare_final IS NOT NULL
 ),
--- Every terminal trip must have produced exactly one trip_facts row. A gap
--- means the materialized view is not keeping up, or is not firing.
+-- Every terminal trip must have produced a trip_facts row. A gap means the
+-- materialized view is not keeping up, or is not firing.
+--
+-- An anti-join, not a subtraction of two counts, and the difference is not
+-- cosmetic. The old form read trip_events and trip_facts as two separate
+-- scans and subtracted them, so on a live stream it reported whatever
+-- arrived between the two reads: it said 3 on a healthy stack. It could
+-- also have read zero while trips were BOTH missing and duplicated, since
+-- the two errors cancel in a difference.
+--
+-- The settle window is the same five minutes Q14 uses, and for the same
+-- reason: the fact is written in the SAME insert as the event, so any
+-- trip older than the window has had its fact for just as long, whichever
+-- order the two scans happen to run in.
+--
+-- Nothing is lost by dropping the negative case. trip_facts is read FINAL
+-- and ordered by trip_id, so FINAL collapses it to one row per trip -
+-- "more facts than trips" was never reachable except through the race
+-- this replaces.
 facts_missing AS (
-    SELECT (SELECT uniqExact(trip_id) FROM nus.trip_events
-             WHERE status IN ('completed', 'cancelled_by_passenger',
-                              'cancelled_by_driver', 'no_driver_found'))
-         - (SELECT count() FROM nus.trip_facts FINAL) AS n
+    SELECT uniqExact(trip_id) AS n
+    FROM nus.trip_events
+    WHERE status IN ('completed', 'cancelled_by_passenger',
+                     'cancelled_by_driver', 'no_driver_found')
+      AND event_time < now() - INTERVAL 5 MINUTE
+      AND trip_id NOT IN (SELECT trip_id FROM nus.trip_facts)
 ),
 -- An offer for a trip the warehouse has never heard of - but only once
 -- the trip has had time to appear.
