@@ -471,7 +471,8 @@ Projection from the measured rates:
 | --- | --- | --- |
 | before | 80.21 GiB | 71.6% FAIL |
 | rider_positions 7 -> 2 days | 70.88 GiB | 63.3% |
-| plus both rollups, a year of them | 71.01 GiB | **63.4% ok** |
+| plus both rollups, a year of them | 71.01 GiB | 63.4% projected |
+| **measured on Dionysus, 2026-09-27** | **65.52 GiB** | **58.5% ok** |
 
 The rollups cost 128 MiB a year and buy back history that used to stop at
 the TTL: fleet presence, distinct drivers, speed and status mix per zone
@@ -613,12 +614,32 @@ down in the ClickHouse README, and TTL drops partitions rather than rows.
 ---
 
 ## Step 7 — Data-collection quality bars
-DONE — 2026-09-26, Dionysus. All **15 bars pass** against live traffic
-(`make verify-quality`, exits 0). Every bar is structural, so the same
-numbers hold at any scale.
+DONE — re-confirmed 2026-09-27 on a clean bring-up. All **15 bars pass**
+(`make verify-quality`, exits 0).
 
-The bars found three real defects that nothing else had surfaced, which is
-the argument for having them:
+**Two of the bars were themselves wrong, and the clean run is what found
+them.** Both compared two tables by reading them separately, and ClickHouse
+reads each table at its own moment - so on a live stream each bar reported
+whatever arrived in between:
+
+- **Q14** read 1. Dispatch writes the offer BEFORE the trip's first
+  lifecycle row; `trip_events` has no `requested` status, so a trip's
+  earliest row is `matched` or `no_driver_found` and both come only after
+  the chain resolves. Every trip being dispatched at that instant had
+  offers and no trip row - correctly.
+- **Q13** read 3. It subtracted two independently-timed counts, which
+  could also have read zero while trips were BOTH missing and duplicated,
+  since the two errors cancel. Now an anti-join.
+
+Both carry a five-minute settle window. The process failure was fixing
+Q14 and shipping it without asking which other bars had the same shape,
+so it is a rule now: `test_assessment_standard.py` parses every CTE in
+quality.sql and requires a settle window on any bar touching two tables,
+with a short exemption list that states why each one cannot need it. The
+rule was verified against the OLD Q13 text - it catches it.
+
+The bars found three real defects in the pipeline as well, which is the
+argument for having them:
 
 - **Q5** — `rider_no_show` was reachable before the driver had arrived,
   because the pre-arrival reason list still contained it. One row in a few
