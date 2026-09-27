@@ -770,3 +770,23 @@ def test_the_rollups_sum_and_never_store_an_average():
     assert "avg(" not in ddl, "a stored average cannot be re-aggregated"
     # uniq is the one thing that cannot be a plain sum.
     assert "uniqState(driver_id)" in ddl and "uniqState(rider_id)" in ddl
+
+
+def test_bars_that_cross_two_topics_wait_for_them_to_settle():
+    """A bar must be structural, not a stopwatch.
+
+    Q14 pairs dispatch_offers against trip_events, and those arrive on two
+    different topics in a fixed order: the offer is written first, and the
+    trip's earliest lifecycle row is 'matched' or 'no_driver_found', both
+    of which come only after the offer chain resolves. Every trip being
+    dispatched at the sampling instant therefore has offers and no trip
+    row - correctly. Without a settle window the bar reports that as a
+    defect, and it did.
+    """
+    quality = (NUS / "z-config" / "quality.sql").read_text()
+    orphan = quality[quality.index("orphan_offers AS ("):]
+    orphan = orphan[: orphan.index(")\n")]
+    assert "offered_at <" in orphan and "INTERVAL" in orphan, (
+        "Q14 compares two topics with no settle window, so it measures "
+        "how busy dispatch was at the instant it ran"
+    )

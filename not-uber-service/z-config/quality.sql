@@ -125,10 +125,24 @@ facts_missing AS (
                               'cancelled_by_driver', 'no_driver_found'))
          - (SELECT count() FROM nus.trip_facts FINAL) AS n
 ),
--- An offer for a trip the warehouse has never heard of.
+-- An offer for a trip the warehouse has never heard of - but only once
+-- the trip has had time to appear.
+--
+-- Without the window this is not a structural bar at all, it is a
+-- stopwatch. Dispatch writes the offer FIRST and the trip's first
+-- lifecycle row second: trip_events has no 'requested' status, so a
+-- trip's earliest row is 'matched' or 'no_driver_found', and both are
+-- written only after the offer chain has resolved. Every trip currently
+-- being dispatched therefore has offers and no trip row, correctly.
+--
+-- It read 1 on a live stack and called it a defect. Five minutes clears
+-- the whole path with room: an offer chain is at most five offers with a
+-- twenty-second deadline each, and the sink batches every five seconds.
+-- Past that, an offer with no trip is a real orphan.
 orphan_offers AS (
     SELECT uniqExact(trip_id) AS n FROM nus.dispatch_offers
-    WHERE trip_id NOT IN (SELECT trip_id FROM nus.trip_events)
+    WHERE offered_at < now() - INTERVAL 5 MINUTE
+      AND trip_id NOT IN (SELECT trip_id FROM nus.trip_events)
 )
 -- measured is Int64 throughout: countIf answers UInt64 while the two
 -- subtractions answer Int64, and a UNION has to settle on one. Signed
