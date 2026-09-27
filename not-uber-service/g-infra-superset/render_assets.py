@@ -576,6 +576,13 @@ DATASETS = [FULFILMENT, FUNNEL, TRIPS_DAILY, OD, UTILIZATION, DURATIONS]
 # correct sum over a wrong window looks like a number.
 TIME_RANGE = "DATEADD(DATETIME('today'), -7, day) : now"
 
+# How many rows a table draws per page, and the panel height that fits them.
+# A Superset grid row is 8px; a table spends roughly 150px on its title,
+# search box, header and pager, and about 32px on each row. Fifteen rows is
+# 480 + 150 = 630px, so the 85-unit panels below have room to spare.
+PAGE_ROWS = 15
+TABLE_HEIGHT = 85
+
 # Superset needs to be told WHICH column the time range applies to; without
 # it the range is silently a no-op. It is the dataset's own main_dttm_col,
 # read from the dataset rather than repeated, so the two cannot disagree.
@@ -654,6 +661,12 @@ def table(slug, name, dataset_name, groupby, metrics, description, *,
             "metrics": ordered,
             "adhoc_filters": [],
             "granularity_sqla": DTTM[dataset_name],
+            # Paginated, not scrolled. Without a page length the table draws
+            # every row it fetched inside a fixed box, so 237 zones arrive in
+            # a panel that can show seventeen and the rest sit behind an
+            # inner scrollbar nobody drags. PAGE_ROWS is what the panel
+            # height below actually draws, so the two are set together.
+            "page_length": PAGE_ROWS,
             "row_limit": row_limit,
             "order_desc": order_desc,
             "legacy_order_by": sort_by,
@@ -825,7 +838,7 @@ MARKETPLACE = dashboard(
         # A table is the densest thing on this dashboard and was the
         # shortest: 55 showed ten rows of a result that carries up to 263.
         # Height is what a table is for.
-        [("zone-leaderboard", 12, 85)],
+        [("zone-leaderboard", 12, TABLE_HEIGHT)],
 
         "## The matching funnel\n\n"
         "Dispatch offers a ride to one driver at a time with a deadline. "
@@ -835,7 +848,7 @@ MARKETPLACE = dashboard(
         # chart carries two series and its legend was landing on the plot.
         [("acceptance-trend", 4, 58), ("offers-per-match-trend", 4, 58),
          ("eta-trend", 4, 58)],
-        [("funnel-by-zone", 12, 85)],
+        [("funnel-by-zone", 12, TABLE_HEIGHT)],
 
         "## How long riders waited\n\n"
         "Request to match, driver arriving to rider getting in, and the trip "
@@ -853,7 +866,7 @@ MARKETPLACE = dashboard(
         # tables did - it was sharing a row at half width and showing eight
         # of a hundred rows.
         [("utilization-trend", 12, 45)],
-        [("od-leaderboard", 12, 85)],
+        [("od-leaderboard", 12, TABLE_HEIGHT)],
     ],
 )
 

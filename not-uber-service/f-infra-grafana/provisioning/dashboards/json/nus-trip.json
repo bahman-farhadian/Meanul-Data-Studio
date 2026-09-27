@@ -57,7 +57,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 10,
+        "h": 17,
         "w": 24,
         "x": 0,
         "y": 0
@@ -71,7 +71,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    event_time,\n    status,\n    driver_id,\n    rider_id,\n    pickup_zone_id,\n    dropoff_zone_id,\n    route_km,\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    surge_multiplier,\n    hotspot_score,\n    is_hotspot_trip,\n    fare_estimate,\n    fare_final\nFROM nus.trip_events\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\n",
+          "rawSql": "SELECT\n    event_time,\n    status,\n    driver_id,\n    rider_id,\n    pickup_zone_id,\n    dropoff_zone_id,\n    route_km,\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    surge_multiplier,\n    hotspot_score,\n    is_hotspot_trip,\n    fare_estimate,\n    fare_final\nFROM nus.trip_events\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\nLIMIT 12\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -95,7 +95,7 @@
         "h": 10,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 17
       },
       "targets": [
         {
@@ -182,7 +182,7 @@
         "h": 10,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 17
       },
       "targets": [
         {

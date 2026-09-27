@@ -172,6 +172,40 @@ def _chart_units(panel: dict) -> set[str]:
 
 CHARTS = {"timeseries", "barchart", "trend"}
 
+# A table panel that asks for more rows than it can draw hides the rest
+# behind an inner scrollbar, and a panel nobody scrolls is a panel showing
+# a third of its answer. Grafana's grid row is 30px; a table spends about
+# 37px on its header and about 36px on each row at the default cell height.
+GRID_ROW_PX = 30
+TABLE_HEADER_PX = 37
+TABLE_ROW_PX = 36
+ROW_LIMIT = re.compile(r"(?i)\bLIMIT\s+(\d+)\s*$")
+
+
+def rows_that_fit(height: int) -> int:
+    return (height * GRID_ROW_PX - TABLE_HEADER_PX) // TABLE_ROW_PX
+
+
+def _check_table_fits(uid: str, panel: dict, sql: str) -> list[str]:
+    """Every table states a LIMIT, and the LIMIT fits the panel."""
+    errors: list[str] = []
+    match = ROW_LIMIT.search(sql.strip())
+    height = (panel.get("gridPos") or {}).get("h", 0)
+    title = panel.get("title")
+    if match is None:
+        return [
+            f"{uid} panel {panel.get('id')} ({title!r}): a table with no LIMIT "
+            "will scroll as soon as the data grows"
+        ]
+    limit, fits = int(match.group(1)), rows_that_fit(height)
+    if limit > fits:
+        errors.append(
+            f"{uid} panel {panel.get('id')} ({title!r}): LIMIT {limit} in a "
+            f"panel {height} rows high, which draws {fits} - the rest is "
+            "behind a scrollbar"
+        )
+    return errors
+
 
 def _overlaps(a: dict, b: dict) -> bool:
     return (
@@ -268,6 +302,10 @@ def check() -> list[str]:
             # A chart with two units is two charts wearing one axis. The
             # smaller series is unreadable and a second y-axis only moves
             # the problem. Tables are exempt: a column carries its own unit.
+            if panel.get("type") == "table":
+                sql = (panel.get("targets") or [{}])[0].get("rawSql") or ""
+                errors.extend(_check_table_fits(uid, panel, sql))
+
             if panel.get("type") in CHARTS:
                 units = _chart_units(panel)
                 if not units:

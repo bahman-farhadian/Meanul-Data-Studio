@@ -410,7 +410,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 12,
+        "h": 20,
         "w": 14,
         "x": 0,
         "y": 22
@@ -497,7 +497,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 12,
+        "h": 20,
         "w": 10,
         "x": 14,
         "y": 22
@@ -511,7 +511,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    trip_id,\n    argMax(driver_id, event_time) AS driver_id,\n    argMax(rider_id, event_time) AS rider_id,\n    argMax(pickup_zone_id, event_time) AS pickup_zone,\n    argMax(dropoff_zone_id, event_time) AS dropoff_zone,\n    argMax(predicted_duration_s, event_time) AS predicted_s,\n    argMax(fare_estimate, event_time) AS fare_estimate,\n    max(event_time) AS last_event\nFROM nus.trip_events\nWHERE event_time >= now() - INTERVAL 6 HOUR\nGROUP BY trip_id\nHAVING argMax(status, event_time) = 'in_progress'\nORDER BY last_event DESC\nLIMIT 100\n",
+          "rawSql": "SELECT\n    trip_id,\n    argMax(driver_id, event_time) AS driver_id,\n    argMax(rider_id, event_time) AS rider_id,\n    argMax(pickup_zone_id, event_time) AS pickup_zone,\n    argMax(dropoff_zone_id, event_time) AS dropoff_zone,\n    argMax(predicted_duration_s, event_time) AS predicted_s,\n    argMax(fare_estimate, event_time) AS fare_estimate,\n    max(event_time) AS last_event\nFROM nus.trip_events\nWHERE event_time >= now() - INTERVAL 6 HOUR\nGROUP BY trip_id\nHAVING argMax(status, event_time) = 'in_progress'\nORDER BY last_event DESC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -535,7 +535,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 34
+        "y": 42
       },
       "targets": [
         {
@@ -546,7 +546,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT status, count() AS drivers\nFROM (\n    SELECT driver_id, argMax(status, event_time) AS status\n    FROM nus.driver_positions\n    WHERE event_time >= now() - INTERVAL 2 MINUTE\n    GROUP BY driver_id\n)\nGROUP BY status\n",
+          "rawSql": "SELECT status, count() AS drivers\nFROM (\n    SELECT driver_id, argMax(status, event_time) AS status\n    FROM nus.driver_positions\n    WHERE event_time >= now() - INTERVAL 2 MINUTE\n    GROUP BY driver_id\n)\nGROUP BY status\nLIMIT 5\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }

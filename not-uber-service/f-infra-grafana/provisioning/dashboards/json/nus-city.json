@@ -57,7 +57,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 10,
+        "h": 21,
         "w": 24,
         "x": 0,
         "y": 0
@@ -71,7 +71,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    zone_id,\n    demand_score,\n    open_requests,\n    available_drivers,\n    surge_multiplier,\n    period,\n    last_computed\nFROM (\n    SELECT\n        zone_id,\n        argMax(demand_score, computed_at) AS demand_score,\n        argMax(open_requests, computed_at) AS open_requests,\n        argMax(available_drivers, computed_at) AS available_drivers,\n        argMax(surge_multiplier, computed_at) AS surge_multiplier,\n        argMax(period, computed_at) AS period,\n        max(computed_at) AS last_computed\n    FROM nus.hotspot_history\n    WHERE computed_at >= now() - INTERVAL 10 MINUTE\n    GROUP BY zone_id\n) AS latest\nORDER BY demand_score DESC\n",
+          "rawSql": "SELECT\n    zone_id,\n    demand_score,\n    open_requests,\n    available_drivers,\n    surge_multiplier,\n    period,\n    last_computed\nFROM (\n    SELECT\n        zone_id,\n        argMax(demand_score, computed_at) AS demand_score,\n        argMax(open_requests, computed_at) AS open_requests,\n        argMax(available_drivers, computed_at) AS available_drivers,\n        argMax(surge_multiplier, computed_at) AS surge_multiplier,\n        argMax(period, computed_at) AS period,\n        max(computed_at) AS last_computed\n    FROM nus.hotspot_history\n    WHERE computed_at >= now() - INTERVAL 10 MINUTE\n    GROUP BY zone_id\n) AS latest\nORDER BY demand_score DESC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -95,7 +95,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 10
+        "y": 21
       },
       "targets": [
         {
@@ -147,7 +147,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 10
+        "y": 21
       },
       "targets": [
         {
@@ -198,7 +198,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 18
+        "y": 29
       },
       "targets": [
         {
@@ -251,7 +251,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 18
+        "y": 29
       },
       "targets": [
         {

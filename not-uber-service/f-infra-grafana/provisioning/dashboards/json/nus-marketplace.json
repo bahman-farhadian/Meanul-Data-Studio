@@ -976,7 +976,7 @@
       },
       "description": "Worst zone first, because that is the one to act on. The HAVING floor keeps a zone with three requests and one failure off the top of the list - at 25 zones deep, small denominators are the only way to get noise up here.",
       "gridPos": {
-        "h": 9,
+        "h": 20,
         "w": 24,
         "x": 0,
         "y": 37
@@ -990,7 +990,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(trips_ended)                       AS requests,\n    sum(completed) / sum(trips_ended)      AS fulfilment_rate,\n    sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,\n    sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY pickup_zone_id\nHAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0\nORDER BY fulfilment_rate ASC\nLIMIT 25\n",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(trips_ended)                       AS requests,\n    sum(completed) / sum(trips_ended)      AS fulfilment_rate,\n    sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,\n    sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY pickup_zone_id\nHAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0\nORDER BY fulfilment_rate ASC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }

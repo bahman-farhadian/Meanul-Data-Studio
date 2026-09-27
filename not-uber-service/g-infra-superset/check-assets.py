@@ -240,6 +240,13 @@ def check() -> list[str]:
         # precedence is series_limit_metric, then legacy_order_by, then
         # metrics[0], so all the spellings present have to agree.
         if params.get("viz_type") == "table":
+            # Paginated, not scrolled. A table with no page length draws
+            # every fetched row inside a fixed box and hides the overflow.
+            if not params.get("page_length"):
+                errors.append(
+                    f"{path.name}: a table with no page_length scrolls "
+                    "inside its panel instead of paging"
+                )
             metrics = params.get("metrics") or []
             stated = {
                 params.get(key)

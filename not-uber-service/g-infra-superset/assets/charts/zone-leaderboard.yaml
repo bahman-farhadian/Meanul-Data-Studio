@@ -8,4 +8,4 @@ cache_timeout: null
 certified_by: null
 certification_details: null
 query_context: null
-params: {"query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["unserved", "requests", "fulfilment_rate", "no_driver_rate", "time_to_match_s"], "adhoc_filters": [], "granularity_sqla": "hour", "row_limit": 300, "order_desc": true, "legacy_order_by": "unserved", "timeseries_limit_metric": "unserved", "time_range": "DATEADD(DATETIME('today'), -7, day) : now", "include_search": true, "show_cell_bars": true, "color_pn": false, "viz_type": "table", "datasource": "1__table"}
+params: {"query_mode": "aggregate", "groupby": ["pickup_zone_id"], "metrics": ["unserved", "requests", "fulfilment_rate", "no_driver_rate", "time_to_match_s"], "adhoc_filters": [], "granularity_sqla": "hour", "page_length": 15, "row_limit": 300, "order_desc": true, "legacy_order_by": "unserved", "timeseries_limit_metric": "unserved", "time_range": "DATEADD(DATETIME('today'), -7, day) : now", "include_search": true, "show_cell_bars": true, "color_pn": false, "viz_type": "table", "datasource": "1__table"}

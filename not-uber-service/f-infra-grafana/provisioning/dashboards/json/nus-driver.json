@@ -92,7 +92,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 12,
+        "h": 20,
         "w": 12,
         "x": 0,
         "y": 4
@@ -179,7 +179,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 12,
+        "h": 20,
         "w": 12,
         "x": 12,
         "y": 4
@@ -193,7 +193,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time DESC\nLIMIT 500\n",
+          "rawSql": "SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon\nFROM nus.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time DESC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -217,7 +217,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 16
+        "y": 24
       },
       "targets": [
         {
@@ -269,7 +269,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 16
+        "y": 24
       },
       "targets": [
         {

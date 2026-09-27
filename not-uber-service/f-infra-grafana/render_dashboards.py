@@ -468,7 +468,7 @@ FROM nus.driver_positions
 WHERE event_time >= now() - INTERVAL 2 MINUTE
 GROUP BY driver_id
 """,
-            0, 22, 14, 12,
+            0, 22, 14, 20,
             extra={"options": geomap_options("Drivers")},
         ),
         panel(
@@ -490,9 +490,9 @@ WHERE event_time >= now() - INTERVAL 6 HOUR
 GROUP BY trip_id
 HAVING argMax(status, event_time) = 'in_progress'
 ORDER BY last_event DESC
-LIMIT 100
+LIMIT 15
 """,
-            14, 22, 10, 12,
+            14, 22, 10, 20,
         ),
         panel(
             9,
@@ -507,8 +507,9 @@ FROM (
     GROUP BY driver_id
 )
 GROUP BY status
+LIMIT 5
 """,
-            0, 34, 24, 8,
+            0, 42, 24, 8,
         ),
     ],
 )
@@ -561,7 +562,7 @@ WHERE driver_id = '${driver_id}'
   AND $__timeFilter(event_time)
 ORDER BY event_time
 """,
-            0, 4, 12, 12,
+            0, 4, 12, 20,
             extra={"options": geomap_options("Trail")},
         ),
         panel(
@@ -574,9 +575,9 @@ FROM nus.driver_positions
 WHERE driver_id = '${driver_id}'
   AND $__timeFilter(event_time)
 ORDER BY event_time DESC
-LIMIT 500
+LIMIT 15
 """,
-            12, 4, 12, 12,
+            12, 4, 12, 20,
         ),
         panel(
             4,
@@ -589,7 +590,7 @@ WHERE driver_id = '${driver_id}'
   AND $__timeFilter(event_time)
 ORDER BY time
 """,
-            0, 16, 12, 8,
+            0, 24, 12, 8,
             timeseries=True,
             description="Straight from the device, as reported.",
             extra=line("velocitykmh", decimals=1, legend=False),
@@ -609,7 +610,7 @@ GROUP BY hour
 HAVING sum(online_ticks) > 0
 ORDER BY time
 """,
-            12, 16, 12, 8,
+            12, 24, 12, 8,
             timeseries=True,
             description=(
                 "Ticks spent on a trip out of ticks spent online. A share, so "
@@ -666,8 +667,9 @@ SELECT
 FROM nus.trip_events
 WHERE trip_id = '${trip_id}'
 ORDER BY event_time
+LIMIT 12
 """,
-            0, 0, 24, 10,
+            0, 0, 24, 17,
         ),
         panel(
             2,
@@ -679,7 +681,7 @@ FROM nus.rider_positions
 WHERE trip_id = '${trip_id}'
 ORDER BY event_time
 """,
-            0, 10, 12, 10,
+            0, 17, 12, 10,
             extra={"options": geomap_options("Rider")},
         ),
         panel(
@@ -699,7 +701,7 @@ WHERE trip_id = '${trip_id}'
 ORDER BY event_time DESC
 LIMIT 1
 """,
-            12, 10, 12, 10,
+            12, 17, 12, 10,
         ),
     ],
 )
@@ -752,8 +754,9 @@ FROM (
     GROUP BY zone_id
 ) AS latest
 ORDER BY demand_score DESC
+LIMIT 15
 """,
-            0, 0, 24, 10,
+            0, 0, 24, 21,
         ),
         panel(
             2,
@@ -766,7 +769,7 @@ WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
 """,
-            0, 10, 12, 8,
+            0, 21, 12, 8,
             timeseries=True,
             description=(
                 "Both are dimensionless, which is the only reason they share "
@@ -788,7 +791,7 @@ WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
 """,
-            12, 10, 12, 8,
+            12, 21, 12, 8,
             timeseries=True,
             description=(
                 "Both are counts of the same kind of thing, so one axis is "
@@ -808,7 +811,7 @@ WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
 """,
-            0, 18, 12, 8,
+            0, 29, 12, 8,
             timeseries=True,
             description=(
                 "1.0 is free-flow and higher is slower. Split from the sample "
@@ -828,7 +831,7 @@ WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
 """,
-            12, 18, 12, 8,
+            12, 29, 12, 8,
             timeseries=True,
             description=(
                 "Real position reports behind each reading, and the road "
@@ -1045,9 +1048,9 @@ FROM nus.trip_stats_daily
 WHERE day = today()
 GROUP BY pickup_zone_id
 ORDER BY completed_trips DESC
-LIMIT 20
+LIMIT 15
 """,
-            0, 32, 24, 8,
+            0, 32, 24, 20,
         ),
         panel(
             10,
@@ -1063,9 +1066,9 @@ FROM nus.od_matrix_daily
 WHERE day = today()
 GROUP BY pickup_zone_id, dropoff_zone_id
 ORDER BY completed_trips DESC
-LIMIT 30
+LIMIT 15
 """,
-            0, 40, 24, 10,
+            0, 52, 24, 20,
         ),
     ],
 )
@@ -1542,9 +1545,9 @@ WHERE $__timeFilter(hour)
 GROUP BY pickup_zone_id
 HAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0
 ORDER BY fulfilment_rate ASC
-LIMIT 25
+LIMIT 15
 """,
-            0, 37, 24, 9,
+            0, 37, 24, 20,
             description=(
                 "Worst zone first, because that is the one to act on. The "
                 "HAVING floor keeps a zone with three requests and one "

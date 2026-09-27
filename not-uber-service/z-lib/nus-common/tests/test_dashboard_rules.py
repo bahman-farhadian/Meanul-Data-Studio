@@ -251,3 +251,31 @@ def test_the_setting_is_global_not_local() -> None:
     """
     assert "'global'" in PROBE.SUBQUERY_SETTINGS
     assert "'local'" not in PROBE.SUBQUERY_SETTINGS
+
+
+def test_no_grafana_table_asks_for_more_rows_than_it_draws() -> None:
+    """A panel nobody scrolls is a panel showing a third of its answer."""
+    for path in sorted(JSON_DIR.glob("*.json")):
+        dash = json.loads(path.read_text())
+        for panel in dash.get("panels") or []:
+            if panel.get("type") != "table":
+                continue
+            sql = (panel.get("targets") or [{}])[0].get("rawSql") or ""
+            assert CHECK._check_table_fits(dash["uid"], panel, sql) == [], (
+                f"{dash['uid']} panel {panel['id']} ({panel['title']!r}) overflows"
+            )
+
+
+def test_a_table_that_overflows_is_refused() -> None:
+    """The failing direction, and the arithmetic behind it."""
+    tall_enough = {"id": 1, "title": "x", "gridPos": {"h": 20},
+                   "targets": [{"rawSql": "SELECT 1 LIMIT 15"}]}
+    assert CHECK._check_table_fits("x", tall_enough, "SELECT 1 LIMIT 15") == []
+
+    too_short = {"id": 2, "title": "y", "gridPos": {"h": 8},
+                 "targets": [{"rawSql": "SELECT 1 LIMIT 100"}]}
+    assert CHECK._check_table_fits("x", too_short, "SELECT 1 LIMIT 100")
+
+    no_limit = {"id": 3, "title": "z", "gridPos": {"h": 20},
+                "targets": [{"rawSql": "SELECT 1"}]}
+    assert CHECK._check_table_fits("x", no_limit, "SELECT 1")

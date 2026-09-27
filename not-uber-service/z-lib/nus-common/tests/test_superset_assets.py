@@ -265,3 +265,18 @@ def test_the_time_column_is_the_datasets_own() -> None:
                     f"{path.name} uses {key}={params[key]!r} but its dataset's "
                     f"time column is {expected!r}"
                 )
+
+
+def test_every_superset_table_pages_rather_than_scrolls() -> None:
+    seen = 0
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        params = CHECK.load(path).get("params") or {}
+        if params.get("viz_type") != "table":
+            continue
+        seen += 1
+        assert params.get("page_length"), f"{path.name} has no page_length"
+        assert params["page_length"] <= params["row_limit"], (
+            f"{path.name} pages {params['page_length']} of a {params['row_limit']} "
+            "row limit, which is not a page"
+        )
+    assert seen >= 3

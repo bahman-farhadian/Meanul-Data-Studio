@@ -485,7 +485,7 @@
       },
       "description": "",
       "gridPos": {
-        "h": 8,
+        "h": 20,
         "w": 24,
         "x": 0,
         "y": 32
@@ -499,7 +499,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue,\n    sum(route_km_total) AS route_km\nFROM nus.trip_stats_daily\nWHERE day = today()\nGROUP BY pickup_zone_id\nORDER BY completed_trips DESC\nLIMIT 20\n",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue,\n    sum(route_km_total) AS route_km\nFROM nus.trip_stats_daily\nWHERE day = today()\nGROUP BY pickup_zone_id\nORDER BY completed_trips DESC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -520,10 +520,10 @@
       },
       "description": "",
       "gridPos": {
-        "h": 10,
+        "h": 20,
         "w": 24,
         "x": 0,
-        "y": 40
+        "y": 52
       },
       "targets": [
         {
@@ -534,7 +534,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    pickup_zone_id,\n    dropoff_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.od_matrix_daily\nWHERE day = today()\nGROUP BY pickup_zone_id, dropoff_zone_id\nORDER BY completed_trips DESC\nLIMIT 30\n",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    dropoff_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM nus.od_matrix_daily\nWHERE day = today()\nGROUP BY pickup_zone_id, dropoff_zone_id\nORDER BY completed_trips DESC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
