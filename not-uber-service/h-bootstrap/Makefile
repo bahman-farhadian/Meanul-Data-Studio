@@ -169,6 +169,10 @@ verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
 		$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
 			-n $$n DBSIZE 2>/dev/null | tr -d '\r'; printf " "; \
 	done; printf "\n"
-	@printf "\n  Trips should be roughly HISTORY_DAYS x HISTORY_TRIPS_PER_DAY, and 'ways'\n"
-	@printf "  in the hundreds of thousands. 'ways' at 0 means the map import did not run.\n"
+	@printf "\n  'trips' is PostgreSQL's OPERATING window, not the whole history. The\n"
+	@printf "  archiver prunes anything ended more than ARCHIVER_RETENTION_HOURS ago,\n"
+	@printf "  so this count sits near one retention window of traffic and the full\n"
+	@printf "  HISTORY_DAYS x HISTORY_TRIPS_PER_DAY lives in nus.trip_events instead.\n"
+	@printf "  Fewer trips here than in the warehouse is the archiver working.\n"
+	@printf "  'ways' should be in the hundreds of thousands; 0 means no map import.\n"
 	@printf "  Redis db 1 (drivers) still 0 after CDC means cache-updater has nothing to apply.\n"
