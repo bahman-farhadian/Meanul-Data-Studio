@@ -610,15 +610,32 @@ verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch v
 .PHONY: verify-dash
 verify-dash: grafana-health tiles-health verify-grafana superset-health verify-superset ## Grafana and Superset: health, tiles, and every panel and metric run
 
+# verify-walk and verify-sample are the only WORKSTATION targets in this
+# file. Every other target drives Docker and runs anywhere; these two run
+# pytest directly and need uv to build the test venv.
+#
+# Deliberately NOT added to preflight: preflight runs inside `make up` on the
+# deployment host, which has no uv and does not need one. A uv check there
+# would fail the bring-up over a tool the stack never uses.
+.PHONY: _need-uv
+_need-uv:
+	@command -v uv >/dev/null 2>&1 || { \
+		printf "  $(R)FAIL$(X)    uv is not on PATH, so the test venv cannot be built\n\n"; \
+		printf "  This is a $(B)workstation$(X) target, not a deployment one. It runs\n"; \
+		printf "  pytest against the shipped library code and needs no containers.\n"; \
+		printf "  Run it where you edit the code, or install uv on this machine:\n"; \
+		printf "    $(C)curl -LsSf https://astral.sh/uv/install.sh | sh$(X)\n\n"; \
+		exit 1; }
+
 .PHONY: verify-walk
-verify-walk: ## Street-follow and chord/sea checks against the shipped walk/geo code
+verify-walk: _need-uv ## Street-follow and chord/sea checks against the shipped walk/geo code
 	$(call say,Walk checks)
 	@cd z-lib/nus-common && uv sync --extra test >/dev/null
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
 		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests l-service-dispatch/tests
 
 .PHONY: verify-sample
-verify-sample: ## Tiny local PG/Redis/Kafka/CH sample: on-network routes, no sea hops
+verify-sample: _need-uv ## Tiny local PG/Redis/Kafka/CH sample: on-network routes, no sea hops
 	$(call say,Sample stores)
 	@cd z-lib/nus-common && uv sync --extra test >/dev/null
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
