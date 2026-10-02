@@ -439,7 +439,11 @@ all zeros.
 ---
 
 ## Step 6 — Warehouse fitness for full scale
-REOPENED — 2026-09-27. `make capacity` now reads **80.22 GiB per node
+DONE — closed 2026-09-27 at **58.5% of quota**, measured on a clean
+bring-up. The history of how it got there follows, because the first
+answer was wrong.
+
+Reopened 2026-09-27: `make capacity` read **80.22 GiB per node
 against the 112 GB quota, 71.6%, verdict FAIL** - past the 30% headroom
 this step set. Nothing regressed: the driver-tier fix raised fulfilment
 from 0.63 to 0.70, more trips run, and `rider_positions` is only written
@@ -929,8 +933,9 @@ and the test refuses any of the friendly names that end at midnight.
 
 ## Step 12 — Staged scale-up
 
-**Fulfilment is 0.611 at 4,000 drivers, and the fleet is 96% idle at the
-same time.** Two readings now agree on the shape. Over two hours: 1,351 of
+**Historical, kept because the reasoning matters: fulfilment was 0.611 at
+4,000 drivers with the fleet 96% idle at the same time.** Two readings
+agreed on the shape. Over two hours: 1,351 of
 5,115 ended trips `no_driver_found`, 26%. Over one hour on the block B
 stack: 675 of 3,274, 20.6%. Chain exhaustion cannot explain either - at
 0.528 acceptance over five offers, all five refusing happens 2% of the
@@ -970,10 +975,14 @@ silently defaulted. The service also logs its tier mix at startup, so the
 next run says what it loaded instead of leaving it to be inferred from a
 GEO set weeks later.
 
-**Not yet re-measured.** Everything above is the mechanism and the fix; the
-fulfilment number this produces is a step 12 measurement and needs a
-rebuild (`make build`) and a fresh bring-up. Expect no_driver_found to fall
-by roughly the share of demand that is xl or premium.
+**Re-measured 2026-09-27 on a clean bring-up, and the fix holds.**
+driver-service logs `fleet tiers economy 2817, xl 768, premium 415` -
+70/20/10, exactly as seeded - and all three GEO sets fill (1379 / 375 /
+209). Fulfilment **0.687**, `no_driver_found` **247 of 2,558 ended trips
+(9.7%)**, down from 26%. Utilization 0.09, up from 0.03.
+
+So the tier defect is closed. What remains in this step is the supply
+ratio below, which is a different thing and genuinely about scale.
 
 **Scale supply and demand together, which the dev profile does not.**
 Measured on Dionysus: 800 drivers against ~68 requests/minute is 11.8
