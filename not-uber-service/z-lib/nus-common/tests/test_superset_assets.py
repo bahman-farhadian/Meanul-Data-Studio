@@ -37,6 +37,11 @@ CHECK = _load("nus_check_assets", "check-assets.py")
 RENDER = _load("nus_render_assets", "render_assets.py")
 
 
+def is_grid(params: dict) -> bool:
+    """A heatmap, whose x_axis carries a dimension rather than time."""
+    return str(params.get("viz_type") or "").startswith("heatmap")
+
+
 def test_the_bundle_passes_its_own_check() -> None:
     assert CHECK.check() == []
 
@@ -186,7 +191,10 @@ def test_every_table_states_the_sort_its_title_promises() -> None:
         assert stated == {metrics[0]}, (
             f"{path.name} sorts by {stated} but metrics[0] is {metrics[0]!r}"
         )
-    assert seen >= 3, f"expected the three leaderboards, found {seen}"
+    # Two, not three: the origin-destination leaderboard became a grid,
+    # because no row limit a top-N list can carry escapes Superset's
+    # partial-data warning. See test_every_grid_carries_a_limit_it_cannot_reach.
+    assert seen >= 2, f"expected the two leaderboards, found {seen}"
 
 
 def test_a_table_with_no_sort_is_refused(tmp_path) -> None:
@@ -259,7 +267,13 @@ def test_the_time_column_is_the_datasets_own() -> None:
         config = CHECK.load(path)
         params = config.get("params") or {}
         expected = dttm[config["dataset_uuid"]]
-        for key in ("granularity_sqla", "x_axis"):
+        # A grid spends x_axis on a DIMENSION, not on time - pickup zone
+        # across, dropoff zone down - so granularity_sqla is the only key
+        # naming its window. Checking x_axis against the time column there
+        # would be checking the wrong key, and requiring a time axis would
+        # mean the chart could not exist at all.
+        keys = ("granularity_sqla",) if is_grid(params) else ("granularity_sqla", "x_axis")
+        for key in keys:
             if params.get(key):
                 assert params[key] == expected, (
                     f"{path.name} uses {key}={params[key]!r} but its dataset's "
@@ -279,4 +293,66 @@ def test_every_superset_table_pages_rather_than_scrolls() -> None:
             f"{path.name} pages {params['page_length']} of a {params['row_limit']} "
             "row limit, which is not a page"
         )
-    assert seen >= 3
+    assert seen >= 2, f"expected the two leaderboards, found {seen}"
+
+
+def test_every_grid_carries_a_limit_it_cannot_reach() -> None:
+    """Superset's partial-data warning is about the LIMIT, not the data.
+
+    It fires when the rows returned reach row_limit, so a grid is only quiet
+    while that limit is unreachable. "Big enough for today's seed" is not
+    the bar - the OD chart was a top-100 table and warned on every load,
+    and raising it to 6,000 of 7,000 pairs would have warned just the same.
+
+    Two zone dimensions can produce TLC_ZONES^2 cells and not one more, and
+    that ceiling does not move with fleet size, trip volume or HISTORY_DAYS.
+    So the limit can be unreachable by construction rather than by luck, and
+    this is the test that keeps it that way.
+    """
+    ceiling = CHECK.TLC_ZONES * CHECK.TLC_ZONES
+    grids = 0
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        params = CHECK.load(path).get("params") or {}
+        if not is_grid(params):
+            continue
+        dims = [d for d in [params.get("x_axis"),
+                            *(params.get("groupby") or [])] if d]
+        assert len(dims) == 2, f"{path.name}: a grid needs two dimensions, got {dims}"
+        if not all(d.endswith("_zone_id") for d in dims):
+            continue
+        grids += 1
+        assert params["row_limit"] > ceiling, (
+            f"{path.name}: row_limit {params['row_limit']:,} is reachable "
+            f"within the {ceiling:,} pairs {CHECK.TLC_ZONES} zones allow, so "
+            "Superset will warn about partial data"
+        )
+    assert grids, "no zone-against-zone grid found - has the OD chart moved?"
+
+
+def test_the_od_chart_is_not_a_top_n_list_again() -> None:
+    """The failing direction, against the shape that actually shipped.
+
+    The chart really was `table(..., sort_by="trips", row_limit=100)` over
+    pickup x dropoff, and it warned about partial data on every load for
+    exactly the reason above. Rebuilt here so the checker is proved against
+    the mistake rather than against an invented one.
+    """
+    bad = RENDER.chart(
+        "probe", name="Top 100 origin-destination pairs", viz="table",
+        dataset_name="od_matrix_daily",
+        description="the shape that warned on every load",
+        params={"query_mode": "aggregate",
+                "groupby": ["pickup_zone_id", "dropoff_zone_id"],
+                "metrics": ["trips"], "row_limit": 100, "page_length": 15,
+                "legacy_order_by": "trips", "timeseries_limit_metric": "trips",
+                "granularity_sqla": "day", "time_range": RENDER.TIME_RANGE},
+    )
+    pairs = RENDER.TLC_ZONES * RENDER.TLC_ZONES
+    assert bad["params"]["row_limit"] < pairs, (
+        "the probe was supposed to carry a reachable limit"
+    )
+    live = CHECK.load(ASSETS / "charts" / "od-leaderboard.yaml")["params"]
+    assert live["viz_type"].startswith("heatmap"), (
+        "the OD chart went back to being a ranked list"
+    )
+    assert live["row_limit"] > pairs

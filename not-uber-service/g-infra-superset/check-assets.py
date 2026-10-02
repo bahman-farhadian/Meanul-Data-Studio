@@ -30,6 +30,13 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ASSETS = HERE / "assets"
+
+# TLC publishes 263 taxi zones. Declared here independently of
+# render_assets.py on purpose: a checker that reads its bar from the file it
+# is checking cannot catch that file lowering the bar. The source of truth is
+# neither script but city_zones, loaded from TLC's own shapefile - which
+# `make verify` prints as "city_zones 263" on every run.
+TLC_ZONES = 263
 DDL_DIR = HERE.parent / "e-infra-clickhouse" / "ddl"
 
 # Tables a chart may read. Rollups and one-row-per-trip facts only: a chart
@@ -275,6 +282,44 @@ def check() -> list[str]:
                     errors.append(
                         f"{path.name}: sorts by {name!r}, which is not one of "
                         "its metrics"
+                    )
+
+        # A grid escapes the partial-data warning only while its row
+        # limit is UNREACHABLE. The warning fires when the rows returned
+        # reach the limit, so the bar is not "big enough for today's seed"
+        # but "bigger than the cells these dimensions can ever produce".
+        # Two zone columns can produce TLC_ZONES^2 pairs and not one more,
+        # and that ceiling does not move with fleet size, trip volume or
+        # HISTORY_DAYS - which is the whole reason the OD chart is a grid
+        # rather than the top-100 table it used to be.
+        if params.get("viz_type", "").startswith("heatmap"):
+            dims = [d for d in [params.get("x_axis"),
+                                *(params.get("groupby") or [])] if d]
+            if len(dims) != 2:
+                errors.append(
+                    f"{path.name}: a heatmap needs exactly two dimensions, "
+                    f"found {dims or 'none'}"
+                )
+            # The time-range rule below accepts granularity_sqla OR
+            # x_axis, because for a timeseries chart x_axis IS the time
+            # column. A grid spends x_axis on a dimension, so it would
+            # satisfy that rule while naming no time column at all and
+            # silently scanning the table's whole retention.
+            if not params.get("granularity_sqla"):
+                errors.append(
+                    f"{path.name}: a heatmap's x_axis is a dimension, not a "
+                    "time column, so it needs granularity_sqla - without it "
+                    "the time range is not applied"
+                )
+            if len(dims) == 2 and all(d.endswith("_zone_id") for d in dims):
+                ceiling = TLC_ZONES * TLC_ZONES
+                limit = params.get("row_limit") or 0
+                if limit <= ceiling:
+                    errors.append(
+                        f"{path.name}: row_limit {limit:,} does not clear the "
+                        f"{ceiling:,} cells two zone dimensions can produce, "
+                        "so Superset warns about partial data as soon as the "
+                        "data fills out"
                     )
 
         # A time range that names no column is silently not applied, so the
