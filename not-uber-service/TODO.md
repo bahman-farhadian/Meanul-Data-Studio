@@ -1063,6 +1063,42 @@ is that file's own definition of version 1 being closed.
 
 ---
 
+## Closed by decision — Grafana reads ClickHouse, never Redis
+
+DROPPED 2026-10-02. An earlier plan round called for a second Grafana
+datasource reading Redis for the live-ops tier: driver positions on a
+Geomap off the `DB_DRIVER` GEO set, free/busy/offline counts, live
+passenger requests, and a demand heatmap off `DB_DEMAND`'s `hotspot:*`
+scores. It was never built, and the shipped code now argues against it in
+two places: `f-infra-grafana/check-dashboards.py:25` rejects any panel
+query naming Redis, Kafka or Postgres, and `f-infra-grafana/docker-compose
+.yaml` documents the single-datasource rule.
+
+Plan and code had been contradicting each other since, which is the real
+reason this is being written down rather than left implied.
+
+Dropped because the warehouse already answers the live questions. The
+`nus-live-ops` dashboard runs nine panels - open trips by status, events
+and positions per minute, the last two minutes of fleet position and
+status - and `make profile` measured `driver_positions` and `trip_events`
+at **0 minutes behind** with `hotspot_history` at 1. A Geomap of the last
+two minutes of `driver_positions` is the same picture the GEO set holds,
+read from the store every other panel already uses.
+
+What the second datasource would have cost: the ClickHouse-only guard
+relaxed from a flat ban to an allowlist, a second query language inside
+`check-dashboards.py` and `panel-probe.py` (which today proves all 46
+panels run by executing their SQL - there is no equivalent for Redis
+commands), and the `redis-datasource` plugin pinned and carried in the
+image. Three validators lose their single-language assumption to show
+something already on screen.
+
+Reversible if a genuinely sub-second panel is ever needed. Nothing has
+asked for one: the gap between Redis and the warehouse here is seconds,
+and no question on any dashboard turns on it.
+
+---
+
 ## Parked (measured, revisit only at full scale)
 
 **Replica scaling — cache-updater / clickhouse-sink.** Both already share
