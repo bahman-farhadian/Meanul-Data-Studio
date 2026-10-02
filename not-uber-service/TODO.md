@@ -913,14 +913,42 @@ broker. So the topic is not too fast; city-service's per-message work is
 too heavy. It does a zone lookup and a speed sample per position where the
 sink batches and inserts.
 
-That is why `hotspot_score` sits at a median of 0 and surge at a mean of
-1.03: the demand picture is stale, so the multiplier never moves, and
-"Does surge lift acceptance" has one band to draw. Not a correctness bug -
-a provisioning one, and it belongs with the scale-up because the fix is a
+The lag is real and still belongs with the scale-up, because the fix is a
 choice: more CPU for city-service, more instances, or scoring on a sample
 of `driver_location` rather than every message. An aggregate score over a
 sample is statistically sound and is the only one of the three that also
 works at 18,000 positions a second.
+
+**Corrected 2026-10-02: the lag is NOT why surge is flat.** This step
+originally blamed the stale demand picture for `hotspot_score` sitting at
+a median of 0 and surge at a mean near 1.0. The code says otherwise.
+`city_service/counters.py` scores a zone `waiting / (waiting + free + 1)`
+and `surge_from_score` returns exactly 1.0 for any score at or below 0.6.
+Rearranged, surge only moves when **`waiting > 1.5 x free + 1.5`** - a
+zone needs half again as many riders waiting as it has drivers free.
+
+At 4,000 drivers over 256 zones that is about 15 free per zone, so a zone
+needs ~24 riders waiting at the same instant. The measured live request
+rate is ~26 per minute for the whole city. It essentially never happens,
+and a perfectly current city-service would publish 1.0 just the same.
+The median score is 0 for the same reason plus a deliberate one: the
+function returns 0.0 outright when nothing is waiting, which is most
+zones at most instants.
+
+Two consequences, both for step 12:
+
+- Lag and flat surge are separate problems. Buying city-service more CPU
+  would not move surge by itself. Measured 2026-10-02 over two samples
+  ten minutes apart, per-partition lag swings 2,208 -> 14,921 on
+  city-service and 5,051 -> 1,168 on clickhouse-sink - it oscillates with
+  the produce bursts in both directions rather than growing, which also
+  means a single lag sample proves nothing about either.
+- **Full scale makes this worse, not better.** Measured now: 4,000
+  drivers against 25.8 requests/minute is ~155 drivers per
+  request-per-minute. Step 13's seed is 106,000 against 455, which is
+  ~233 - more oversupplied still. So "Does surge lift acceptance" stays a
+  one-band chart at full scale unless the seed ratio or the 0.6 threshold
+  is revisited. Deciding which is step 12's, not this step's.
 
 **Superset's headline tiles were wrong, and it was mine.** `time_range:
 "Last week"` resolves to 00:00 seven days back -> **00:00 TODAY**, so
