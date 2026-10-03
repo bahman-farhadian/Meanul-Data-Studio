@@ -37,11 +37,6 @@ CHECK = _load("nus_check_assets", "check-assets.py")
 RENDER = _load("nus_render_assets", "render_assets.py")
 
 
-def is_grid(params: dict) -> bool:
-    """A heatmap, whose x_axis carries a dimension rather than time."""
-    return str(params.get("viz_type") or "").startswith("heatmap")
-
-
 def test_the_bundle_passes_its_own_check() -> None:
     assert CHECK.check() == []
 
@@ -191,10 +186,7 @@ def test_every_table_states_the_sort_its_title_promises() -> None:
         assert stated == {metrics[0]}, (
             f"{path.name} sorts by {stated} but metrics[0] is {metrics[0]!r}"
         )
-    # Two, not three: the origin-destination leaderboard became a grid,
-    # because no row limit a top-N list can carry escapes Superset's
-    # partial-data warning. See test_every_grid_carries_a_limit_it_cannot_reach.
-    assert seen >= 2, f"expected the two leaderboards, found {seen}"
+    assert seen >= 3, f"expected the three leaderboards, found {seen}"
 
 
 def test_a_table_with_no_sort_is_refused(tmp_path) -> None:
@@ -267,12 +259,7 @@ def test_the_time_column_is_the_datasets_own() -> None:
         config = CHECK.load(path)
         params = config.get("params") or {}
         expected = dttm[config["dataset_uuid"]]
-        # A grid spends x_axis on a DIMENSION, not on time - pickup zone
-        # across, dropoff zone down - so granularity_sqla is the only key
-        # naming its window. Checking x_axis against the time column there
-        # would be checking the wrong key, and requiring a time axis would
-        # mean the chart could not exist at all.
-        keys = ("granularity_sqla",) if is_grid(params) else ("granularity_sqla", "x_axis")
+        keys = ("granularity_sqla", "x_axis")
         for key in keys:
             if params.get(key):
                 assert params[key] == expected, (
@@ -293,40 +280,57 @@ def test_every_superset_table_pages_rather_than_scrolls() -> None:
             f"{path.name} pages {params['page_length']} of a {params['row_limit']} "
             "row limit, which is not a page"
         )
-    assert seen >= 2, f"expected the two leaderboards, found {seen}"
+    assert seen >= 3
 
 
-def test_every_grid_carries_a_limit_it_cannot_reach() -> None:
+def test_every_zone_grid_carries_a_limit_it_cannot_reach() -> None:
     """Superset's partial-data warning is about the LIMIT, not the data.
 
-    It fires when the rows returned reach row_limit, so a grid is only quiet
-    while that limit is unreachable. "Big enough for today's seed" is not
-    the bar - the OD chart was a top-100 table and warned on every load,
-    and raising it to 6,000 of 7,000 pairs would have warned just the same.
+    It fires when the rows returned reach row_limit, so a top-N list warns
+    on every load by construction: 100 of 8,000 pairs trips it, and so
+    would 7,000 of 8,000. Only an unreachable limit is quiet.
 
-    Two zone dimensions can produce TLC_ZONES^2 cells and not one more, and
-    that ceiling does not move with fleet size, trip volume or HISTORY_DAYS.
-    So the limit can be unreachable by construction rather than by luck, and
-    this is the test that keeps it that way.
+    Two zone columns can produce TLC_ZONES^2 pairs and not one more, and
+    that ceiling does not move with fleet size, trip volume or HISTORY_DAYS
+    - so the limit can be unreachable by construction rather than by luck.
+
+    Keyed on the DIMENSIONS, not on viz_type. This chart has been a table, a
+    heatmap and a table again; the guarantee belongs to the shape of the
+    data, not to how it is drawn this week.
     """
     ceiling = CHECK.TLC_ZONES * CHECK.TLC_ZONES
     grids = 0
     for path in sorted(ASSETS.glob("charts/*.yaml")):
         params = CHECK.load(path).get("params") or {}
-        if not is_grid(params):
-            continue
         dims = [d for d in [params.get("x_axis"),
                             *(params.get("groupby") or [])] if d]
-        assert len(dims) == 2, f"{path.name}: a grid needs two dimensions, got {dims}"
-        if not all(d.endswith("_zone_id") for d in dims):
+        if len(dims) != 2 or not all(d.endswith("_zone_id") for d in dims):
             continue
         grids += 1
         assert params["row_limit"] > ceiling, (
             f"{path.name}: row_limit {params['row_limit']:,} is reachable "
-            f"within the {ceiling:,} pairs {CHECK.TLC_ZONES} zones allow, so "
-            "Superset will warn about partial data"
+            f"within the {ceiling:,} pairs {CHECK.TLC_ZONES} zones allow"
         )
-    assert grids, "no zone-against-zone grid found - has the OD chart moved?"
+    assert grids, "no zone-against-zone chart found - has the OD chart moved?"
+
+
+def test_no_chart_narrows_in_a_way_the_checker_cannot_model() -> None:
+    """A query the checker models WRONGLY is worse than one it skips.
+
+    verify-assets rebuilds each chart's query from groupby, x_axis, the time
+    window and row_limit. series_limit was set on the OD chart once and the
+    script reported 6,035 rows for it - the UNNARROWED count, because it had
+    silently ignored the parameter. The check passed and proved nothing.
+    """
+    unmodelled = ("series_limit", "series_limit_metric", "timeseries_limit",
+                  "server_pagination", "having", "having_filters")
+    for path in sorted(ASSETS.glob("charts/*.yaml")):
+        params = CHECK.load(path).get("params") or {}
+        for key in unmodelled:
+            assert not params.get(key), (
+                f"{path.name} sets {key}={params.get(key)!r}, which "
+                "verify-assets does not apply when it rebuilds the query"
+            )
 
 
 def test_the_od_chart_is_not_a_top_n_list_again() -> None:
@@ -352,7 +356,6 @@ def test_the_od_chart_is_not_a_top_n_list_again() -> None:
         "the probe was supposed to carry a reachable limit"
     )
     live = CHECK.load(ASSETS / "charts" / "od-leaderboard.yaml")["params"]
-    assert live["viz_type"].startswith("heatmap"), (
-        "the OD chart went back to being a ranked list"
+    assert live["row_limit"] > pairs, (
+        "the OD chart went back to a limit it can reach"
     )
-    assert live["row_limit"] > pairs

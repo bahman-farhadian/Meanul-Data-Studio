@@ -284,43 +284,47 @@ def check() -> list[str]:
                         "its metrics"
                     )
 
-        # A grid escapes the partial-data warning only while its row
-        # limit is UNREACHABLE. The warning fires when the rows returned
-        # reach the limit, so the bar is not "big enough for today's seed"
-        # but "bigger than the cells these dimensions can ever produce".
-        # Two zone columns can produce TLC_ZONES^2 pairs and not one more,
-        # and that ceiling does not move with fleet size, trip volume or
-        # HISTORY_DAYS - which is the whole reason the OD chart is a grid
-        # rather than the top-100 table it used to be.
-        if params.get("viz_type", "").startswith("heatmap"):
-            dims = [d for d in [params.get("x_axis"),
-                                *(params.get("groupby") or [])] if d]
-            if len(dims) != 2:
+        # ANY chart grouping two zone columns is an origin-destination grid,
+        # whatever it is drawn as, and it escapes Superset's partial-data
+        # warning only while its row limit is UNREACHABLE. The warning fires
+        # when the rows returned reach the limit, so the bar is not "big
+        # enough for today's seed" but "bigger than the pairs these columns
+        # can ever produce". TLC_ZONES^2 is that ceiling and it does not move
+        # with fleet size, trip volume or HISTORY_DAYS.
+        #
+        # Keyed on the DIMENSIONS, not on viz_type: the chart has already been
+        # a table, a grid and a table again, and the guarantee belongs to the
+        # data's shape rather than to how it happens to be drawn today.
+        dims = [d for d in [params.get("x_axis"),
+                            *(params.get("groupby") or [])] if d]
+        if len(dims) == 2 and all(d.endswith("_zone_id") for d in dims):
+            ceiling = TLC_ZONES * TLC_ZONES
+            limit = params.get("row_limit") or 0
+            if limit <= ceiling:
                 errors.append(
-                    f"{path.name}: a heatmap needs exactly two dimensions, "
-                    f"found {dims or 'none'}"
+                    f"{path.name}: row_limit {limit:,} is reachable within the "
+                    f"{ceiling:,} pairs {TLC_ZONES} zones allow, so Superset "
+                    "warns about partial data"
                 )
-            # The time-range rule below accepts granularity_sqla OR
-            # x_axis, because for a timeseries chart x_axis IS the time
-            # column. A grid spends x_axis on a dimension, so it would
-            # satisfy that rule while naming no time column at all and
-            # silently scanning the table's whole retention.
-            if not params.get("granularity_sqla"):
+
+        # The checker below runs each chart's query to prove it returns rows.
+        # It models groupby, x_axis, the time window and row_limit - and
+        # NOTHING ELSE. A chart carrying a narrowing parameter this list does
+        # not know about is a chart whose verified query is not the query
+        # Superset runs, which is worse than no check: series_limit was set
+        # here once, verify-assets reported 6,035 rows for it, and the number
+        # was the unlimited count because the script had silently ignored it.
+        modelled = {"groupby", "x_axis", "row_limit", "time_range",
+                    "granularity_sqla", "metric", "metrics", "adhoc_filters"}
+        narrowing = {"series_limit", "series_limit_metric", "timeseries_limit",
+                     "server_pagination", "having", "having_filters"}
+        for key in sorted(narrowing - modelled):
+            if params.get(key):
                 errors.append(
-                    f"{path.name}: a heatmap's x_axis is a dimension, not a "
-                    "time column, so it needs granularity_sqla - without it "
-                    "the time range is not applied"
+                    f"{path.name}: sets {key}={params[key]!r}, which "
+                    "verify-assets does not model - its row count would be "
+                    "the unnarrowed one and the check would prove nothing"
                 )
-            if len(dims) == 2 and all(d.endswith("_zone_id") for d in dims):
-                ceiling = TLC_ZONES * TLC_ZONES
-                limit = params.get("row_limit") or 0
-                if limit <= ceiling:
-                    errors.append(
-                        f"{path.name}: row_limit {limit:,} does not clear the "
-                        f"{ceiling:,} cells two zone dimensions can produce, "
-                        "so Superset warns about partial data as soon as the "
-                        "data fills out"
-                    )
 
         # A time range that names no column is silently not applied, so the
         # chart scans the table's whole retention while claiming a window.

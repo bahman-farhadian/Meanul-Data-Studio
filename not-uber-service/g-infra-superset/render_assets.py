@@ -592,14 +592,7 @@ TABLE_HEIGHT = 85
 # safety rests on an argument in a comment is a limit that will be lowered.
 TLC_ZONES = 263
 OD_PAIR_CEILING = TLC_ZONES * TLC_ZONES
-HEATMAP_HEIGHT = 100
 
-# How many zones the OD grid draws per axis. All 263 is 3px a cell in a
-# full-width panel and 92% empty at the dev seed; 25 is ~35px a cell and
-# covers where the traffic actually is. This is a series_limit, NOT a row
-# limit - the two are different mechanisms, and only the row limit decides
-# whether Superset calls the result partial.
-OD_TOP_ZONES = 25
 
 # Superset needs to be told WHICH column the time range applies to; without
 # it the range is silently a no-op. It is the dataset's own main_dttm_col,
@@ -698,66 +691,6 @@ def table(slug, name, dataset_name, groupby, metrics, description, *,
 
 
 
-def heatmap(slug, name, dataset_name, x, y, metric, description, *,
-            row_limit, top_n=None, scheme="dark_blue", fmt=",.0f"):
-    """A grid of x against y, with colour carrying the magnitude.
-
-    WHY THIS IS NOT A TABLE. It replaced a top-100 list, and a top-N list
-    cannot avoid Superset's partial-data warning. That warning fires
-    whenever the rows returned reach the row limit, so EVERY limit below the
-    real row count trips it - 100 of 7,000 trips it, and so does 6,000 of
-    7,000. Only a limit above the row count is quiet, and for a top-N list
-    that is a contradiction in terms.
-
-    A grid has no cut to apologise for: every pair is a cell. And because an
-    origin-destination grid is bounded by zones squared, the caller can pass
-    a limit that is unreachable by construction rather than one that happens
-    to be large enough for today's seed.
-
-    It also answers the question the chart is actually for. Its own job is to
-    be compared against the real TLC od_pair_calibration the demand
-    generator was built from, and "does our traffic concentrate where real
-    New York traffic concentrates" is a question about pattern. A grid shows
-    pattern. A ranked list of a hundred rows hides it.
-
-    show_values stays off deliberately: thousands of cells with a number in
-    each is a wall of digits, and the colour already carries the comparison.
-
-    WHY top_n EXISTS. The first version drew all 263 zones against all 263,
-    and at the dev seed that is 5,614 filled cells in a 69,169-cell grid -
-    92% empty, 3px per cell, and a linear ramp on a distribution where the
-    typical pair has one trip and a few have dozens. It rendered as static.
-    series_limit takes the busiest groups through a subquery instead, which
-    is separate from row_limit, so the unreachable-limit guarantee below
-    still holds while the grid gets dense enough to read.
-
-    WHY dark_blue. One hue, light to dark, which is the family a count
-    belongs in - a multi-hue ramp invents boundaries the data does not have.
-    The id is read from this build's own bundle, not guessed: it ships as
-    {id:"dark_blue",label:"dark blues"}.
-    """
-    return chart(
-        slug, name=name, viz="heatmap_v2", dataset_name=dataset_name,
-        description=description,
-        params={
-            "x_axis": x,
-            "groupby": [y],
-            "metric": metric,
-            "adhoc_filters": [],
-            "granularity_sqla": DTTM[dataset_name],
-            "time_range": TIME_RANGE,
-            "row_limit": row_limit,
-            "series_limit": top_n or 0,
-            "series_limit_metric": metric if top_n else None,
-            "linear_color_scheme": scheme,
-            "normalize_across": "heatmap",
-            "show_legend": True,
-            "show_values": False,
-            "y_axis_format": fmt,
-        },
-    )
-
-
 CHARTS = [
     big_number("fulfilment-rate", "Fulfilment rate", "fulfilment_hourly",
                "fulfilment_rate", PCT,
@@ -847,20 +780,31 @@ CHARTS = [
           "column; it is just not what decides the order. The row limit is "
           "above the 263 zones TLC defines, so nothing is cut off.",
           sort_by="unserved"),
-    # The slug stays "od-leaderboard" although this is no longer a
-    # leaderboard. Chart uuids are derived from the slug, so renaming it
-    # would import a SECOND chart and leave the old one behind - and
-    # verify-assets counts declared against held, so an orphan fails the
-    # check. The displayed name is what readers see; the slug is an identity.
-    heatmap("od-leaderboard", "Where trips actually run, origin against destination",
-            "od_matrix_daily", "pickup_zone_id", "dropoff_zone_id", "trips",
-            "Every origin-destination pair as one cell, colour carrying trip "
-            "count - directly comparable against the real TLC "
-            "od_pair_calibration the demand generator was built from. The row "
-            "limit is above 263 x 263 = 69,169 possible pairs, a ceiling TLC's "
-            "own zone count fixes, so nothing is ever cut and no partial-data "
-            "notice can appear at any scale.",
-            row_limit=OD_PAIR_CEILING + 1, top_n=OD_TOP_ZONES),
+    # WHY THE LIMIT IS 69,170 AND NOT 100. Superset calls a result partial
+    # when the rows returned REACH the row limit, so a top-N list warns on
+    # every load by construction - 100 of 8,000 pairs trips it and so would
+    # 7,000 of 8,000. The only quiet limit is an unreachable one, and an
+    # origin-destination grid has a ceiling TLC's own zone count fixes at
+    # 263 x 263. So the limit clears the ceiling, page_length shows the top
+    # fifteen corridors, and paging goes deeper on demand. Nothing is cut
+    # and no notice appears, at this seed or at full scale.
+    #
+    # A grid was tried here and reverted: at the dev seed it drew 5,614
+    # filled cells in a 69,169-cell matrix - 92% empty, 3px a cell - and
+    # read as static. series_limit cannot densify it either, because it
+    # trims the groupby series and not the x_axis.
+    #
+    # The slug stays "od-leaderboard". Chart uuids derive from the slug, so
+    # renaming it would import a SECOND chart and leave the old one behind,
+    # and verify-assets counts declared against held.
+    table("od-leaderboard", "Busiest origin-destination corridors",
+          "od_matrix_daily", ["pickup_zone_id", "dropoff_zone_id"],
+          ["trips", "gross_revenue", "km_total"],
+          "Every corridor the fleet actually drove, busiest first - directly "
+          "comparable against the real TLC od_pair_calibration the demand "
+          "generator was built from. The row limit clears the 69,169 pairs "
+          "263 zones allow, so nothing is ever cut.",
+          sort_by="trips", row_limit=OD_PAIR_CEILING + 1),
     table("funnel-by-zone", "The matching funnel, by zone",
           "dispatch_funnel_hourly", ["pickup_zone_id"],
           ["offers_wasted", "offers", "offers_per_match", "acceptance_rate",
@@ -951,7 +895,7 @@ MARKETPLACE = dashboard(
         # tables did - it was sharing a row at half width and showing eight
         # of a hundred rows.
         [("utilization-trend", 12, 45)],
-        [("od-leaderboard", 12, HEATMAP_HEIGHT)],
+        [("od-leaderboard", 12, TABLE_HEIGHT)],
     ],
 )
 
