@@ -49,20 +49,46 @@ The thirteen steps are worked in four blocks, not one at a time. Steps
 that read the same stack are verified on one bring-up rather than on one
 each - eight remaining steps become four cycles.
 
-| Block | Steps | Where | Why they combine |
-| --- | --- | --- | --- |
-| A | 6 (measure) + 7 | Dionysus, one bring-up | Both read the same live stack: measure bytes/row while the quality bars run |
-| B | 8 + 9 + 10 | Dionysus, one bring-up | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
-| C | 11 | Local | Contract and documentation. No server time |
-| D | 12 + 13 | Dionysus | The staged scale-up running straight into the full-scale run |
+| Block | Steps | Where | Status | Why they combine |
+| --- | --- | --- | --- | --- |
+| A | 6 (measure) + 7 | Dionysus, one bring-up | **DONE** | Both read the same live stack: measure bytes/row while the quality bars run |
+| B | 8 + 9 + 10 | Dionysus, one bring-up | **DONE 2026-10-02** | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
+| D1 | 12 | Dionysus, two bring-ups | next | The staged scale-up: ~10% of target fleet, then ~50% |
+| C | 11 | Local | after D1 | Contract and documentation. No server time |
+| D2 | 13 | Dionysus, one bring-up | last | The full-scale final run |
 
-Step 11 is deliberately placed between B and D rather than last: writing
-down what the contract actually is, immediately before the full-scale
-run, is when the last drift gets caught.
+**Re-ordered 2026-10-03: step 12 now runs BEFORE step 11.** The original
+order was A, B, C, D with 11 sitting between B and D. Three reasons it
+changed, and one reason step 13 did not move with it:
 
-**Blocks A to C run at dev scale, and deliberately.** Correctness is what
-they test, and correctness is scale-independent. Four things are not, and
-must never be "fixed" on the strength of a dev-scale reading:
+- **Step 12 produces the facts step 11 is supposed to write down.** The
+  staged scale-up settles the disk projection, city-service lag at real
+  volume, and the surge question - seed ratio or the 0.6 threshold.
+  Writing the contract first means writing it twice.
+- **Step 11 adds no verification strength, so nothing is lost by moving
+  it.** Its deliverables are ASSESSMENT.md bars, a test that reads those
+  bars back out of the sources, and a generated ERD. None is a new runtime
+  check: `verify-ksqldb`, `verify-superset` and the fifteen quality bars
+  already exist and already run. Step 11 documents instruments and guards
+  the document against drift.
+- **Step 12's own Done-when never mentions ASSESSMENT.md.** It is the
+  verify suite, no OOM, lag recovering, disk within quota. All of those
+  exist today.
+- **But step 13's Done-when IS ASSESSMENT.md §9**, which is that file's
+  definition of version 1 being closed. Run it before step 11 and the
+  final test has no complete definition of done. So 13 stays after 11.
+
+The original rationale is better served, not violated: it said the
+contract should be written down *immediately before the full-scale run*,
+and in this order step 11 still is - it has simply gained the step-12
+measurements to write about. Step 11b also stops being a judgement call,
+because the 50% stop measures what a week of idle telemetry really costs.
+
+**Blocks A, B and C run at dev scale, and deliberately.** Correctness is
+what they test, and correctness is scale-independent.
+
+Four things are not scale-independent, and must never be "fixed" on the
+strength of a dev-scale reading:
 
 - **fulfilment rate and surge** - wrong at dev scale because the
   supply/demand ratio is wrong, not because the code is. See step 12.
@@ -79,6 +105,84 @@ STRUCTURAL, not distributional. "Zero orphans", "zero negative lags",
 scale. "Fulfilment above 0.8" passes at one scale and fails at the other,
 which makes it a bar that measures the seed settings rather than the
 pipeline.
+
+---
+
+## Block B closed — 2026-10-02, measured on one clean bring-up
+
+`make destroy` + `init` + `up` + `etcd-existing`, then five hours of live
+traffic before the evaluation ran. Everything below came off that one
+stack, not from separate runs.
+
+| What | Measured | Bar |
+| --- | --- | --- |
+| Quality bars | **15 of 15 pass** | all structural, scale-independent |
+| ClickHouse | 46 tables, `absolute_delay` **0** on all 17 local | at or near 0 |
+| ksqlDB | **7 streams + 1 table**, query RUNNING, 3 client settings set | every declared object |
+| Grafana | **46 panels** all returned rows | every provisioned panel runs |
+| Superset | **20 charts** match files and return rows, 6 datasets | declared = held, every metric runs |
+| Uniqueness | `driver_positions` 11,739,735 rows = 11,739,735 event ids, 0 blank | exact |
+| Capacity | **69.28 GiB/node of 112 GiB = 61.9%**, verdict ok | 30% headroom |
+| Fulfilment | **0.772** (7,034 completed of 9,106 ended) | not a bar - see step 12 |
+| `no_driver_found` | **417 of 9,106 = 4.6%**, down from 26% | the tier fix holding |
+| Fleet tiers | `economy 2817, xl 768, premium 415` | 70/20/10 as seeded |
+| Money | take rate 0.23, summed as `Decimal(38,2)` | exact, no float tail |
+
+### What the run found, and what was done about it
+
+- **`make verify-walk` and `make verify-sample` died with `uv: command not
+  found`.** The only two targets here that run pytest directly rather than
+  driving Docker, and nothing checked the tool existed. Dionysus
+  deliberately has no `uv`. Guarded with a message naming them as
+  workstation targets - NOT added to `preflight`, which runs inside
+  `make up` on the host and would then fail a bring-up over an unused
+  tool.
+- **`verify-data`'s trip-count hint contradicted the archiver.** It said
+  trips should be roughly HISTORY_DAYS x HISTORY_TRIPS_PER_DAY. Measured:
+  PostgreSQL held 8,199 with the oldest `ended_at` 24.2 hours old against
+  `ARCHIVER_RETENTION_HOURS=24`, while `trip_events` held 9,457. Postgres
+  is the operating window, the warehouse is the history, and the hint
+  read a working archiver as missing data.
+- **Step 11c blamed the wrong thing for flat surge.** Corrected in place -
+  it is the seed ratio and the 0.6 threshold, not consumer lag.
+- **Part D of the earlier plan round was formally dropped.** Recorded
+  below under Closed by decision.
+- **Superset's partial-data notice is gone for good.** The OD chart was a
+  top-100 table that warned on every load. It was tried as a heatmap -
+  5,614 filled cells in a 69,169-cell grid at this seed, 92% empty, 3px a
+  cell, unreadable - and reverted to a paginated table carrying a row
+  limit of 69,170. That clears the 69,169 pairs 263 TLC zones allow, so
+  the rows returned can never reach the limit at any scale.
+- **`verify-assets` was proving less than it claimed.** It rebuilds each
+  chart's query from groupby, x_axis, the window and row_limit and nothing
+  else, so it reported 6,035 rows for a chart carrying `series_limit=25` -
+  the unnarrowed count. It now refuses any chart setting a narrowing
+  parameter it does not apply, because a query modelled wrongly is worse
+  than one skipped. **Still unmodelled: `ORDER BY`.** The sampled row is
+  therefore not the top row, and the sort is checked statically instead.
+  Worth closing in step 11.
+
+### Noise confirmed as noise
+
+- **ClickHouse code 210 on all four nodes**, 27 times in five hours.
+  `172.18.0.27:8123 -> 172.18.0.15`, logged by `StaticRequestHandler`,
+  which is what serves `/ping` - and `/ping` is what HAProxy health-checks
+  (`haproxy.cfg.template:218`). Health-check resets, roughly 0.3% of
+  checks.
+- **Consumer lag oscillates, it does not grow.** Two samples ten minutes
+  apart moved in opposite directions: city-service 2,208 -> 14,921,
+  clickhouse-sink 5,051 -> 1,168. Both batch, so lag spikes after a
+  produce burst and drains. A single lag sample proves nothing about
+  either, which is why the earlier "4x increase" reading was withdrawn.
+
+### Open decisions carried into step 12
+
+| Decision | Blocks | Where it is written |
+| --- | --- | --- |
+| Surge: seed ratio, or the 0.6 threshold | step 12 | step 11c |
+| city-service lag: CPU, instances, or score on a sample | step 12 | step 11c |
+| Kafka quota, 96 GB/broker against ~842 MB measured | step 12 | step 6 |
+| Seed idle telemetry, or label the panels | step 13 | step 11b |
 
 ---
 
@@ -99,25 +203,52 @@ indexes. The warehouse has trip_events, driver/rider positions, hotspot and
 segment-traffic history, plus hourly/daily rollups and AggregatingMergeTree
 percentile/uniq views, all Distributed over `_local`.
 
-**The real gaps are these, and steps 2–11 close them.** Step 2 is now
-done and `docs/schema-review.md` argues each schema gap against a real
-source; the finding ids below point into it.
+**The real gaps were these.** Step 2 is done and `docs/schema-review.md`
+argues each against a real source; the finding ids point into it. Status
+reviewed 2026-10-03 against the shipped files - **eleven of thirteen are
+closed, two are not**, and the two are called out below the table because
+neither had its status written down anywhere.
 
-| Gap | Why it matters |
-| --- | --- |
-| Four `trips` columns never leave Postgres (F1) | `driver_payout`, `payment_method`, `cancellation_reason`, `requested_vehicle_type` are in no `.avsc` and no ClickHouse DDL — so take rate, payment mix, why trips cancel, and anything per tier are unanswerable in the only store Superset may read |
-| Money is `Float64` in ClickHouse (F3a) | Float addition is not associative and SummingMergeTree sums `revenue` during background merges in an uncontrolled order, so the total depends on merge history — measured at ~1e-9 relative, so sub-cent, but it never reconciles against Postgres's `numeric(10,2)` and carries a float tail onto every dashboard |
-| No `event_id` on any event (F6) | A replayed sink batch is indistinguishable from a genuine repeated status, and `trip_events_local` is a plain ReplicatedMergeTree that will not dedupe it. Also fails our own §3.3 correlation-id rule |
-| Every rollup filters `completed` (F7) | Cancellations and unmatched requests appear in no aggregate we produce — fulfilment rate, the most basic health metric, needs a self-join over a year of raw events |
-| No driver-arrival timestamp (F2) | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
-| A driver can never decline (F5) | Dispatch assigns directly, so acceptance rate, offers per match and time-to-match do not exist. Real platforms offer with a deadline and re-offer on decline. **Decided 2026-09-25: in scope, in full** |
-| Payments are two columns on `trips` (F4) | Real platforms model payment as an append-only record (method, amount, status, refunds, adjustments); ours cannot express a failed or refunded charge, and overwriting the column would destroy the history |
-| `trips` is one unpartitioned table | At 7 days x 655k/day the archiver deletes by row instead of dropping a partition — bloat and vacuum pressure at exactly the scale we intend to prove |
-| `driver_positions`: monthly partition, 3-day TTL | TTL deletes inside parts rather than dropping partitions; at full-fleet tick rate this is the heaviest table in the stack |
-| ksqlDB is empty | Deployed and authenticated, zero streams registered — DBeaver connects and correctly shows nothing. The only bar today is "server RUNNING" |
-| Superset has no dashboards | `g-infra-superset/init/` registers connections only. The analytical-BI tier is an empty shell |
-| No marketplace KPIs | Fulfillment rate, cancellation rate, rider wait time, take rate, surge effectiveness — none are panels today |
-| Generation quality is unscored | Bars prove rows exist and align; nothing scores distributions, null rates, or fidelity to the TLC calibration |
+| Gap | Status | Why it mattered |
+| --- | --- | --- |
+| Four `trips` columns never leave Postgres (F1) | **closed** steps 4–5 | `driver_payout`, `payment_method`, `cancellation_reason`, `requested_vehicle_type` are in no `.avsc` and no ClickHouse DDL — so take rate, payment mix, why trips cancel, and anything per tier are unanswerable in the only store Superset may read |
+| Money is `Float64` in ClickHouse (F3a) | **closed** step 3 | Float addition is not associative and SummingMergeTree sums `revenue` during background merges in an uncontrolled order, so the total depends on merge history — measured at ~1e-9 relative, so sub-cent, but it never reconciles against Postgres's `numeric(10,2)` and carries a float tail onto every dashboard |
+| No `event_id` on any event (F6) | **closed** step 4 | A replayed sink batch is indistinguishable from a genuine repeated status, and `trip_events_local` is a plain ReplicatedMergeTree that will not dedupe it. Also fails our own §3.3 correlation-id rule |
+| Every rollup filters `completed` (F7) | **closed** step 4 | Cancellations and unmatched requests appear in no aggregate we produce — fulfilment rate, the most basic health metric, needs a self-join over a year of raw events |
+| No driver-arrival timestamp (F2) | **closed** `013_arrived.sql` | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
+| A driver can never decline (F5) | **closed** `015_dispatch_offers.sql` | Dispatch assigns directly, so acceptance rate, offers per match and time-to-match do not exist. Real platforms offer with a deadline and re-offer on decline. **Decided 2026-09-25: in scope, in full** |
+| Payments are two columns on `trips` (F4) | **OPEN** — see below | Real platforms model payment as an append-only record (method, amount, status, refunds, adjustments); ours cannot express a failed or refunded charge, and overwriting the column would destroy the history |
+| `trips` is one unpartitioned table | **OPEN** — see below | At 7 days x 655k/day the archiver deletes by row instead of dropping a partition — bloat and vacuum pressure at exactly the scale we intend to prove |
+| `driver_positions`: monthly partition, 3-day TTL | **closed** step 6 | TTL deletes inside parts rather than dropping partitions; at full-fleet tick rate this is the heaviest table in the stack |
+| ksqlDB is empty | **closed** step 8 | Deployed and authenticated, zero streams registered — DBeaver connects and correctly shows nothing. The only bar today is "server RUNNING" |
+| Superset has no dashboards | **closed** step 10 | `g-infra-superset/init/` registers connections only. The analytical-BI tier is an empty shell |
+| No marketplace KPIs | **closed** step 9 | Fulfillment rate, cancellation rate, rider wait time, take rate, surge effectiveness — none are panels today |
+| Generation quality is unscored | **closed** step 7 | Bars prove rows exist and align; nothing scores distributions, null rates, or fidelity to the TLC calibration |
+
+### The two that are still open
+
+**F4 — payments are still two columns on `trips`.** `011_payout_and_payment.sql`
+added `driver_payout` and `payment_method`, which is exactly the shape the
+gap called insufficient: a failed or refunded charge cannot be expressed,
+and overwriting the column destroys the history. This is not an oversight -
+step 3 put `payments` and `driver_earnings` in **Tier 2, "if steps 3-5 come
+in under budget"**, and of Tier 2 only `dispatch_offers` was built. But the
+tier was never closed out, so the gap has sat here looking open with no
+decision beside it. **Decide in step 11**: build it, or move it to
+FUTURE_ROADMAP with the reason. It is not a scale risk either way.
+
+**`trips` is still one unpartitioned table, and this one IS a scale risk.**
+No migration carries a `PARTITION BY`, and no step in this file records a
+decision about it. The gap's own words: at 7 days x 655k/day the archiver
+deletes by row rather than dropping a partition - bloat and vacuum pressure
+at exactly the scale step 13 intends to prove. `driver_positions` got
+daily partitions in step 6 for precisely this reason; `trips` did not.
+
+At the dev seed it is invisible: the archiver prunes ~50 rows a tick and
+PostgreSQL sits at 128 MB. At full scale it prunes 655,000 rows a day from
+a table holding 4.6M. **Watch it at both step 12 stops** - prune duration
+per tick and table bloat - and decide there whether `trips` needs range
+partitioning on `ended_at` before step 13 runs.
 
 ---
 
@@ -842,6 +973,11 @@ returns rows.
 
 ## Step 11 — Contract and documentation
 
+NOT STARTED. **Runs after step 12, not before** - see the re-ordering note
+under Working blocks. Everything below is unchanged except its place in
+the queue; the step-12 measurements are inputs to it rather than
+something it has to predict.
+
 - ASSESSMENT.md: bars for ksqlDB streams, Superset assets, the step-7
   quality numbers, and any new closed set — each with instrument, pass,
   fail.
@@ -1031,6 +1167,19 @@ full `destroy` + `up`, fixing what breaks before moving on:
 Watch at each stop: bootstrap wall-clock, Postgres memory (the pgr_ksp
 OOM history), consumer lag returning to zero, ClickHouse disk growth vs
 quota, and `verify-positions` staying at zeros.
+
+**Plus two things this step now owns**, both found 2026-10-03:
+
+- **`trips` is unpartitioned and the archiver deletes by row.** Measure
+  prune duration per tick and table bloat at both stops. `driver_positions`
+  got daily partitions in step 6 for this exact reason and `trips` did not.
+  Decide here whether it needs range partitioning on `ended_at` before
+  step 13.
+- **Surge cannot fire, and scale makes it worse.** See the correction in
+  step 11c. Measured now: ~155 drivers per request-per-minute; step 13's
+  seed gives ~233. Decide here whether the seed ratio moves or the 0.6
+  threshold does, because otherwise "Does surge lift acceptance" is a
+  one-band chart at every scale this project will ever run.
 
 **Test:** DIONYSUS.
 
