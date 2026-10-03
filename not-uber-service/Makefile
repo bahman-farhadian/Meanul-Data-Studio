@@ -56,6 +56,23 @@ include o-service-archiver/Makefile
 # Superset have a 40-60s start_period of their own, so this is generous.
 WAIT_TIMEOUT ?= 420
 
+# How long `make wait-live` will wait for driver-service to put the fleet on
+# the road, and how long it then lets live trips run before the checks look.
+#
+# Measured at the step-12 10% rung (10,600 drivers): driver-service took 17
+# minutes to reach its first tick - 5m waiting for cache-updater, 4m30s
+# building road point pools, then 7m39s computing one pgRouting path per
+# online driver. Nothing reaches driver_location in that window, so a
+# `make verify` run inside it reports a stack that is merely starting as a
+# stack that is broken. That is exactly what happened.
+#
+# WAIT_LIVE_SETTLE is about the checks, not the service: verify-positions
+# reads trips that ENDED in the last hour and a trip takes about nine
+# minutes, so the fleet being online is not the same as there being
+# anything to measure.
+WAIT_LIVE_TIMEOUT ?= 3600
+WAIT_LIVE_SETTLE  ?= 900
+
 # How far back `make errors` reads each container's logs. Every service logs
 # something transient in its first few seconds (a client probing before it is
 # ready, a watch reconnecting while a cluster forms) and a container that
@@ -640,6 +657,31 @@ verify-sample: _need-uv ## Tiny local PG/Redis/Kafka/CH sample: on-network route
 	@cd z-lib/nus-common && uv sync --extra test >/dev/null
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
 		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-config/tests
+
+.PHONY: wait-live
+wait-live: ## Block until the fleet is on the road AND live trips have ended
+	$(call say,Waiting for the live marketplace)
+	@printf "  driver-service start-up is the critical path, and it grows with the\n"
+	@printf "  fleet: it waits for cache-updater, builds the road point pools, reads\n"
+	@printf "  the roster, then computes one pgRouting path per online driver.\n\n"
+	@deadline=$$(( $$(date +%s) + $(WAIT_LIVE_TIMEOUT) )); \
+	while ! docker logs driver-service 2>&1 | grep -q '"message": "tick"'; do \
+		if [ $$(date +%s) -ge $$deadline ]; then \
+			printf "  $(R)FAIL$(X)    driver-service never reached its first tick in $(WAIT_LIVE_TIMEOUT)s\n"; \
+			printf "  It is not necessarily broken - look at where it stopped:\n"; \
+			printf "    $(C)docker logs driver-service 2>&1 | grep -v 'no street path' | tail -20$(X)\n"; \
+			printf "  The last INFO line names the phase. Raise WAIT_LIVE_TIMEOUT if it\n"; \
+			printf "  is simply still working.\n"; \
+			exit 1; \
+		fi; \
+		sleep 15; \
+	done; \
+	printf "  $(G)ok$(X)      the fleet is on the road\n"
+	@printf "\n  Now letting live trips run and END for $(WAIT_LIVE_SETTLE)s. A trip takes about\n"
+	@printf "  nine minutes, and verify-positions only reads trips that already ended,\n"
+	@printf "  so an online fleet is not yet something the checks can measure.\n"
+	@sleep $(WAIT_LIVE_SETTLE)
+	$(call ok,live traffic has had time to complete trips)
 
 .PHONY: verify-positions
 verify-positions: ## Live positions follow streets, not the chord between two points
