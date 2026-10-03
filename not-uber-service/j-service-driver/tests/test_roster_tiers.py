@@ -20,7 +20,9 @@ import random
 
 from nus_common import redis_client
 
-from driver_service.__main__ import cache_counts, load_roster, settled_caches
+from driver_service.__main__ import (
+    cache_counts, load_roster, routing_workers, settled_caches,
+)
 
 
 class FakeRedis:
@@ -120,3 +122,32 @@ def test_the_gate_accepts_a_complete_settled_cache() -> None:
     check = settled_caches(redis)
     assert check() is False, "the first poll has nothing to compare against"
     assert check() is True
+
+
+def test_routing_workers_follow_the_pool_rather_than_a_hardcoded_four(monkeypatch) -> None:
+    """The hardcoded 4 cost six times the wall clock it needed to.
+
+    _follow_jobs ran four threads, with a comment citing "the default
+    PG_POOL_SIZE of 5". That default lives in postgres.py; the value this
+    stack deploys is 24, so the pool was never the constraint - the service
+    throttled itself to a sixth of its own read connections.
+
+    Measured at the step-12 10% rung: 6,305 startup paths took 7m39s on
+    four threads, inside a 17-minute startup during which the live
+    marketplace produces nothing at all. At full scale that phase is ten
+    times larger.
+
+    Under the pool, never at it: drive_path is not the only reader, and a
+    worker count equal to the pool trades a slow startup for a stalled tick.
+    """
+    for pool, expected in ((5, 4), (8, 4), (24, 20), (64, 60)):
+        monkeypatch.setenv("PG_POOL_SIZE", str(pool))
+        monkeypatch.delenv("DRIVER_ROUTING_WORKERS", raising=False)
+        assert routing_workers() == expected, (pool, routing_workers(), expected)
+
+    monkeypatch.setenv("PG_POOL_SIZE", "24")
+    monkeypatch.delenv("DRIVER_ROUTING_WORKERS", raising=False)
+    assert routing_workers() < 24, "nothing left in the pool for the rest of the service"
+
+    monkeypatch.setenv("DRIVER_ROUTING_WORKERS", "12")
+    assert routing_workers() == 12, "an explicit override is ignored"

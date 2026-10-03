@@ -232,12 +232,36 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
     return handled
 
 
+def routing_workers() -> int:
+    """How many threads compute pgRouting paths at once.
+
+    This was hardcoded at 4, with a comment tying it to "the default
+    PG_POOL_SIZE of 5". That default is the one in postgres.py; the value
+    this stack actually deploys is 24, so the pool was never the
+    constraint - the service was using a sixth of its own read connections
+    and paying six times the wall-clock for it.
+
+    Measured at the step-12 10% rung: 6,305 initial idle paths took
+    7m39s on four threads, and that phase sits on the critical path
+    before a single position is sent. Startup there was 17 minutes end to
+    end, of which this was the largest slice.
+
+    Still kept under the pool with room to spare - drive_path is not the
+    only reader, and exhausting the pool would stall the tick rather than
+    speed it up. DRIVER_ROUTING_WORKERS overrides it outright when a run
+    wants to tune the two together.
+    """
+    explicit = config.integer("DRIVER_ROUTING_WORKERS", 0)
+    if explicit > 0:
+        return explicit
+    return max(4, config.integer("PG_POOL_SIZE", 5) - 4)
+
+
 def _follow_jobs(jobs: list[tuple[Driver, tuple[float, float]]], period: str) -> None:
     """Compute pgRouting paths for (driver, dest) pairs and install them.
 
-    Four workers, matching the default PG_POOL_SIZE of 5 so the replica
-    pool is not exhausted. Sequential pgr_ksp for hundreds of idle
-    retargets would blow the tick.
+    Threads come from routing_workers(), which follows PG_POOL_SIZE.
+    Sequential pgr_ksp for thousands of idle retargets would blow the tick.
     """
     if not jobs:
         return
@@ -249,7 +273,7 @@ def _follow_jobs(jobs: list[tuple[Driver, tuple[float, float]]], period: str) ->
         )
 
     by_id = {driver.driver_id: driver for driver, _dest in jobs}
-    workers = min(4, len(jobs))
+    workers = min(routing_workers(), len(jobs))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for driver_id, path in pool.map(_one, jobs):
             by_id[driver_id].follow(path)
