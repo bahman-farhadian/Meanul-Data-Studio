@@ -90,18 +90,40 @@ def main() -> int:
         while not shutdown.requested:
             started = time.monotonic()
             pruned_this_tick = 0
+            # for/else: the else runs only when the loop was NOT broken out
+            # of, meaning every batch came back full and there is very
+            # likely more waiting. That is the signal that matters at scale
+            # - "pruned 100,000" reads the same whether the backlog is clear
+            # or growing, and only this tells the two apart.
+            hit_ceiling = False
             for _ in range(max_batches_per_tick):
                 n = _prune_batch(retention, batch_size)
                 pruned_this_tick += n
                 if n < batch_size:
                     break
+            else:
+                hit_ceiling = True
             pruned_total += pruned_this_tick
+            elapsed = time.monotonic() - started
             if pruned_this_tick:
+                # seconds is on the line because trips is one unpartitioned
+                # table: the archiver deletes by row, so prune cost rises
+                # with volume rather than staying flat the way a partition
+                # drop would. Step 12 measures exactly this, and it cannot
+                # be read off a log line that does not carry it.
                 log.info(
                     "trips pruned",
-                    extra={"this_tick": pruned_this_tick, "total": pruned_total, "retention": retention},
+                    extra={"this_tick": pruned_this_tick, "total": pruned_total,
+                           "seconds": round(elapsed, 2), "hit_ceiling": hit_ceiling,
+                           "retention": retention},
                 )
-            elapsed = time.monotonic() - started
+            if hit_ceiling:
+                log.warning(
+                    "prune ceiling reached - a backlog is building",
+                    extra={"this_tick": pruned_this_tick, "seconds": round(elapsed, 2),
+                           "max_batches_per_tick": max_batches_per_tick,
+                           "batch_size": batch_size},
+                )
             if shutdown.wait(max(tick_seconds - elapsed, 0.0)):
                 break
     finally:
