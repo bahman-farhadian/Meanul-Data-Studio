@@ -594,6 +594,13 @@ TLC_ZONES = 263
 OD_PAIR_CEILING = TLC_ZONES * TLC_ZONES
 HEATMAP_HEIGHT = 100
 
+# How many zones the OD grid draws per axis. All 263 is 3px a cell in a
+# full-width panel and 92% empty at the dev seed; 25 is ~35px a cell and
+# covers where the traffic actually is. This is a series_limit, NOT a row
+# limit - the two are different mechanisms, and only the row limit decides
+# whether Superset calls the result partial.
+OD_TOP_ZONES = 25
+
 # Superset needs to be told WHICH column the time range applies to; without
 # it the range is silently a no-op. It is the dataset's own main_dttm_col,
 # read from the dataset rather than repeated, so the two cannot disagree.
@@ -692,7 +699,7 @@ def table(slug, name, dataset_name, groupby, metrics, description, *,
 
 
 def heatmap(slug, name, dataset_name, x, y, metric, description, *,
-            row_limit, fmt=",.0f"):
+            row_limit, top_n=None, scheme="dark_blue", fmt=",.0f"):
     """A grid of x against y, with colour carrying the magnitude.
 
     WHY THIS IS NOT A TABLE. It replaced a top-100 list, and a top-N list
@@ -715,9 +722,19 @@ def heatmap(slug, name, dataset_name, x, y, metric, description, *,
 
     show_values stays off deliberately: thousands of cells with a number in
     each is a wall of digits, and the colour already carries the comparison.
-    linear_color_scheme is left unset so Superset applies its own default -
-    this file pins exact colours where it needs them (see label_colors) and
-    does not name a scheme it has not seen this build offer.
+
+    WHY top_n EXISTS. The first version drew all 263 zones against all 263,
+    and at the dev seed that is 5,614 filled cells in a 69,169-cell grid -
+    92% empty, 3px per cell, and a linear ramp on a distribution where the
+    typical pair has one trip and a few have dozens. It rendered as static.
+    series_limit takes the busiest groups through a subquery instead, which
+    is separate from row_limit, so the unreachable-limit guarantee below
+    still holds while the grid gets dense enough to read.
+
+    WHY dark_blue. One hue, light to dark, which is the family a count
+    belongs in - a multi-hue ramp invents boundaries the data does not have.
+    The id is read from this build's own bundle, not guessed: it ships as
+    {id:"dark_blue",label:"dark blues"}.
     """
     return chart(
         slug, name=name, viz="heatmap_v2", dataset_name=dataset_name,
@@ -730,6 +747,9 @@ def heatmap(slug, name, dataset_name, x, y, metric, description, *,
             "granularity_sqla": DTTM[dataset_name],
             "time_range": TIME_RANGE,
             "row_limit": row_limit,
+            "series_limit": top_n or 0,
+            "series_limit_metric": metric if top_n else None,
+            "linear_color_scheme": scheme,
             "normalize_across": "heatmap",
             "show_legend": True,
             "show_values": False,
@@ -840,7 +860,7 @@ CHARTS = [
             "limit is above 263 x 263 = 69,169 possible pairs, a ceiling TLC's "
             "own zone count fixes, so nothing is ever cut and no partial-data "
             "notice can appear at any scale.",
-            row_limit=OD_PAIR_CEILING + 1),
+            row_limit=OD_PAIR_CEILING + 1, top_n=OD_TOP_ZONES),
     table("funnel-by-zone", "The matching funnel, by zone",
           "dispatch_funnel_hourly", ["pickup_zone_id"],
           ["offers_wasted", "offers", "offers_per_match", "acceptance_rate",

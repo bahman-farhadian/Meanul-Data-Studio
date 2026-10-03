@@ -8,4 +8,4 @@ cache_timeout: null
 certified_by: null
 certification_details: null
 query_context: null
-params: {"x_axis": "pickup_zone_id", "groupby": ["dropoff_zone_id"], "metric": "trips", "adhoc_filters": [], "granularity_sqla": "day", "time_range": "DATEADD(DATETIME('today'), -7, day) : now", "row_limit": 69170, "normalize_across": "heatmap", "show_legend": true, "show_values": false, "y_axis_format": ",.0f", "viz_type": "heatmap_v2", "datasource": "1__table"}
+params: {"x_axis": "pickup_zone_id", "groupby": ["dropoff_zone_id"], "metric": "trips", "adhoc_filters": [], "granularity_sqla": "day", "time_range": "DATEADD(DATETIME('today'), -7, day) : now", "row_limit": 69170, "series_limit": 25, "series_limit_metric": "trips", "linear_color_scheme": "dark_blue", "normalize_across": "heatmap", "show_legend": true, "show_values": false, "y_axis_format": ",.0f", "viz_type": "heatmap_v2", "datasource": "1__table"}
