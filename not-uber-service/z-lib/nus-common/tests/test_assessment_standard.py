@@ -834,3 +834,40 @@ def test_the_two_bars_that_learned_this_still_carry_it():
     assert "NOT IN" in ctes["facts_missing"], (
         "Q13 is a subtraction of two counts again; it needs to name the gap"
     )
+
+
+def test_a_trip_id_has_enough_room_for_a_full_scale_day() -> None:
+    """The suffix is a birthday problem over ONE DAY's trips, not the seed.
+
+    Eight hex digits is 2^32. At the 655,000 trips a day .env.example
+    targets, N^2/2M is 50 expected collisions EVERY DAY - a certainty, not
+    a risk. It cost a 141-minute bootstrap at the 50% scale rung: two trips
+    held one id, so one trip appeared to accept two offers and Postgres
+    refused it on dispatch_offers_one_accepted_idx.
+
+    The width cannot grow - trip_id is FixedString(21) in six ClickHouse
+    columns - so the alphabet carries the whole margin, and this is the bar
+    it has to clear.
+    """
+    from nus_common import ids
+
+    space = len(ids._TRIP_ID_ALPHABET) ** ids._TRIP_ID_SUFFIX_LENGTH
+    per_day = 655_000
+    expected = per_day ** 2 / (2 * space)
+    assert expected < 0.01, (
+        f"{expected:.3f} expected id collisions per day at {per_day:,} trips - "
+        f"a suffix space of {space:,} is not enough for full scale"
+    )
+
+
+def test_a_trip_id_is_still_exactly_the_width_the_warehouse_stores() -> None:
+    """FixedString rejects a wrong-length id outright; it does not truncate."""
+    import random
+    from datetime import datetime
+
+    from nus_common import ids
+
+    for seed in range(200):
+        made = ids.new_trip_id(datetime(2026, 10, 1), random.Random(seed))
+        assert len(made) == ids.TRIP_ID_LENGTH, made
+        assert made.startswith("trp-20261001-"), made

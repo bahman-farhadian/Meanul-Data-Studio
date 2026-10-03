@@ -39,6 +39,26 @@ MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 log = get_logger(__name__)
 
 
+def _duplicate_trip_ids(trip_rows: list[dict]) -> list[str]:
+    """Trip ids minted more than once in one generated week.
+
+    Ids carry the request date and eight random characters, so collisions
+    are a birthday problem over one day's trips rather than over the whole
+    seed. At eight HEX digits that was 12.5 expected collisions at 327,500
+    trips a day and 50 at full scale; see nus_common.ids for why the
+    alphabet changed. This stays as the backstop, because the cost of
+    finding out late is measured in hours.
+    """
+    seen: set[str] = set()
+    duplicates: list[str] = []
+    for row in trip_rows:
+        trip_id = row["trip_id"]
+        if trip_id in seen:
+            duplicates.append(trip_id)
+        seen.add(trip_id)
+    return duplicates
+
+
 def main() -> int:
     setup_logging("bootstrap")
     settings = settings_module.load()
@@ -82,6 +102,21 @@ def main() -> int:
 
     # --- 7. a week of history, routed for real ---------------------------
     week = history.generate(settings)
+    # Before a single write. Generation is the expensive half - 141 minutes
+    # at the 50% rung - and a duplicate id used to surface much later, as a
+    # UniqueViolation on dispatch_offers_one_accepted_idx, with trips
+    # already stored and the constraint name saying nothing about the cause.
+    # Two trips had been minted with one id, so one trip looked like it had
+    # accepted two offers. Checked here so the failure is seconds old, names
+    # the real thing, and leaves nothing half-written to clean up.
+    duplicates = _duplicate_trip_ids(week.trip_rows)
+    if duplicates:
+        log.error(
+            "generated week contains duplicate trip ids; refusing to store it",
+            extra={"duplicates": len(duplicates), "examples": duplicates[:5],
+                   "trips": len(week.trip_rows)},
+        )
+        return 1
     history.store_trips(week.trip_rows)
     # After the trips: every offer references one, and the foreign key is
     # what stops a chain existing for a trip that does not.

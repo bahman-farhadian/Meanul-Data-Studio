@@ -47,13 +47,40 @@ def passenger_id(number: int) -> str:
     return f"psg-{number:07d}"
 
 
+# 62 symbols rather than 16, over the same eight characters. The width is
+# NOT a style choice: trip_id is FixedString(21) in six ClickHouse columns,
+# so eight is all the room there is without a schema migration, and the
+# alphabet is the only lever that is not one.
+#
+# Eight HEX digits is 32 bits - 4.29 billion ids per day - which sounds
+# ample and is not. Ids are scoped per day, so the birthday bound applies
+# to one day's trips: N^2/2M expected collisions gives 0.5 at 65,500 trips
+# a day, 12.5 at 327,500, and 50 at the 655,000 this project targets. It
+# was never a remote risk at full scale, it was a certainty.
+#
+# It cost a 141-minute bootstrap at the 50% scale rung, failing on
+# dispatch_offers_one_accepted_idx: two different trips held one id, so one
+# trip appeared to have accepted two offers. The 10% rung before it had a
+# 39% chance of the same failure and simply got lucky.
+#
+# Base62 over eight characters is 62^8 = 2.18e14, about 50,000x the space,
+# which puts a whole seven-day full-scale seed under one percent.
+_TRIP_ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+_TRIP_ID_SUFFIX_LENGTH = 8
+
+
 def new_trip_id(requested_at: datetime, rng: random.Random | None = None) -> str:
-    """trp-20250824-a1b2c3d4: the request date plus 8 random hex digits.
+    """trp-20250824-a1B2c3D4: the request date plus 8 base62 characters.
 
     `rng` is optional and exists for bootstrap's seeded history, where the
     same settings must produce the same ids on every run. A live service
     minting a real trip id should call this with no `rng` - it then draws
     from the process-wide random module, which is what a live id should do.
+
+    choices(), not getrandbits() reduced modulo the alphabet: 2^k is never
+    a multiple of 62, so the modulo would bias the low symbols and quietly
+    give back some of the space this exists to buy.
     """
     source = rng if rng is not None else random
-    return f"trp-{requested_at.strftime('%Y%m%d')}-{source.getrandbits(32):08x}"
+    suffix = "".join(source.choices(_TRIP_ID_ALPHABET, k=_TRIP_ID_SUFFIX_LENGTH))
+    return f"trp-{requested_at.strftime('%Y%m%d')}-{suffix}"
