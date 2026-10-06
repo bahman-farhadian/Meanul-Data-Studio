@@ -369,8 +369,23 @@ def nearest_road_point(lat: float, lon: float, max_snap_km: float | None = None)
     """
     limit_km = max_snap_km if max_snap_km is not None else config.number("MAX_SNAP_KM", 0.5)
 
-    with postgres.read_connection() as conn:
-        row = postgres.fetch_one(conn, NEAREST_ROAD_POINT_SQL, {"lat": lat, "lon": lon})
+    # route() snaps both ends before the pgr_ksp retry. A replica cancel
+    # here used to kill driver-service; the ksp retry never saw it.
+    # Exhausting the retry is "no point" for this lookup, not a process exit.
+    try:
+        row = _query_with_retry(
+            postgres.fetch_one,
+            NEAREST_ROAD_POINT_SQL,
+            {"lat": lat, "lon": lon},
+            "nearest road point",
+            lat=lat, lon=lon,
+        )
+    except psycopg.OperationalError as exc:
+        log.error(
+            "nearest road point failed after retries - treating as no point",
+            extra={"lat": lat, "lon": lon, "error": str(exc)},
+        )
+        return None
 
     if not row or row["distance_m"] / 1000.0 > limit_km:
         return None
