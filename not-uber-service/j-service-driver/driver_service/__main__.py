@@ -257,11 +257,39 @@ def routing_workers() -> int:
     return max(4, config.integer("PG_POOL_SIZE", 5) - 4)
 
 
-def _follow_jobs(jobs: list[tuple[Driver, tuple[float, float]]], period: str) -> None:
+def publish_position(producer, driver: Driver, grid: CityGrid, event_time: int) -> None:
+    """One position report. Safe to call before the rest of a path pass ends."""
+    producer.send(
+        key=driver.driver_id,
+        value={
+            "driver_id": driver.driver_id,
+            "trip_id": driver.trip_id,
+            "status": driver.status,
+            "lat": driver.lat,
+            "lon": driver.lon,
+            "heading_deg": float(driver.heading_deg),
+            "speed_kmh": float(driver.speed_kmh),
+            "zone_id": grid.zone_of(driver.lat, driver.lon),
+            "event_time": event_time,
+        },
+    )
+
+
+def _follow_jobs(
+    jobs: list[tuple[Driver, tuple[float, float]]],
+    period: str,
+    on_path=None,
+) -> None:
     """Compute pgRouting paths for (driver, dest) pairs and install them.
 
     Threads come from routing_workers(), which follows PG_POOL_SIZE.
     Sequential pgr_ksp for thousands of idle retargets would blow the tick.
+
+    on_path, when set, runs as each path is installed, before this function
+    returns. Startup uses it to publish a position while later drivers are
+    still being routed. The producer has to exist before the pass starts;
+    creating it afterwards is what froze driver_positions for the whole
+    initial path build on the 50% restart.
     """
     if not jobs:
         return
@@ -276,7 +304,33 @@ def _follow_jobs(jobs: list[tuple[Driver, tuple[float, float]]], period: str) ->
     workers = min(routing_workers(), len(jobs))
     with ThreadPoolExecutor(max_workers=workers) as pool:
         for driver_id, path in pool.map(_one, jobs):
-            by_id[driver_id].follow(path)
+            driver = by_id[driver_id]
+            driver.follow(path)
+            if on_path is not None:
+                on_path(driver)
+
+
+def install_opening_paths(
+    going_online: list[Driver], producer, grid: CityGrid, period: str, rng: random.Random,
+) -> None:
+    """Route the drivers who come online at start, publishing as each path lands.
+
+    The caller has already constructed `producer`. This pass must not be
+    what stands between process start and the first position.
+    """
+    event_time = to_millis(utc_now())
+
+    def _publish(driver: Driver) -> None:
+        publish_position(producer, driver, grid, event_time)
+
+    _follow_jobs(
+        [
+            (driver, routing.pooled_road_point_in_zone(grid, driver.home_zone_id, rng))
+            for driver in going_online
+        ],
+        period,
+        on_path=_publish,
+    )
 
 
 def sync_to_database(drivers: dict[str, Driver]) -> int:
@@ -444,20 +498,25 @@ def main() -> int:
     )
     log.info("fleet loaded", extra={"drivers": len(drivers), "movement": "street-path-vertices"})
 
+    # The producer exists before the opening path pass. That pass used to
+    # finish every idle path and only then construct this, so a restart
+    # published nothing until the whole fleet had a route.
+    producer = AvroTopicProducer(TOPIC, "driver-service")
+    consumer = AvroTopicConsumer(
+        topics=[LIFECYCLE_TOPIC],
+        group_id=config.optional("KAFKA_GROUP_ID", "driver-service"),
+        # Only what happens from now on: old trip news is history, and this
+        # service holds no state that needs rebuilding from it.
+        from_beginning=False,
+    )
+
     # Start with the intended share of the fleet already working, so the
-    # stack does not look empty for the first ten minutes. Paths are the
-    # real street geometry, computed in a small pool so 480 idle drivers
-    # do not each wait on a sequential pgr_ksp.
+    # stack does not look empty for the first ten minutes. Each driver is
+    # published as their path lands; the producer already exists.
     going_online = [d for d in drivers.values() if rng.random() < online_share]
     for driver in going_online:
         driver.set_status(IDLE)
-    _follow_jobs(
-        [
-            (d, routing.pooled_road_point_in_zone(grid, d.home_zone_id, rng))
-            for d in going_online
-        ],
-        day_period(utc_now()),
-    )
+    install_opening_paths(going_online, producer, grid, day_period(utc_now()), rng)
     wp = sorted(len(d.path) for d in going_online)
     log.info(
         "idle paths ready",
@@ -466,15 +525,6 @@ def main() -> int:
             "path_chord": sum(1 for n in wp if n <= 2),
             "path_p50": wp[len(wp) // 2] if wp else 0,
         },
-    )
-
-    producer = AvroTopicProducer(TOPIC, "driver-service")
-    consumer = AvroTopicConsumer(
-        topics=[LIFECYCLE_TOPIC],
-        group_id=config.optional("KAFKA_GROUP_ID", "driver-service"),
-        # Only what happens from now on: old trip news is history, and this
-        # service holds no state that needs rebuilding from it.
-        from_beginning=False,
     )
 
     zone_scores = read_hotspots(redis_demand, zone_ids)
