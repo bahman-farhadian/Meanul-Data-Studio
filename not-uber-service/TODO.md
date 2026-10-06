@@ -53,7 +53,7 @@ each - eight remaining steps become four cycles.
 | --- | --- | --- | --- | --- |
 | A | 6 (measure) + 7 | Dionysus, one bring-up | **DONE** | Both read the same live stack: measure bytes/row while the quality bars run |
 | B | 8 + 9 + 10 | Dionysus, one bring-up | **DONE 2026-10-02** | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
-| D1 | 12 | Dionysus, two bring-ups | next | The staged scale-up: ~10% of target fleet, then ~50% |
+| D1 | 12 | Dionysus, two bring-ups | started, not passed | The staged scale-up: ~10% of target fleet, then ~50%. The 2026-10-06 50% stack is wedged; it is not this row's pass |
 | C | 11 | Local | after D1 | Contract and documentation. No server time |
 | D2 | 13 | Dionysus, one bring-up | last | The full-scale final run |
 
@@ -105,6 +105,282 @@ STRUCTURAL, not distributional. "Zero orphans", "zero negative lags",
 scale. "Fulfilment above 0.8" passes at one scale and fails at the other,
 which makes it a bar that measures the seed settings rather than the
 pipeline.
+
+## Fixes before the next Dionysus run
+
+Reviewed 2026-10-06 against two archives, not against memory. The crash
+archive is `/tmp/nus-crash-readback.tgz`, host Dionysus, sha
+`0a30b9f49b2b029937d55829813732316b654feb`, captured
+`2026-10-06T09:54:51Z`. The earlier scale archive is
+`/tmp/nus-50pct-readback.tgz`, same sha, captured `2026-10-06T09:10:38Z`.
+A number below names which archive it came from. The 50% stack those
+archives describe is not a passed step 12. Do not start the night
+bring-up on the image that produced them.
+
+The bring-up that is already written (destroy, init, up, etcd-existing)
+stays the protocol. These items are what has to be in that image first.
+
+### Must-fix before another bring-up
+
+**1. Dispatch dies on an offer it already wrote, and the partition stays stuck.**
+
+Symptom, crash archive. 129 tracebacks in `dispatch-tracebacks.txt`.
+127 end in `psycopg.errors.UniqueViolation: duplicate key value violates
+unique constraint "dispatch_offers_one_accepted_idx"`. One ends in
+`psycopg.errors.SerializationFailure: canceling statement due to conflict
+with recovery`. The file keeps a stack only for the last traceback, and
+that stack is the `UniqueViolation` in `record_offers`. The dispatch
+`SerializationFailure` has no stack in the extract, so its call site is
+unknown. Item 1 does not cover it. It is not the same bug as the unique
+index, and it is not dismissed. One extractor bucket is the info line
+`"message": "stopped", "matched": 6` — that is `main` returning, not an
+exception.
+`signals.txt` says `dispatch stop signals: 0` and `dispatch unique
+violations: 128`. `inspect-dispatch-service.txt` says `restarts=129`,
+`oom=false`, `exit=0`, `started=2026-10-06T09:53:58Z`,
+`finished=2026-10-06T09:53:57Z`. The captured Postgres tail on `nus-pg-3`
+names the colliding rows `trp-20261005-SpN2rr5i`,
+`trp-20261005-JRnUdI5p`, and `trp-20261006-lemnDpAF`, about 45 seconds
+apart, all `Key (trip_id)=(...) already exists`. `pg-1` and `pg-2` had
+no such lines in the snippet.
+
+Code. `assign` calls `record_offers`, which commits the chain, and only
+then `announce_offers` (`l-service-dispatch/dispatch_service/__main__.py`,
+the call pair at `record_offers` then `announce_offers`). The partial
+unique index `dispatch_offers_one_accepted_idx` allows one accepted offer
+per trip (`h-bootstrap/migrations/015_dispatch_offers.sql`). The Kafka
+offset is committed only after the whole poll batch
+(`consumer.commit()` after the `while taken < max_per_tick` loop). A
+death after the Postgres commit and before that offset commit leaves the
+offer stored and the request unacked. The next process inserts a second
+accept, the index rejects it, the exception is not caught, the process
+dies, Docker restarts it (`restart: unless-stopped`), and the same
+messages are read again.
+
+`doubled-offers.txt` is the warehouse view of the same replay: 48 trips
+with `accepted > 1` or a gapped chain. The worst are
+`trp-20261005-saedE9qZ` (accepted=75, offers=77, top_sequence=3) and
+`trp-20261005-WAEVOd8E` (accepted=75, offers=78, top_sequence=3), both
+still receiving events at `2026-10-06 09:52:25`. Other batches share one
+`first_event` and a round replay count (50, 25, 22, 5, 3). The 09:10
+quality file already had Q6 = 42 and Q7 = 42. Q6 is
+`countIf(accepted > 1)` over trips (`z-config/quality.sql`,
+`two_accepted`), so a trip accepted 75 times counts as one failed trip,
+the same as a trip accepted twice. Q6 does fail. It does not measure the
+depth. `trip_facts` stays one row per trip, so a uniqueness check on
+that table still passes while the offer topic is full of replays. The
+night retest has to read `max(accepted)` per trip, not only the Q6 trip
+count, and not only `trip_facts`.
+
+Outcome. An offer insert that finds the accept already stored is treated
+as that request already handled: no second publish, no process death,
+and the offset for that message is committed. One poisoned trip cannot
+pin the head of a partition.
+
+Retest. After a clean cycle, `docker inspect dispatch-service` stays at
+`restarts=0` for the whole run. The dispatch log has zero
+`dispatch_offers_one_accepted_idx` lines. Q6 and Q7 are 0, and
+`max(accepted)` grouped by `trip_id` in `nus.dispatch_offers` is 1.
+`make lag` shows `dispatch-service` on `trip_requests` moving, not stuck
+in the tens of thousands.
+
+**2. The match clock is taken before the request exists.**
+
+Symptom, 09:10 archive only (`reports/verify-quality.txt`). Q3
+`no negative milestone lag` measured 24, pass line `negative = 0`. Q4
+through Q5 and Q8 through Q14 were 0. The crash archive does not repeat
+this query. The 24 is not a parent-chat recollection.
+
+Code. The dispatch loop takes `now = utc_now()` once per tick and passes
+that value into every `assign` in the tick. `matched_at` is set to that
+`now`, and `routing.route` for the pickup runs before the stamp. A
+`pgr_ksp` call in an earlier request of the same tick takes seconds.
+Passenger keeps publishing, the next `poll_once` in the same tick
+returns those new requests, and their `requested_at` is later than the
+frozen `now`. `match_s` is `dateDiff` of those two columns and comes out
+negative. The other milestone columns on those rows are not the bug.
+
+Outcome. `matched_at` is the clock after the route returns, not the
+clock from the start of the tick.
+
+Retest. `make verify-quality` reports Q3 measured 0 on the new run.
+A query of `min(match_s)` on `nus.trip_facts` is not negative.
+
+**3. A replica cancel in `nearest_road_point` kills driver-service.**
+
+Symptom, crash archive. `driver-tracebacks.txt` has one traceback. It
+ends in `psycopg.errors.SerializationFailure: canceling statement due to
+conflict with recovery`, raised from `_follow_jobs` → `drive_path` →
+`route` → `nearest_road_point` → `postgres.fetch_one`.
+`inspect-driver-service.txt` says `restarts=7`, `oom=false`, `exit=0`,
+`started=2026-10-06T08:30:23Z`. The log explains one of those seven
+exits. The other six are not in the captured traceback extract; do not
+invent a cause for them. Both inspect lines also say `exit=0` next to an
+uncaught exception. That disagreement is in the files. The retest
+records the exit code rather than this note explaining it.
+
+The 09:10 log slice is a different fact about the same query family.
+`pgr_ksp` retries were 441 in driver-service and 91 in dispatch, and
+`gave up` was 0 for both. Those retries already work. They are not this
+fix. The captured stack is `_follow_jobs` → `drive_path` → `route`
+(`nus_common/routing.py`, the snap at the start of `route`) →
+`nearest_road_point` → `postgres.fetch_one`. `route` calls
+`nearest_road_point` on both ends before `_query_with_retry`. The retry
+wraps only the `pgr_ksp` query. A replica cancel on the snap therefore
+escapes it and kills the process. The fix belongs on
+`nearest_road_point` as `route` calls it, not on a call that sits in
+front of `route`. The 09:10 archiver slice shows why the replica was
+cancelling queries: the first prune ticks deleted 100000 rows with
+`hit_ceiling: true` (8.42s, then 8.81s, then 8.32s). That is the
+`conflict with recovery` load. It is not a reason to wrap `pgr_ksp`
+again.
+
+The same restart also stops positions. `driver_service/__main__.py`
+creates the Kafka producer only after the initial `_follow_jobs` (the
+pool that builds a street path for every driver brought online at
+start). Until that pass returns, a restarted process publishes nothing.
+The 09:10 profile shows it: `driver_positions` newest is
+`2026-10-06 08:13:49.780`, `behind_min=58`, while the crash inspect says
+driver-service had been up since `08:30:23Z`. The log slice's last tick
+is `08:14:23`, which is the process from before that restart. ClickHouse
+sink lag on `driver_location` was 0 on every partition in the 09:10 lag
+file, because the topic had stopped growing, not because the sink was
+behind. A restart at this fleet size is a position stall, not a 40-second
+tick.
+
+Outcome. `nearest_road_point`, as called from `route` before
+`_query_with_retry`, survives a `SerializationFailure`: retry, then fail
+that one lookup, and do not exit the process. A restart must not sit
+silent for the whole initial path pass; positions are published while
+that pass runs, or the pass does not stand between process start and the
+producer.
+
+Retest. While the archiver is catching up a multi-day seed,
+`driver-service` stays at `restarts=0`. A `conflict with recovery` on
+the snap inside `route` is a retry line, not a traceback. If the process
+does restart, `driver_positions` newest moves during the initial path
+pass instead of freezing at the last tick of the previous process.
+
+### Code-only, not a captured defect
+
+Neither archive shows a bootstrap failure. Services were already up
+(`passenger-service` started `2026-10-05T20:06:41Z`). There is no
+bootstrap log, because `make bootstrap` uses `docker compose run --rm`.
+The missing run log is a gap. It is not a must-fix defect.
+
+The source order is still worth knowing before someone splits history
+off the live start, and only as code. `h-bootstrap/bootstrap/__main__.py`
+sets `system:bootstrap:done` only after `history.generate`, the Postgres
+store, and the ClickHouse load. `history.py` walks
+`day_offset` from `history_days` down to 1, so a two-day seed emits
+offset 2 and offset 1. `warehouse.already_loaded` skips that load once
+any `trip_events` row exists. Moving the marker earlier without changing
+that guard would drop the week on the floor, and inserting the old days
+into Postgres after the archiver is already running would delete them
+and stream them onto the live bus. No retest bar is attached here,
+because this run did not fail bootstrap.
+
+### Observed, not a retest blocker
+
+These are real readings. Leaving them as they are does not reproduce
+the dispatch wedge. The night run should record them again. It should
+not be held for a redesign of them.
+
+- **Archiver catch-up hits the ceiling, then finishes.** 09:10 log
+  slice: the first ticks deleted 100000 rows in 8.42s, 8.81s, and 8.32s
+  with `hit_ceiling: true` (`max_batches_per_tick` 20, `batch_size`
+  5000). Later ticks fell under the ceiling. The last captured tick is
+  `this_tick: 2, total: 655000, seconds: 0.21, hit_ceiling: false`.
+  655000 is `2 × HISTORY_TRIPS_PER_DAY` (327500), the whole
+  `HISTORY_DAYS=2` seed. `history.py` emits `day_offset` 2 and then 1.
+  By the `05:06Z` tick both of those days are older than the 24h
+  retention, so the archiver removed both seed days, not one extra day.
+  Steady state after that kept up. A 7-day seed will
+  spend longer on the ceiling during catch-up. That is not, by itself,
+  a reason to partition `trips` before the night run. `inspect` shows
+  `archiver-service` `restarts=0` since `20:06:41Z`.
+- **Before 08:14 the tick was slow. After the 08:30 restart it stalled.**
+  `meta.txt` in the 09:10 archive has `DRIVER_TICK_SECONDS=3.0`. The log
+  slice has 636 `"message": "tick"` lines, and the last of them is
+  `08:14:23`. Spacing in that slice is about 37–63 seconds (first gaps
+  `20:52:01` → `20:52:47` → `20:53:50`; last gaps about 37s) with
+  `path_p50` rising from 22 to 133. That spacing is not the state at
+  09:10. The 09:10 profile shows `driver_positions` newest
+  `2026-10-06 08:13:49.780`, `behind_min=58`. The crash inspect says
+  driver-service had been up since `08:30:23Z`. ClickHouse sink lag on
+  `driver_location` was 0 on every partition, so the sink was caught up
+  to a topic that had stopped. The cause is item 3: the producer is
+  created only after the initial `_follow_jobs`, so a restart publishes
+  nothing until that pass finishes. The 09:10 position check (4977
+  trips, off-network 0, route 6.32 km against a chord of 4.65 km) is
+  trips that ended before this stall. The capacity verdict of 3.16 GiB
+  per node, 2.8% of 112 GiB, counts rows written before the stall. Do
+  not read either number as a healthy 40-second tick.
+- **City-service and the sink were behind, once.** 09:10 profile:
+  `city-service` `partitions=31 total_lag=4309`, `clickhouse-sink`
+  `partitions=49 total_lag=2806`. One sample each. Neither process had
+  restarted by 09:54 (`restarts=0`, still the `20:06` start). Step 12
+  already says one city-lag sample is not a shape. Do not add a second
+  copy of either service on this snapshot.
+- **`pgr_ksp` retry already absorbs the replica cancel.** 441 driver
+  retries, 91 dispatch retries, 0 give-ups, in the 09:10 slice. Leave
+  that path alone. Item 3 is the call that does not use it.
+- **Dispatch lag at 09:10 was the wedge, not a separate consumer bug.**
+  `dispatch-service partitions=7 total_lag=66111`. That is item 1.
+  `cache-updater` was `total_lag=2`. `passenger-service` and
+  `driver-service` group lag were 0.
+
+### Not judgeable from these logs
+
+No defect is claimed here. No clean bill either. The crash archive has
+no log body for them, and the 09:10 archive has only container health
+unless noted.
+
+- **Grafana.** `nus-grafana` healthy, restarts 0, in the 09:10 health
+  file. No panel result and no grafana log in either archive.
+- **Superset.** `nus-superset` healthy, restarts 0. No chart result and
+  no superset log in either archive.
+- **Debezium.** `nus-debezium-connect` healthy, restarts 0. Connector
+  task state is not in either archive. Downstream, the 09:10 profile
+  showed Redis db 1 = 106003 and db 2 = 750000, and cache-updater lag
+  2, so a snapshot had been applied by then. That is not a connector
+  log.
+- **Passenger-service application log.** Inspect: `status=running`,
+  `restarts=0`, `started=2026-10-05T20:06:41Z`, `oom=false`. It did not
+  exit. Its log was not collected, so a handled error is invisible.
+- **Kafka, schema registry, and ksqlDB error text.** All three Kafka
+  brokers, `nus-schema-registry`, and `nus-ksqldb-server` were healthy
+  with restarts 0. The 09:10 lag command listed topics and the consumer
+  groups above, so the broker answered. No broker or ksqlDB error line
+  was archived.
+- **Bootstrap run log.** Absent, because the one-shot container is
+  removed. Neither archive shows a bootstrap failure. The source note
+  under "Code-only, not a captured defect" is not this gap and is not a
+  must-fix.
+
+`/tmp/nus-collect-component-logs.sh` collects those six. It does not
+print secrets. It is not part of the repo.
+
+### Component index
+
+| Component | Class |
+| --- | --- |
+| Postgres/Patroni | Reviewed-clean as a cluster. 09:10 health: `nus-pg-1/2/3` and `nus-etcd-1/2/3` healthy, restarts 0. The only SQL errors in the crash snippet are `dispatch_offers_one_accepted_idx` on `nus-pg-3`, which is item 1, the index doing what it was added to do |
+| Redis/Sentinel | Reviewed-clean. 09:10 health: three redis and three sentinel, healthy, restarts 0. Profile key counts: db 0 = 1 (bootstrap flag), db 1 = 106003, db 2 = 750000, db 3 = 141230 |
+| Kafka, schema registry, ksqlDB | Log gap for error text. Process health and the lag listing are under "Not judgeable" |
+| Debezium | Log gap for connector state. Container health is under "Not judgeable" |
+| ClickHouse | Reviewed-clean. Four servers and three keepers healthy, restarts 0. The 09:10 capacity and profile queries returned. The 3.16 GiB/node figure is the pre-stall reading in the observed list, not a cluster fault |
+| Grafana | Log gap |
+| Superset | Log gap |
+| HAProxy | Reviewed-clean. `nus-lb-a` and `nus-lb-b` healthy, restarts 0. The 09:10 quality, position, capacity, and profile commands all reached Postgres or ClickHouse through the published ports |
+| bootstrap | Log gap. No run log and no captured failure. The marker and `already_loaded` notes are code-only, not a defect in this run |
+| cache-updater | Reviewed-clean. Crash inspect `restarts=0` since `20:06:41Z`. 09:10 lag `total_lag=2` |
+| driver-service | Must-fix item 3. The snap inside `route` killed one process, and the 08:30 restart then published no positions through the 09:10 profile |
+| passenger-service | Log gap for the application log. Inspect shows it never exited |
+| dispatch-service | Must-fix items 1 and 2. This is what is stopping the stack |
+| city-service | Reviewed-clean as a process: crash inspect `restarts=0` since `20:06:42Z`. One 09:10 lag sample, 4309, is not a retest blocker |
+| clickhouse-sink | Reviewed-clean as a process: crash inspect `restarts=0` since `20:06:41Z`. One 09:10 lag sample, 2806, is not a retest blocker. `driver_location` lag was 0 because the topic had stopped, which is the driver stall in item 3 |
+| archiver | Reviewed-clean as a process: crash inspect `restarts=0` since `20:06:41Z`. Catch-up hit the ceiling, then removed both seed days (total 655000). Not a retest blocker |
 
 ---
 
@@ -1096,6 +1372,14 @@ and the test refuses any of the friendly names that end at midnight.
 ---
 
 ## Step 12 — Staged scale-up
+
+The 2026-10-06 50% bring-up is not this step's pass. Dispatch was
+crash-looping on `dispatch_offers_one_accepted_idx` when the crash
+archive was taken (`2026-10-06T09:54:51Z`, 129 restarts). The next
+bring-up waits until the three must-fix items under "Fixes before the
+next Dionysus run" are in the image. The bootstrap marker note there is
+code-only and is not one of the three. The destroy / init / up /
+etcd-existing cycle below is unchanged.
 
 **Historical, kept because the reasoning matters: fulfilment was 0.611 at
 4,000 drivers with the fleet 96% idle at the same time.** Two readings
