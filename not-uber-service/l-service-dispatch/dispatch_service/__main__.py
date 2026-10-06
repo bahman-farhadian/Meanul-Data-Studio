@@ -21,6 +21,8 @@ import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import psycopg
+
 from nus_common import config, postgres, redis_client, routing
 from nus_common.citygrid import CityGrid
 from nus_common.geo import day_period, distance_km, to_millis, utc_now
@@ -38,6 +40,9 @@ log = get_logger(__name__)
 REQUEST_TOPIC = "trip_requests"
 LIFECYCLE_TOPIC = "trip_lifecycle"
 OFFER_TOPIC = "dispatch_offers"
+# A replayed request whose accept is already in Postgres. Not a new match
+# and not a failure: the offset must move or this one trip pins the partition.
+ALREADY_HANDLED = "already_handled"
 
 FINISHED = {
     "completed", "cancelled_by_passenger", "cancelled_by_driver", "no_driver_found"
@@ -221,30 +226,67 @@ def announce_offers(producer: AvroTopicProducer, trip_id: str, zone_id: str,
         )
 
 
-def record_offers(trip_id: str, offers: list[Offer]) -> None:
-    """Keep the chain in PostgreSQL, where the live funnel is queried."""
-    if not offers:
-        return
+def accept_already_stored(trip_id: str) -> bool:
+    """True when this trip already has the one accepted offer the index allows.
+
+    Read on the primary. A replica can lag the commit that made the row,
+    and a false negative here is exactly the insert that then dies on
+    dispatch_offers_one_accepted_idx.
+    """
     with postgres.write_connection() as conn:
-        with conn.cursor() as cur:
-            cur.executemany(
-                INSERT_OFFER,
-                [
-                    {
-                        "trip_id": trip_id,
-                        "driver_id": offer.driver_id,
-                        "sequence": offer.sequence,
-                        "offered_at": offer.offered_at,
-                        "expires_at": offer.expires_at,
-                        "responded_at": offer.responded_at,
-                        "status": offer.status,
-                        "eta_seconds": offer.eta_seconds,
-                        "distance_to_pickup_m": offer.distance_to_pickup_m,
-                    }
-                    for offer in offers
-                ],
-            )
-        conn.commit()
+        row = postgres.fetch_one(
+            conn,
+            """
+            SELECT 1 AS ok
+              FROM dispatch_offers
+             WHERE trip_id = %(trip_id)s
+               AND status = 'accepted'
+             LIMIT 1
+            """,
+            {"trip_id": trip_id},
+        )
+    return row is not None
+
+
+def record_offers(trip_id: str, offers: list[Offer]) -> bool:
+    """Keep the chain in PostgreSQL, where the live funnel is queried.
+
+    False means the accept was already stored (a replay). The caller must
+    not publish the chain again. Any other unique violation still raises.
+    """
+    if not offers:
+        return True
+    try:
+        with postgres.write_connection() as conn:
+            with conn.cursor() as cur:
+                cur.executemany(
+                    INSERT_OFFER,
+                    [
+                        {
+                            "trip_id": trip_id,
+                            "driver_id": offer.driver_id,
+                            "sequence": offer.sequence,
+                            "offered_at": offer.offered_at,
+                            "expires_at": offer.expires_at,
+                            "responded_at": offer.responded_at,
+                            "status": offer.status,
+                            "eta_seconds": offer.eta_seconds,
+                            "distance_to_pickup_m": offer.distance_to_pickup_m,
+                        }
+                        for offer in offers
+                    ],
+                )
+            conn.commit()
+    except psycopg.errors.UniqueViolation as exc:
+        name = getattr(getattr(exc, "diag", None), "constraint_name", None)
+        if name != "dispatch_offers_one_accepted_idx":
+            raise
+        log.info(
+            "accept already stored",
+            extra={"trip_id": trip_id, "constraint": name},
+        )
+        return False
+    return True
 
 
 def store_live_state(redis, trip: ActiveTrip, now: datetime, ttl_seconds: int) -> None:
@@ -363,24 +405,24 @@ def main() -> int:
                 taken += 1
                 _, _, request = message
                 if not request:
+                    # An empty payload is still handled: leave it uncommitted
+                    # and the next start reads it forever.
+                    consumer.commit()
                     continue
 
-                trip = assign(
-                    request, redis_driver, redis_demand, redis_trip, producer, now, period, rng, grid,
+                trip = handle_one_request(
+                    request, consumer,
+                    redis_driver, redis_demand, redis_trip, producer, now, period, rng, grid,
                     search_radius_km, base_fare, per_km, per_minute, active_ttl,
                     offer_producer, max_offers, offer_speed_kmh,
                 )
-                if trip is None:
-                    unmatched += 1
+                if trip is ALREADY_HANDLED or trip is None:
+                    if trip is None:
+                        unmatched += 1
                     continue
 
                 active[trip.trip_id] = trip
                 matched += 1
-
-            if taken:
-                # Position is saved only after the requests have been dealt
-                # with, so a crash repeats a match instead of dropping a rider.
-                consumer.commit()
 
             # --- 3. move trips along -----------------------------------
             for trip in list(active.values()):
@@ -494,11 +536,23 @@ def main() -> int:
     return 0
 
 
+def handle_one_request(request: dict, consumer, *assign_args):
+    """Match one polled request, then commit its offset.
+
+    The commit is per message on purpose. The 50% run committed only after
+    the whole poll batch, so a UniqueViolation on a later trip left every
+    earlier accept stored and unacked, and the restart inserted them again.
+    """
+    result = assign(request, *assign_args)
+    consumer.commit()
+    return result
+
+
 def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: AvroTopicProducer,
            now: datetime, period: str, rng: random.Random, grid: CityGrid,
            search_radius_km: float, base_fare: float, per_km: float,
            per_minute: float, active_ttl: int, offer_producer: AvroTopicProducer,
-           max_offers: int, offer_speed_kmh: float) -> ActiveTrip | None:
+           max_offers: int, offer_speed_kmh: float) -> ActiveTrip | None | str:
     """Give one request a driver, a route and a price.
 
     Returns None when the trip cannot be served, having already recorded and
@@ -506,6 +560,13 @@ def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: Avro
     the number that says the fleet is too small at this hour.
     """
     trip_id = request["trip_id"]
+    if accept_already_stored(trip_id):
+        log.info(
+            "request already accepted; not publishing again",
+            extra={"trip_id": trip_id},
+        )
+        return ALREADY_HANDLED
+
     pickup_lat = float(request["pickup_lat"])
     pickup_lon = float(request["pickup_lon"])
     dropoff_lat = float(request["dropoff_lat"])
@@ -557,7 +618,8 @@ def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: Avro
         [(driver_id, eta, metres) for driver_id, _, _, eta, metres in candidates],
         surge, now, rng,
     )
-    record_offers(trip_id, offers)
+    if not record_offers(trip_id, offers):
+        return ALREADY_HANDLED
     announce_offers(offer_producer, trip_id, zone_id, surge, offers, now)
 
     if winner is None:
@@ -649,8 +711,7 @@ def _no_driver(producer: AvroTopicProducer, offer_producer: AvroTopicProducer,
     can be counted, and the reason - nobody in range, or everybody said no -
     is visible in whether the chain is empty.
     """
-    if offers:
-        record_offers(trip_id, offers)
+    if offers and record_offers(trip_id, offers):
         announce_offers(offer_producer, trip_id, zone_id, surge or 1.0, offers, now)
     requested_at = _as_datetime(request.get("requested_at"))
     producer.send(

@@ -149,6 +149,125 @@ def _metres_to_ways(lat: float, lon: float) -> float:
     return float(row["metres"])
 
 
+def test_replayed_accept_stays_one_row_and_commits(sample_env):
+    """A trip that already has an accepted offer is not published again.
+
+    Uses the real dispatch_offers_one_accepted_idx from migration 015 on
+    this throwaway database. The handler is the shipped one-message path.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from nus_common import postgres
+    from sample_graph import LATS, LONS
+
+    from dispatch_service.__main__ import ALREADY_HANDLED, handle_one_request
+
+    trip_id = "trp-20261006-replay01"
+    migration = (REPO / "h-bootstrap" / "migrations" / "015_dispatch_offers.sql").read_text()
+    with postgres.write_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "CREATE TABLE IF NOT EXISTS drivers (driver_id text PRIMARY KEY)"
+            )
+            cur.execute(
+                "INSERT INTO drivers (driver_id) VALUES ('drv-0000001') "
+                "ON CONFLICT DO NOTHING"
+            )
+            cur.execute(migration)
+            cur.execute(
+                """
+                INSERT INTO trips (trip_id, pickup_point, dropoff_point)
+                VALUES (
+                    %s,
+                    ST_SetSRID(ST_MakePoint(%s, %s), 4326),
+                    ST_SetSRID(ST_MakePoint(%s, %s), 4326)
+                )
+                ON CONFLICT DO NOTHING
+                """,
+                (trip_id, LONS[0], LATS[0], LONS[1], LATS[1]),
+            )
+            cur.execute(
+                """
+                INSERT INTO dispatch_offers (
+                    trip_id, driver_id, sequence, offered_at, expires_at,
+                    responded_at, status, eta_seconds, distance_to_pickup_m
+                ) VALUES (
+                    %s, 'drv-0000001', 1, now(), now() + interval '20 seconds',
+                    now(), 'accepted', 30, 200
+                )
+                """,
+                (trip_id,),
+            )
+        conn.commit()
+
+    published = []
+
+    class Offers:
+        def send(self, **kwargs):
+            published.append(kwargs)
+
+    class Consumer:
+        def __init__(self):
+            self.commits = 0
+
+        def commit(self):
+            self.commits += 1
+
+    consumer = Consumer()
+    result = handle_one_request(
+        {
+            "trip_id": trip_id,
+            "pickup_lat": LATS[0],
+            "pickup_lon": LONS[0],
+            "dropoff_lat": LATS[1],
+            "dropoff_lon": LONS[1],
+            "pickup_zone_id": "1",
+        },
+        consumer,
+        None, None, None, None,
+        datetime.now(timezone.utc), "morning", random.Random(1), None,
+        1.0, 2.0, 1.0, 0.3, 60,
+        Offers(), 5, 25.0,
+    )
+    assert result == ALREADY_HANDLED
+    assert published == []
+    assert consumer.commits == 1
+
+    # A second chain whose sequence is new still hits the partial unique
+    # index. That rejection must come back as "already stored", not an
+    # exception, and must not add another accepted row.
+    from nus_common.offers import Offer
+
+    now = datetime.now(timezone.utc)
+    second = Offer(
+        driver_id="drv-0000001",
+        sequence=2,
+        status="accepted",
+        eta_seconds=40,
+        distance_to_pickup_m=300,
+        surge_multiplier=1.0,
+        offered_at=now,
+        expires_at=now + timedelta(seconds=20),
+        responded_at=now,
+    )
+    from dispatch_service.__main__ import record_offers
+
+    assert record_offers(trip_id, [second]) is False
+    row = None
+    with postgres.write_connection() as conn:
+        row = postgres.fetch_one(
+            conn,
+            """
+            SELECT count(*)::int AS n
+              FROM dispatch_offers
+             WHERE trip_id = %(trip_id)s
+               AND status = 'accepted'
+            """,
+            {"trip_id": trip_id},
+        )
+    assert row["n"] == 1
+
+
 def test_water_point_does_not_snap(sample_env):
     from nus_common import routing
 
