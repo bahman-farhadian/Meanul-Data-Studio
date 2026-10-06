@@ -637,6 +637,10 @@ def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: Avro
     # this one is allowed to come back empty - the match still stands.
     pickup_leg = routing.route(driver_lat, driver_lon, pickup_lat, pickup_lon, period)
     pickup_km, pickup_s, pickup_wkt = pickup_leg if pickup_leg else (None, None, None)
+    # After this trip's routes, not the clock frozen at the start of the
+    # tick. A request published while an earlier route in the same tick was
+    # still running otherwise got a matched_at from before it existed.
+    matched_at = utc_now()
     estimate = money(pricing.fare(base_fare, per_km, per_minute, route_km, predicted_s, surge))
 
     trip = ActiveTrip(
@@ -657,7 +661,7 @@ def assign(request: dict, redis_driver, redis_demand, redis_trip, producer: Avro
         passenger_count=int(request.get("passenger_count") or 1),
         requested_vehicle_type=vehicle_type,
         requested_at=_as_datetime(request.get("requested_at")),
-        matched_at=now,
+        matched_at=matched_at,
         route_wkt=route_wkt,
         pickup_route_wkt=pickup_wkt,
         pickup_route_km=pickup_km,
