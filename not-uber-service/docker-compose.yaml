@@ -128,7 +128,7 @@ services:
     container_name: nus-lb-a
     hostname: nus-lb-a
     restart: unless-stopped
-    cpus: ${LB_CPUS:-0.1}
+    cpus: ${LB_CPUS:-0.5}
     mem_limit: ${LB_MEM:-128m}
     memswap_limit: ${LB_MEM:-128m}
     environment:
@@ -175,7 +175,7 @@ services:
     container_name: nus-lb-b
     hostname: nus-lb-b
     restart: unless-stopped
-    cpus: ${LB_CPUS:-0.1}
+    cpus: ${LB_CPUS:-0.5}
     mem_limit: ${LB_MEM:-128m}
     memswap_limit: ${LB_MEM:-128m}
     environment:

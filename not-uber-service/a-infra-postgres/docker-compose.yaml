@@ -57,7 +57,7 @@ x-pg-node: &pg-node
       PSYCOPG_VERSION: ${PSYCOPG_VERSION:-3.3.4}
   image: nus/patroni-postgres:${NUS_VERSION:-0.1.0}
   restart: unless-stopped
-  cpus: ${PG_CPUS:-2}
+  cpus: ${PG_CPUS:-6}
   mem_limit: ${PG_MEM:-9g}
   memswap_limit: ${PG_MEM:-9g}
   depends_on:

@@ -28,7 +28,7 @@ name: e-infra-clickhouse
 x-keeper-node: &keeper-node
   image: ${CH_KEEPER_IMAGE:-clickhouse/clickhouse-keeper:25.3}
   restart: unless-stopped
-  cpus: ${CH_KEEPER_CPUS:-0.1}
+  cpus: ${CH_KEEPER_CPUS:-0.5}
   mem_limit: ${CH_KEEPER_MEM:-1g}
   memswap_limit: ${CH_KEEPER_MEM:-1g}
   healthcheck:

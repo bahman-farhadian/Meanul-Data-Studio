@@ -41,7 +41,7 @@ pg-cpus-bootstrap: ## Raise PG_CPUS to PG_CPUS_BOOTSTRAP for the routing burst (
 .PHONY: pg-cpus-normal
 pg-cpus-normal: ## Put PG_CPUS back to its steady-state value (recreates pg-1/2/3)
 	$(call say,Returning PG_CPUS to its steady-state value)
-	@sed -i 's/^PG_CPUS=.*/PG_CPUS=2/' $(ENV_FILE)
+	@sed -i 's/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_STEADY,6)/' $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
 	$(call ok,pg-1/2/3 recreated at the steady-state ceiling)
