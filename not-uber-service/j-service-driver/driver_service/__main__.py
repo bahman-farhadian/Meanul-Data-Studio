@@ -414,6 +414,10 @@ def main() -> int:
     grid = CityGrid.load()
 
     tick_seconds = config.number("DRIVER_TICK_SECONDS", 3.0)
+    # Arrival-only retargets leave the replicas idle once opening paths
+    # exist. A few hundred extra real routes per tick keep the search
+    # workers busy for the whole tick. 0 keeps the old behaviour.
+    steady_searches = config.integer("DRIVER_STEADY_SEARCHES", 0)
     speed_kmh = config.number("DRIVER_SPEED_KMH", 25.0)
     online_share = config.number("DRIVER_ONLINE_SHARE", 0.6)
     shift_change_chance = config.number("DRIVER_SHIFT_CHANGE_CHANCE", 0.01)
@@ -576,6 +580,20 @@ def main() -> int:
                 # A free driver that has arrived picks a new place to drift
                 # to, pulled towards whichever zone is busy right now.
                 if driver.status == IDLE and driver.arrived() and driver.driver_id not in queued:
+                    target_zone = pick_target_zone(zone_scores, zone_ids, rng)
+                    idle_jobs.append(
+                        (driver, routing.pooled_road_point_in_zone(grid, target_zone, rng))
+                    )
+                    queued.add(driver.driver_id)
+
+            if steady_searches > 0:
+                candidates = [
+                    d for d in drivers.values()
+                    if d.status == IDLE and d.driver_id not in queued
+                ]
+                if len(candidates) > steady_searches:
+                    candidates = rng.sample(candidates, steady_searches)
+                for driver in candidates:
                     target_zone = pick_target_zone(zone_scores, zone_ids, rng)
                     idle_jobs.append(
                         (driver, routing.pooled_road_point_in_zone(grid, target_zone, rng))
