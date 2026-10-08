@@ -290,7 +290,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "Fleet-wide share of online time spent on a trip. Summed first and divided once, because the source is a SummingMergeTree and a row is a partial sum.",
+      "description": "Fleet-wide share of online time spent on a trip. Summed first and divided once, because the source is a SummingMergeTree and a row is a partial sum. h-bootstrap writes driver positions only along trip paths and only as on_trip, so the history has no idle telemetry and this reads 100% across the seeded window, then drops to the live figure. The cliff is the seam between seeded and live, not a collapse in efficiency.",
       "gridPos": {
         "h": 8,
         "w": 12,

@@ -133,6 +133,31 @@ def test_every_marketplace_panel_states_what_it_means() -> None:
         )
 
 
+def test_utilization_panels_say_the_seed_has_no_idle_time() -> None:
+    """The seeded week is on_trip only, so these three panels read 100%.
+
+    Labeling them is the step 11b decision. Seeding idle positions was
+    the other option, and driver_positions is the heaviest table in the
+    stack. The sentence has to stay on the panel a person actually reads.
+    """
+    note = (
+        "h-bootstrap writes driver positions only along trip paths "
+        "and only as on_trip"
+    )
+    history = json.loads((JSON_DIR / "nus-history.json").read_text())
+    driver = json.loads((JSON_DIR / "nus-driver.json").read_text())
+
+    def description(dash: dict, panel_id: int) -> str:
+        panel = next(p for p in dash["panels"] if p["id"] == panel_id)
+        return panel.get("description") or ""
+
+    superset = (
+        NUS / "g-infra-superset" / "assets" / "charts" / "utilization-trend.yaml"
+    ).read_text()
+    for text in (description(history, 6), description(driver, 5), superset):
+        assert note in text, text
+
+
 def test_the_committed_json_is_what_the_generator_writes() -> None:
     """The JSON is generated. Hand-editing it makes the generator a lie."""
     for dash in RENDER.ALL:

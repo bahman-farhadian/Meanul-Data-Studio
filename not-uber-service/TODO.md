@@ -1275,6 +1275,13 @@ are the spec that run closed.
 
 ## Step 11b — The seeded history has no idle telemetry
 
+DONE — 2026-10-08, workstation. The decision is to label the panels and
+not to seed idle positions. `driver_positions` is already the heaviest
+table in the stack, and a week of idle ticks for the whole fleet is the
+write step 13 should not take. Grafana nus-history panel 6, nus-driver
+panel 5, and Superset "Driver utilization" now say the seeded window is
+on_trip only, so a reading of 100% there is the seam, not a collapse.
+
 Found 2026-09-27 while checking the dashboards. `h-bootstrap` writes
 `driver_positions` only along trip paths and only with status `on_trip` -
 there is no idle or en_route_pickup telemetry anywhere in the seeded week.
@@ -1300,8 +1307,8 @@ Two ways out, neither free:
 - Leave it and say so on the panels, so nobody reads the cliff as a
   collapse in fleet efficiency.
 
-**Decide before step 13**, because the full-scale run is where a week of
-idle telemetry would actually hurt.
+Decided: label the panels. Step 13 does not seed an idle week. That is
+where a week of idle telemetry would actually hurt.
 
 ---
 

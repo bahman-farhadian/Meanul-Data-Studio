@@ -614,7 +614,12 @@ ORDER BY time
             timeseries=True,
             description=(
                 "Ticks spent on a trip out of ticks spent online. A share, so "
-                "it is drawn as one - 0.42 is 42% of this driver's shift."
+                "it is drawn as one - 0.42 is 42% of this driver's shift. "
+                "h-bootstrap writes driver positions only along trip paths "
+                "and only as on_trip, so the history has no idle telemetry "
+                "and this reads 100% across the seeded window, then drops "
+                "to the live figure. The cliff is the seam between seeded "
+                "and live, not a collapse in efficiency."
             ),
             extra=line("percentunit", decimals=1, minimum=0, maximum=1,
                        steps=good_high(0.35, 0.55), legend=False),
@@ -982,7 +987,12 @@ ORDER BY time
             description=(
                 "Fleet-wide share of online time spent on a trip. Summed "
                 "first and divided once, because the source is a "
-                "SummingMergeTree and a row is a partial sum."
+                "SummingMergeTree and a row is a partial sum. "
+                "h-bootstrap writes driver positions only along trip paths "
+                "and only as on_trip, so the history has no idle telemetry "
+                "and this reads 100% across the seeded window, then drops "
+                "to the live figure. The cliff is the seam between seeded "
+                "and live, not a collapse in efficiency."
             ),
             extra=line("percentunit", decimals=1, minimum=0, maximum=1,
                        steps=good_high(0.35, 0.55), legend=False),

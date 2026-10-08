@@ -264,7 +264,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "Ticks spent on a trip out of ticks spent online. A share, so it is drawn as one - 0.42 is 42% of this driver's shift.",
+      "description": "Ticks spent on a trip out of ticks spent online. A share, so it is drawn as one - 0.42 is 42% of this driver's shift. h-bootstrap writes driver positions only along trip paths and only as on_trip, so the history has no idle telemetry and this reads 100% across the seeded window, then drops to the live figure. The cliff is the seam between seeded and live, not a collapse in efficiency.",
       "gridPos": {
         "h": 8,
         "w": 12,
