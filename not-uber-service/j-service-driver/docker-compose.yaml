@@ -85,6 +85,14 @@ services:
       DRIVER_DB_SYNC_SECONDS: ${DRIVER_DB_SYNC_SECONDS:-30.0}
       DRIVER_HOTSPOT_REFRESH_SECONDS: ${DRIVER_HOTSPOT_REFRESH_SECONDS:-60.0}
       RANDOM_SEED: ${RANDOM_SEED:-20250824}
+
+      # The search fan-out. Without these the process falls back to a pool
+      # of 5 and four threads, which is what left the opening-path pass on
+      # about four Postgres cores while the host sat idle. The steady
+      # searches are the per-tick load after that pass finishes.
+      PG_POOL_SIZE: ${PG_POOL_SIZE:-28}
+      DRIVER_ROUTING_WORKERS: ${DRIVER_ROUTING_WORKERS:-20}
+      DRIVER_STEADY_SEARCHES: ${DRIVER_STEADY_SEARCHES:-800}
     networks:
       - backbone
 
