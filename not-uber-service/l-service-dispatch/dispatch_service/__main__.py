@@ -718,6 +718,11 @@ def _no_driver(producer: AvroTopicProducer, offer_producer: AvroTopicProducer,
     if offers and record_offers(trip_id, offers):
         announce_offers(offer_producer, trip_id, zone_id, surge or 1.0, offers, now)
     requested_at = _as_datetime(request.get("requested_at"))
+    # The tick clock can be older than this request. A route earlier in the
+    # same tick holds `now` still, and the passenger stamps requested_at
+    # while that route is running. Ending the trip at `now` makes total_s
+    # negative. Offer-chain times above keep the tick clock.
+    ended = utc_now()
     producer.send(
         key=trip_id,
         value={
@@ -743,8 +748,8 @@ def _no_driver(producer: AvroTopicProducer, offer_producer: AvroTopicProducer,
             "accepted_at": None,
             "arrived_at": None,
             "started_at": None,
-            "ended_at": to_millis(now),
-            "event_time": to_millis(now),
+            "ended_at": to_millis(ended),
+            "event_time": to_millis(ended),
         },
         correlation_id=trip_id,
     )
