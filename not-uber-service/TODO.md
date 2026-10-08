@@ -53,7 +53,7 @@ each - eight remaining steps become four cycles.
 | --- | --- | --- | --- | --- |
 | A | 6 (measure) + 7 | Dionysus, one bring-up | **DONE** | Both read the same live stack: measure bytes/row while the quality bars run |
 | B | 8 + 9 + 10 | Dionysus, one bring-up | **DONE 2026-10-02** | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
-| D1 | 12 | Dionysus, two bring-ups | started, not passed | The staged scale-up: ~10% of target fleet, then ~50%. The 2026-10-06 50% stack is wedged; it is not this row's pass |
+| D1 | 12 | Dionysus, two bring-ups | **RECORDED 2026-10-08** | The 50% bring-up is the record. The ~10% stop was not run. The 2026-10-06 image is not the pass |
 | C | 11 | Local | **DONE 2026-10-08** | Contract and documentation. No server time |
 | D2 | 13 | Dionysus, one bring-up | last | The full-scale final run |
 
@@ -114,8 +114,9 @@ archive is `/tmp/nus-crash-readback.tgz`, host Dionysus, sha
 `2026-10-06T09:54:51Z`. The earlier scale archive is
 `/tmp/nus-50pct-readback.tgz`, same sha, captured `2026-10-06T09:10:38Z`.
 A number below names which archive it came from. The 50% stack those
-archives describe is not a passed step 12. Do not start the night
-bring-up on the image that produced them.
+archives describe is not a passed step 12. The night bring-up this
+section was waiting on is the 2026-10-08 run, recorded under step 12.
+Do not destroy that stack to re-score it.
 
 The bring-up that is already written (destroy, init, up, etcd-existing)
 stays the protocol. These items are what has to be in that image first.
@@ -455,10 +456,10 @@ stack, not from separate runs.
 
 | Decision | Blocks | Where it is written |
 | --- | --- | --- |
-| Surge: seed ratio, or the 0.6 threshold | step 12 | step 11c |
-| city-service lag: CPU, instances, or score on a sample | step 12 | step 11c |
-| Kafka quota, 96 GB/broker against ~842 MB measured | step 12 | step 6 |
-| Seed idle telemetry, or label the panels | step 13 | step 11b |
+| Surge: leave the seed ratio and the 0.6 threshold | step 12, decided | step 12 |
+| city-service: do not add an instance on one lag sample | step 12, decided | step 12 |
+| Kafka quota: leave 96 GB/broker. Not re-measured at 50% | step 12, decided | step 6 |
+| Seed idle telemetry: label the panels, do not seed it | step 11b, decided | step 11b |
 
 ---
 
@@ -493,38 +494,43 @@ neither had its status written down anywhere.
 | Every rollup filters `completed` (F7) | **closed** step 4 | Cancellations and unmatched requests appear in no aggregate we produce — fulfilment rate, the most basic health metric, needs a self-join over a year of raw events |
 | No driver-arrival timestamp (F2) | **closed** `013_arrived.sql` | Rider wait time and post-arrival cancellation — two core ride-hail metrics — are not computable from the data at all |
 | A driver can never decline (F5) | **closed** `015_dispatch_offers.sql` | Dispatch assigns directly, so acceptance rate, offers per match and time-to-match do not exist. Real platforms offer with a deadline and re-offer on decline. **Decided 2026-09-25: in scope, in full** |
-| Payments are two columns on `trips` (F4) | **OPEN** — see below | Real platforms model payment as an append-only record (method, amount, status, refunds, adjustments); ours cannot express a failed or refunded charge, and overwriting the column would destroy the history |
-| `trips` is one unpartitioned table | **OPEN** — see below | At 7 days x 655k/day the archiver deletes by row instead of dropping a partition — bloat and vacuum pressure at exactly the scale we intend to prove |
+| Payments are two columns on `trips` (F4) | **closed** step 11 | A refund is not in version 1. `payment_method` and `driver_payout` stay the whole payment record |
+| `trips` is one unpartitioned table | **closed** step 12 | The 50% archiver finished both seed days. Do not partition `trips` before step 13 |
 | `driver_positions`: monthly partition, 3-day TTL | **closed** step 6 | TTL deletes inside parts rather than dropping partitions; at full-fleet tick rate this is the heaviest table in the stack |
 | ksqlDB is empty | **closed** step 8 | Deployed and authenticated, zero streams registered — DBeaver connects and correctly shows nothing. The only bar today is "server RUNNING" |
 | Superset has no dashboards | **closed** step 10 | `g-infra-superset/init/` registers connections only. The analytical-BI tier is an empty shell |
 | No marketplace KPIs | **closed** step 9 | Fulfillment rate, cancellation rate, rider wait time, take rate, surge effectiveness — none are panels today |
 | Generation quality is unscored | **closed** step 7 | Bars prove rows exist and align; nothing scores distributions, null rates, or fidelity to the TLC calibration |
 
-### The two that are still open
+### The two that were still open
 
-**F4 — payments are still two columns on `trips`.** `011_payout_and_payment.sql`
+Both are decided. The reasoning below is why they were open.
+
+**F4 — payments are still two columns on `trips`.** Decided in step 11:
+version 1 does not add a payments record. `011_payout_and_payment.sql`
 added `driver_payout` and `payment_method`, which is exactly the shape the
 gap called insufficient: a failed or refunded charge cannot be expressed,
 and overwriting the column destroys the history. This is not an oversight -
 step 3 put `payments` and `driver_earnings` in **Tier 2, "if steps 3-5 come
 in under budget"**, and of Tier 2 only `dispatch_offers` was built. But the
 tier was never closed out, so the gap has sat here looking open with no
-decision beside it. **Decide in step 11**: build it, or move it to
-FUTURE_ROADMAP with the reason. It is not a scale risk either way.
+decision beside it. Step 11 decided not to build it. It is not a
+scale risk either way.
 
-**`trips` is still one unpartitioned table, and this one IS a scale risk.**
-No migration carries a `PARTITION BY`, and no step in this file records a
-decision about it. The gap's own words: at 7 days x 655k/day the archiver
+**`trips` is still one unpartitioned table.** Decided in step 12: do
+not partition it before step 13. The scale note below is why it was open.
+No migration carries a `PARTITION BY`. The gap's own words: at 7 days x
+655k/day the archiver
 deletes by row rather than dropping a partition - bloat and vacuum pressure
 at exactly the scale step 13 intends to prove. `driver_positions` got
 daily partitions in step 6 for precisely this reason; `trips` did not.
 
 At the dev seed it is invisible: the archiver prunes ~50 rows a tick and
 PostgreSQL sits at 128 MB. At full scale it prunes 655,000 rows a day from
-a table holding 4.6M. **Watch it at both step 12 stops** - prune duration
-per tick and table bloat - and decide there whether `trips` needs range
-partitioning on `ended_at` before step 13 runs.
+a table holding 4.6M. Watched at the 50% stop: the archiver deleted
+100,000 rows in about 8.5 seconds while on the ceiling, then finished
+both seed days. That is not a reason to partition. The decision is in
+step 12.
 
 ---
 
@@ -995,6 +1001,8 @@ quota.
 - Partition `trips` by month on `requested_at` in Postgres, so the
   archiver drops partitions instead of deleting rows. Moved here from the
   old step 2 list: it is a capacity decision, not a schema-design one.
+  Step 12 decided against it. The 50% archiver finished both seed days
+  without a partition.
 - Budget the F6 envelope's real cost on `driver_location` (~20,000 msg/s
   at full scale, so roughly 40-60 extra bytes on every one). This is a
   sizing input now, not a decision — the envelope is on all six topics
@@ -1386,13 +1394,106 @@ and the test refuses any of the friendly names that end at midnight.
 
 ## Step 12 — Staged scale-up
 
-The 2026-10-06 50% bring-up is not this step's pass. Dispatch was
-crash-looping on `dispatch_offers_one_accepted_idx` when the crash
-archive was taken (`2026-10-06T09:54:51Z`, 129 restarts). The next
-bring-up waits until the three must-fix items under "Fixes before the
-next Dionysus run" are in the image. The bootstrap marker note there is
-code-only and is not one of the three. The destroy / init / up /
-etcd-existing cycle below is unchanged.
+MEASURED AND CLOSED — 2026-10-08, Dionysus. This is the record of the
+50% bring-up. It is not a second run, and it is not a claim that
+`make verify-quality` is green on this warehouse.
+
+**The ~10% stop was not run.** A 10% fleet at the same drivers-per-request
+ratio would be a smaller copy of the same marketplace. The 50% knobs
+already are that ratio: `53000 / 227.5` and `106000 / 455` are both
+232.97 drivers per request per minute. This stop is the one that
+predicts step 13. Another bring-up to fill the missing rung would not.
+
+**The 2026-10-06 image is not this record.** Dispatch was crash-looping
+on `dispatch_offers_one_accepted_idx` (`2026-10-06T09:54:51Z`, 129
+restarts). The three must-fix items under "Fixes before the next
+Dionysus run" were in the 2026-10-08 image. That bring-up is the one
+below. Do not destroy it to take the readings again.
+
+Seed: `SEED_DRIVERS=53000`, `SEED_PASSENGERS=750000`, `HISTORY_DAYS=2`,
+`HISTORY_TRIPS_PER_DAY=327500`, `TRIP_REQUESTS_PER_MINUTE=227.5`.
+App processes from `2026-10-08T05:08:46Z`. Dispatch was recreated alone
+at `2026-10-08T11:41:11Z` on `086affc`.
+
+### What that bring-up held
+
+| Check | Reading |
+| --- | --- |
+| Postgres | One leader (`nus-pg-2`), two replicas, lag 0. Processes 3.0–3.7 GiB of a 16 GiB limit. No OOM |
+| Redis | Marker 1. db 1 = 106,003, db 2 = 750,000, db 3 = 12,153, db 4 = 519 |
+| Data | 53,000 drivers, 750,000 passengers, 263 zones, 80,000 segment-traffic rows, 172,148 ways. Postgres `trips` 11,166, the retention window. `trip_events` 706,904 at the suite, 907,459 by 16:08 |
+| Debezium | Connector and task RUNNING, 3.6.2.Final |
+| ksqlDB | 7 of 7 streams, 1 table, funnel query RUNNING. `make verify-ksqldb` exited 0 |
+| Positions | 3,188 last-hour trips, off-network 0, long two-point 0, route 6.68 km, chord 4.86 km, 178 vertices |
+| Dashboards | 46 Grafana panels returned rows. Superset 20 charts, 6 datasets, 1 dashboard. Tiles PNG 200 |
+| Quality | Q0–Q2 and Q4–Q14 measured 0. Q6 and Q7 are 0, so the accept replay did not return |
+| Accept path | Dispatch lag 115, not the old 66,111. After `086affc`: restarts 0, tracebacks 0 |
+| Unmatched clock | Postgres 220 `no_driver_found` updated after `11:41:11`. Warehouse 11 with `requested_at` after that start, and `total_s < 0` on those 11 is 0 |
+| Surge | All 10,068 `trip_facts` since the bring-up have `surge_multiplier` 1 |
+| Archiver | 6 ceiling hits of 100,000 rows in about 8.5 s, then 55,000 in 4.67 s at `06:38:52`, total 655,000, ceiling clear. Later silence is an empty delete |
+
+### What it did not pass
+
+- **Q3 is still 7.** All seven are `total_s` on `no_driver_found`, from
+  `2026-10-08 09:00:32` to `09:05:22`, on the image before `086affc`.
+  `match_s` and the other four lag columns are 0. Those rows are stored.
+  `make verify-quality` on this warehouse stays red until they age out
+  or a new warehouse is loaded. Do not destroy the stack to clear them.
+- **The driver tick is not 3 seconds.** Third-life ticks `10:10:00`,
+  `10:10:48`, `10:11:33`, `10:12:21` are 45–48 s apart, about 29,200
+  online, `path_p50` 64–68. The life before that was 34–39 s apart with
+  `path_p50` 152–155. `DRIVER_TICK_SECONDS` is 3.0. Each tick did send
+  one position per online driver.
+- **Driver-service exited twice.** `restarts=2`, `oom=false`. No
+  traceback and no `"message": "stopped"` line. The exits are still
+  unnamed. Do not restart the container to name them.
+- **`make capacity` caught a zero position rate.** `driver_positions`
+  `rows_per_s_now` was 0 in that window, so the 3.42 GiB/node figure
+  (3.1% of 112 GiB, verdict ok) does not include a live tick. It is not
+  the full-scale position projection. The other tables in that sample
+  are small: `trip_events` projects to 2.21 GiB/node at scale x2.
+- **Bootstrap wall clock was not recovered.** The one-shot container is
+  gone. No OOM was recorded on the containers that were still up.
+
+### Decisions
+
+- **Do not partition `trips`.** The archiver removed both seed days,
+  655,000 rows, and the last tick was under the ceiling. A 7-day seed
+  is a longer catch-up at the same 100,000-row cap, on the order of
+  hours, not a stuck delete. Step 13 does not add `PARTITION BY`.
+- **Do not change the seed ratio or the 0.6 surge threshold.** This
+  stop is already at the full-scale ratio, and every fact since
+  bring-up is surge 1. Moving the threshold would draw a second band
+  the city does not hit. Moving the seed would make step 13 a different
+  marketplace. "Does surge lift acceptance" stays a one-band chart.
+- **Do not add a city-service instance.** One sample was lag 3,042,
+  with the sink at 1,498 and dispatch at 115. That is not the old wedge.
+  One sample is not a reason to add a process. Lag and surge stay
+  separate problems, as step 11c corrected.
+- **Leave the Kafka quota at 96 GB/broker.** This stop did not
+  re-measure broker disk. The step 6 reading stands: 842 MB per broker
+  at dev scale, about 22 GB projected, against 96 GB.
+
+### Extrapolation to full scale
+
+Same marketplace, twice the fleet and twice the request rate. ClickHouse
+quota stays 112 GiB/node. The quota was set in step 6 from a real
+position rate, with the position TTL at 2 days. This stop does not
+replace that number, because the capacity sample's position rate was 0.
+The slow tick means fewer reports per hour than a 3-second tick, so
+disk pressure at this behaviour is lower than that sizing, not higher.
+The tick itself is unfixed. It is a fidelity gap, not a disk gap.
+
+**Test:** DIONYSUS — the readings above. Already taken.
+
+**Done when:** this record is the close. A green `make verify-quality`
+on the warehouse that still holds the seven rows is not required.
+
+---
+
+The 2026-10-06 crash, and the supply-ratio reasoning that led to this
+stop, are kept below. The destroy / init / up / etcd-existing cycle
+they describe has already been run for the record above.
 
 **Historical, kept because the reasoning matters: fulfilment was 0.611 at
 4,000 drivers with the fleet 96% idle at the same time.** Two readings
@@ -1455,34 +1556,12 @@ genuinely cannot find a free driver within `DISPATCH_SEARCH_RADIUS_KM`.
 Every intermediate rung has to hold that ratio, or each stage measures a
 different marketplace and none of them predicts the last one.
 
-Do not jump from the dev seed to full scale. Two measured stops, each a
-full `destroy` + `up`, fixing what breaks before moving on:
-
-1. ~10% of target fleet, 1 day of history.
-2. ~50%, 2–3 days of history.
-
-Watch at each stop: bootstrap wall-clock, Postgres memory (the pgr_ksp
-OOM history), consumer lag returning to zero, ClickHouse disk growth vs
-quota, and `verify-positions` staying at zeros.
-
-**Plus two things this step now owns**, both found 2026-10-03:
-
-- **`trips` is unpartitioned and the archiver deletes by row.** Measure
-  prune duration per tick and table bloat at both stops. `driver_positions`
-  got daily partitions in step 6 for this exact reason and `trips` did not.
-  Decide here whether it needs range partitioning on `ended_at` before
-  step 13.
-- **Surge cannot fire, and scale makes it worse.** See the correction in
-  step 11c. Measured now: ~155 drivers per request-per-minute; step 13's
-  seed gives ~233. Decide here whether the seed ratio moves or the 0.6
-  threshold does, because otherwise "Does surge lift acceptance" is a
-  one-band chart at every scale this project will ever run.
-
-**Test:** DIONYSUS.
-
-**Done when:** both stops pass the full verify suite with no OOM, lag
-recovering, and disk within quota — and the extrapolation to full scale is
-written down.
+The original plan was two measured stops, each a full `destroy` + `up`:
+about 10% of the fleet for one day, then about 50% for two or three
+days. The 50% stop was the one that got run, at the full-scale supply
+ratio, and the record at the top of this step is the close. The two
+decisions this plan owned are made there: `trips` stays unpartitioned,
+and neither the seed ratio nor the 0.6 surge threshold moves.
 
 ---
 
