@@ -414,9 +414,9 @@ def main() -> int:
     grid = CityGrid.load()
 
     tick_seconds = config.number("DRIVER_TICK_SECONDS", 3.0)
-    # Arrival-only retargets leave the replicas idle once opening paths
-    # exist. A few hundred extra real routes per tick keep the search
-    # workers busy for the whole tick. 0 keeps the old behaviour.
+    # 0 routes a driver only at startup and when the current path ends.
+    # A positive value adds that many extra paths every tick and is not
+    # part of the service.
     steady_searches = config.integer("DRIVER_STEADY_SEARCHES", 0)
     speed_kmh = config.number("DRIVER_SPEED_KMH", 25.0)
     online_share = config.number("DRIVER_ONLINE_SHARE", 0.6)

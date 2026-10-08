@@ -92,7 +92,7 @@ services:
       # searches are the per-tick load after that pass finishes.
       PG_POOL_SIZE: ${PG_POOL_SIZE:-28}
       DRIVER_ROUTING_WORKERS: ${DRIVER_ROUTING_WORKERS:-20}
-      DRIVER_STEADY_SEARCHES: ${DRIVER_STEADY_SEARCHES:-800}
+      DRIVER_STEADY_SEARCHES: ${DRIVER_STEADY_SEARCHES:-0}
     networks:
       - backbone
 
