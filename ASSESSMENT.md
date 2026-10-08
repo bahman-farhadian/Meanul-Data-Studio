@@ -199,9 +199,10 @@ for reading rather than for passing.
 
 | # | Bar | Pass | Fail |
 | --- | --- | --- | --- |
+| Q0 | There is data to judge | None of `trip_events`, `dispatch_offers`, `driver_positions`, `trip_facts` is empty | All four empty. A count of violations is 0 on an empty warehouse, and that is not a pass |
 | Q1 | Every event id is unique | `count() = uniqExact(event_id)` on all five event tables | Any duplicate. ClickHouse does not deduplicate, so every aggregate below is void |
 | Q2 | No blank event id | Zero all-zero UUIDs | Any. A row the sink cannot dedupe on |
-| Q3 | No negative milestone lag | Zero negative `match_s`/`accept_s`/`arrive_s`/`wait_s`/`ride_s` | Any. A trip whose clock runs backwards |
+| Q3 | No negative milestone lag | Zero negative `match_s`, `accept_s`, `arrive_s`, `wait_s`, `ride_s`, or `total_s` | Any. A trip whose clock runs backwards |
 | Q4 | Arrival follows acceptance | Zero trips arrived-without-accepted, or started-without-arrived | Any |
 | Q5 | No-show only after arrival | Zero `rider_no_show`/`wait_too_long` with no `arrived_at` | Any. A driver cannot report a no-show without being there |
 | Q6 | One acceptance per trip | Zero trips with more than one accepted offer | Any. Two cars sent to one rider |
@@ -314,6 +315,7 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | M2 | `make profile` section 2 `rows_per_trip` > 1 after live traffic |
 | M4 | Last-hour `trips` = 0 → wait; do not pass §9.4 on an empty window |
 | M6 + tiles | `make grafana-health`; `make tiles-health`; `make grafana-check` |
+| Quality Q0–Q14 | `make verify-quality`; the pass line of each bar is §9.6 |
 
 Version-1 not-bars (in addition to §2): `axis_share` / `both_axes_pct` in
 `z-config/check-positions.sql` and `z-config/profile.sql` section 10b
@@ -359,7 +361,7 @@ TSV.
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Brokers and RF | Three brokers; declared topics RF 3, ISR 3 | ISR < 3 on a declared topic | `make verify-kafka` |
-| ksqlDB | Server status RUNNING | Not RUNNING | `make verify-ksqldb` |
+| ksqlDB | Every stream and table in `c-infra-kafka/ksql/*.sql` is registered, and every persistent query is RUNNING. Names and client settings are §9.6 | A declared object is missing, or a query is not RUNNING | `make verify-ksqldb` |
 
 Version-1 declared topics: `driver_location`, `rider_location`,
 `trip_requests`, `trip_lifecycle`, `dispatch_offers`, `city_hotspots`,
@@ -609,6 +611,73 @@ JSON.
 
 Instrument: `make tiles-health`; `make grafana-check`.
 
+### 9.6 Closed sets
+
+These bars already have Makefile targets. This section names the pass and the fail. The names are read from `z-config/quality.sql`, `c-infra-kafka/ksql/*.sql`, and `g-infra-superset/assets`. `test_assessment_standard.py` fails when this section drifts from those files.
+
+#### ksqlDB
+
+Instrument: `make verify-ksqldb`.
+
+| Name | Kind |
+| --- | --- |
+| `driver_location` | STREAM |
+| `rider_location` | STREAM |
+| `trip_requests` | STREAM |
+| `trip_lifecycle` | STREAM |
+| `dispatch_offers` | STREAM |
+| `city_hotspots` | STREAM |
+| `segment_traffic_updates` | STREAM |
+| `offer_funnel_by_zone_1m` | TABLE |
+
+Pass: every name above is registered, and every persistent query is RUNNING. `ksql.query.pull.stream.enabled` is `true`, `ksql.query.pull.table.scan.enabled` is `true`, and `ksql.streams.auto.offset.reset` is `earliest`.
+
+Fail: a declared name is missing, a query is not RUNNING, or one of those settings differs. A server that only answers `/info` is not a pass.
+
+#### Superset
+
+Instrument: `make verify-dash`, which runs `make verify-superset`.
+
+Pass: `g-infra-superset/assets` holds 20 charts, 6 datasets, and 1 dashboard, and `make verify-superset` exits 0.
+
+Fail: the counts differ from the files on disk, a chart points at a dataset outside the bundle, or a metric does not run.
+
+#### Quality
+
+Instrument: `make verify-quality`, which runs `z-config/quality.sql`.
+
+Pass: `measured` is 0 on every row. The verdict column then says `ok`.
+
+Fail: any row says `FAIL`. The target exits 1.
+
+Q3 counts a row when any of `match_s`, `accept_s`, `arrive_s`, `wait_s`, `ride_s`, or `total_s` is negative. Q0 fails when any of the four tables it names is empty, because a count of violations is 0 when there are no rows.
+
+| Bar | Pass line |
+| --- | --- |
+| `Q0  there is data to judge` | `empty tables = 0` |
+| `Q1  every event id is unique` | `duplicates = 0` |
+| `Q2  no blank event id` | `blank = 0` |
+| `Q3  no negative milestone lag` | `negative = 0` |
+| `Q4  arrival follows acceptance` | `out of order = 0` |
+| `Q5  no-show only after arrival` | `impossible = 0` |
+| `Q6  one acceptance per trip` | `double-matched = 0` |
+| `Q7  offer chains have no gaps` | `gapped chains = 0` |
+| `Q8  unmatched trips took no offer` | `contradictions = 0` |
+| `Q9  party fits the tier seats` | `oversized = 0` |
+| `Q10 no fare without completion` | `unearned = 0` |
+| `Q11 no completion without fare` | `unpriced = 0` |
+| `Q12 payout never exceeds fare` | `overpaid = 0` |
+| `Q13 every ended trip has a fact` | `missing = 0` |
+| `Q14 no offer for an unknown trip` | `orphans = 0` |
+
+#### Payments
+
+Version 1 stores a payment as two columns on `trips`, `payment_method` and `driver_payout`. A failed or refunded charge cannot be represented. An append-only payments record is not in version 1.
+
+#### Dictionary and diagram
+
+`not-uber-service/docs/DATA_DICTIONARY.md` and `not-uber-service/docs/ERD.md` are generated by `docs/schema_inventory.py` from `h-bootstrap/migrations`, `e-infra-clickhouse/ddl`, and `c-infra-kafka/topics/topics.tsv`. A column added in a migration and not regenerated fails `make verify-walk`.
+
 ---
 
 ## 10. Command index (version 1)
@@ -631,6 +700,8 @@ under `not-uber-service/`):
 | `make superset-health` | `g-infra-superset` |
 | `make verify-data` | S1, G1, G3, G4, `h-bootstrap` |
 | `make verify-dash` | grafana + tiles + superset |
+| `make verify-superset` | §9.6 Superset assets |
+| `make verify-quality` | Q0–Q14, `z-config/quality.sql` |
 | `make verify-positions` | M1, M3, `l-service-dispatch`, §9.4 |
 | `make verify-walk` | S5, M1 unit, `j-service-driver` |
 | `make lag` | C6, `i-service-cache-updater`, `k-service-passenger`, `m-service-city`, `n-service-clickhouse-sink` |
@@ -645,7 +716,11 @@ SQL and pytest the bars cite:
 
 | Path | Role |
 | --- | --- |
+| `z-config/quality.sql` | Q0–Q14; pass is `measured` = 0 |
 | `z-config/check-on-network.sql` | 75 m, `ST_NPoints` ≤ 2, 1000 m |
+| `not-uber-service/docs/schema_inventory.py` | regenerates the dictionary and the ERD |
+| `not-uber-service/docs/DATA_DICTIONARY.md` | both stores, per column |
+| `not-uber-service/docs/ERD.md` | OLTP foreign keys |
 | `z-config/check-positions.sql` | Diagnostic only (§2) |
 | `z-config/profile.sql` | Warehouse freshness and ranges |
 | `z-lib/nus-common/nus_common/geo.py` | `is_chord_path` `min_km=0.2` |

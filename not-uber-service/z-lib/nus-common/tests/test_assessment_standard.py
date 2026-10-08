@@ -871,3 +871,118 @@ def test_a_trip_id_is_still_exactly_the_width_the_warehouse_stores() -> None:
         made = ids.new_trip_id(datetime(2026, 10, 1), random.Random(seed))
         assert len(made) == ids.TRIP_ID_LENGTH, made
         assert made.startswith("trp-20261001-"), made
+
+
+def _inventory():
+    """The schema generator. z-config and docs are not on PYTHONPATH."""
+    import importlib.util
+
+    path = NUS / "docs" / "schema_inventory.py"
+    spec = importlib.util.spec_from_file_location("schema_inventory", path)
+    assert spec is not None and spec.loader is not None, path
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _declared_tables(directory: Path) -> set[str]:
+    names: set[str] = set()
+    for path in sorted(directory.glob("*.sql")):
+        text = "\n".join(
+            line.split("--", 1)[0] for line in path.read_text().splitlines()
+        )
+        names.update(
+            re.findall(
+                r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?"
+                r"(?:nus\.)?([a-z_][a-z0-9_]*)",
+                text,
+                flags=re.I,
+            )
+        )
+    return names
+
+
+def _dictionary_section(dictionary: str, table: str) -> str:
+    marker = f"### `{table}`"
+    start = dictionary.index(marker)
+    rest = dictionary[start + len(marker) :]
+    nxt = rest.find("\n### ")
+    return rest[: nxt if nxt != -1 else len(rest)]
+
+
+def _closed_sets() -> str:
+    text = _standard()
+    start = text.index("### 9.6 ")
+    rest = text[start:]
+    nxt = re.search(r"\n## \d", rest)
+    assert nxt, "§9.6 has no following section"
+    return rest[: nxt.start()]
+
+
+def test_dictionary_and_erd_match_the_shipped_schema():
+    """A column added in SQL and not regenerated is a fail.
+
+    The markdown is a render of the migrations and the ClickHouse DDL.
+    Hand-editing either document, or adding a table the parser misses,
+    fails here.
+    """
+    inv = _inventory()
+    dictionary = (NUS / "docs" / "DATA_DICTIONARY.md").read_text()
+    erd = (NUS / "docs" / "ERD.md").read_text()
+    assert dictionary == inv.render_dictionary()
+    assert erd == inv.render_erd()
+    assert inv.F4 in dictionary
+
+    oltp = inv.oltp_tables()
+    warehouse = inv.warehouse_tables()
+    assert _declared_tables(NUS / "h-bootstrap" / "migrations") == set(oltp)
+    assert _declared_tables(NUS / "e-infra-clickhouse" / "ddl") == set(warehouse)
+    assert all(cols for cols in (*oltp.values(), *warehouse.values()))
+
+    for table, cols in oltp.items():
+        body = _dictionary_section(dictionary, table)
+        missing = [name for name, _typ in cols if f"| `{name}` |" not in body]
+        assert missing == [], f"{table} missing columns {missing}"
+    for table, cols in warehouse.items():
+        body = _dictionary_section(dictionary, f"nus.{table}")
+        missing = [name for name, _typ in cols if f"| `{name}` |" not in body]
+        assert missing == [], f"nus.{table} missing columns {missing}"
+    for table in oltp:
+        assert table in erd
+
+    trip_cols = {name for name, _typ in oltp["trips"]}
+    assert {"payment_method", "driver_payout"} <= trip_cols
+
+
+def test_closed_sets_are_written_in_the_contract():
+    """ksqlDB, Superset, and the quality bars have a pass line on paper.
+
+    The strings come from the files the Makefile targets already read.
+    A renamed stream, a new chart, or an edited pass line fails until
+    §9.6 is updated to match.
+    """
+    inv = _inventory()
+    section = _closed_sets()
+    assert inv.F4 in section
+
+    bars = inv.quality_bars()
+    assert [name.split()[0] for name, _line in bars] == [f"Q{i}" for i in range(15)]
+    for name, pass_line in bars:
+        assert name in section, name
+        assert pass_line in section, pass_line
+
+    for kind, name in inv.ksql_objects():
+        assert name in section, name
+        assert kind in section, kind
+
+    assert f"{inv.chart_count()} charts" in section
+    assert f"{inv.dataset_count()} datasets" in section
+    dashboards = inv.dashboard_count()
+    word = "dashboard" if dashboards == 1 else "dashboards"
+    assert f"{dashboards} {word}" in section
+
+    checker = (NUS / "c-infra-kafka" / "ksql" / "check-ksql.py").read_text()
+    block = re.search(r"CLIENT_SETTINGS = \{([^}]+)\}", checker)
+    assert block, checker
+    for key, value in re.findall(r'"([^"]+)":\s*"([^"]+)"', block.group(1)):
+        assert f"`{key}` is `{value}`" in section, key

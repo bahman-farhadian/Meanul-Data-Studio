@@ -54,7 +54,7 @@ each - eight remaining steps become four cycles.
 | A | 6 (measure) + 7 | Dionysus, one bring-up | **DONE** | Both read the same live stack: measure bytes/row while the quality bars run |
 | B | 8 + 9 + 10 | Dionysus, one bring-up | **DONE 2026-10-02** | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
 | D1 | 12 | Dionysus, two bring-ups | started, not passed | The staged scale-up: ~10% of target fleet, then ~50%. The 2026-10-06 50% stack is wedged; it is not this row's pass |
-| C | 11 | Local | after D1 | Contract and documentation. No server time |
+| C | 11 | Local | **DONE 2026-10-08** | Contract and documentation. No server time |
 | D2 | 13 | Dionysus, one bring-up | last | The full-scale final run |
 
 **Re-ordered 2026-10-03: step 12 now runs BEFORE step 11.** The original
@@ -1249,10 +1249,16 @@ returns rows.
 
 ## Step 11 — Contract and documentation
 
-NOT STARTED. **Runs after step 12, not before** - see the re-ordering note
-under Working blocks. Everything below is unchanged except its place in
-the queue; the step-12 measurements are inputs to it rather than
-something it has to predict.
+DONE — 2026-10-08, workstation. `make verify-walk` exits 0 (116 passed).
+§9.6 names the eight ksqlDB objects, the Superset asset counts (20 charts,
+6 datasets, 1 dashboard), and the Q0–Q14 pass lines copied from
+`quality.sql`. `docs/DATA_DICTIONARY.md` and `docs/ERD.md` are generated
+from the migrations and the ClickHouse DDL, and the walk fails if they
+drift. A payment in version 1 is `payment_method` and `driver_payout` on
+`trips`. A refund cannot be stored.
+
+It ran after step 12, as the re-ordering note describes. The bullets below
+are the spec that run closed.
 
 - ASSESSMENT.md: bars for ksqlDB streams, Superset assets, the step-7
   quality numbers, and any new closed set — each with instrument, pass,
