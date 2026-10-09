@@ -154,6 +154,9 @@ def test_make_steps_exist_and_demos_are_gone():
     ]
     absent = [name for name in resume if name not in root or name not in targets]
     assert absent == [], f"help or the Makefiles dropped a step that make up still needs: {absent}"
+    preflight = (NUS / "mk" / "preflight.mk").read_text()
+    assert 'runnet="--network host"' in preflight
+    assert 'docker run --rm $$runnet "$$probe"' in preflight
 
 
 def test_live_walk_and_tile_terms_are_in_the_sources():

@@ -98,38 +98,42 @@ preflight:
 		fi; \
 		probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 		probe=$${probe:-busybox:1.38.0}; \
+		buildnet=$$(grep -E '^BUILD_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+		runnet=""; \
+		[ "$$buildnet" = host ] && runnet="--network host"; \
 		docker image inspect "$$probe" >/dev/null 2>&1 || docker pull -q "$$probe" >/dev/null 2>&1 || true; \
 		if ! docker image inspect "$$probe" >/dev/null 2>&1; then \
 		printf "  $(Y)warn$(X)    could not fetch %s, so container networking was not checked\n" "$$probe"; \
-		elif docker run --rm "$$probe" sh -c 'nslookup deb.debian.org >/dev/null 2>&1' >/dev/null 2>&1; then \
-		if docker run --rm "$$probe" sh -c 'wget -q -T5 -O- http://deb.debian.org/ >/dev/null 2>&1' >/dev/null 2>&1; then \
+		elif docker run --rm $$runnet "$$probe" sh -c 'nslookup deb.debian.org >/dev/null 2>&1' >/dev/null 2>&1; then \
+		if docker run --rm $$runnet "$$probe" sh -c 'wget -q -T5 -O- http://deb.debian.org/ >/dev/null 2>&1' >/dev/null 2>&1; then \
+			if [ "$$buildnet" = host ]; then \
+			printf "  $(G)ok$(X)      image builds use the host network and can reach the internet\n"; \
+			else \
 			printf "  $(G)ok$(X)      containers can resolve DNS and reach the internet\n"; \
-			elif [ "$$(grep -E '^BUILD_NETWORK=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)" = host ]; then \
-			printf "  $(Y)warn$(X)    containers cannot reach the internet, but BUILD_NETWORK=host is set,\n"; \
-			printf "              so the image builds will use the host's network and succeed. Nothing\n"; \
-			printf "              else needs container-side internet - lion-fetch/lion-prepare both run\n"; \
-			printf "              on the host, and bootstrap only ever restores what they built.\n"; \
+			fi; \
+			elif [ "$$buildnet" = host ]; then \
+			printf "  $(Y)warn$(X)    the host network resolves names but cannot fetch packages.\n"; \
+			printf "              Image builds install packages on that network. lion-fetch and\n"; \
+			printf "              tiles-prepare run on the host, and bootstrap only restores what they built.\n"; \
+			printf "                $(C)curl -sS -m10 -I http://deb.debian.org/ | head -1$(X)\n"; \
 			else \
 			printf "  $(R)FAIL$(X)    containers resolve DNS but cannot reach the internet.\n"; \
 			printf "              Image pulls still work (the daemon fetches those over the host's\n"; \
 			printf "              own stack), but every image built here installs packages, and that\n"; \
 			printf "              runs inside a container.\n"; \
-			printf "              FIRST, check the host. If it cannot reach them either, this is not\n"; \
-			printf "              a Docker problem at all:\n"; \
 			printf "                $(C)curl -sS -m10 -I http://deb.debian.org/ | head -1$(X)\n"; \
-			printf "              Then read the symptom, which names the fault:\n"; \
-			printf "                'Connection refused'     something is actively rejecting it —\n"; \
-			printf "                                         upstream filtering or a transparent proxy\n"; \
-			printf "                hangs, then times out    MTU mismatch, or a firewall DROP\n"; \
-			printf "                'Network is unreachable' routing, or net.ipv4.ip_forward is 0\n"; \
-			printf "              Reproduce it directly:\n"; \
 			printf "                $(C)docker run --rm %s wget -O- -T8 http://deb.debian.org/$(X)\n" "$$probe"; \
-			printf "              If the host CAN reach them and only containers cannot, its route out\n"; \
-			printf "              captures traffic originating on the host but not traffic forwarded\n"; \
-			printf "              from containers.\n"; \
-			printf "              Then set $(C)BUILD_NETWORK=host$(X) in $(ENV_FILE) and re-run.\n"; \
+			printf "              If the host can reach them and only the bridge cannot, set\n"; \
+			printf "              $(C)BUILD_NETWORK=host$(X) in $(ENV_FILE). A tunnel does not carry\n"; \
+			printf "              traffic forwarded from a container.\n"; \
 			fail=1; \
 			fi; \
+		elif [ "$$buildnet" = host ]; then \
+		printf "  $(R)FAIL$(X)    the host network cannot resolve DNS, so image builds cannot install packages.\n"; \
+		printf "              A bridge container refused 8.8.8.8 is a different path. Builds use\n"; \
+		printf "              the host network, and that is the one this check just tried.\n"; \
+		printf "                $(C)docker run --rm --network host %s nslookup deb.debian.org$(X)\n" "$$probe"; \
+		fail=1; \
 		else \
 		printf "  $(R)FAIL$(X)    containers cannot resolve DNS, so no image can be built.\n"; \
 		printf "              Image pulls still work (the daemon uses the host's stack), so this\n"; \
@@ -137,7 +141,8 @@ preflight:
 		printf "                net.ipv4.ip_forward is 0   -> sysctl -w net.ipv4.ip_forward=1\n"; \
 		printf "                iptables FORWARD drops     -> iptables -S FORWARD | head\n"; \
 		printf "                no resolver in the container -> add \"dns\" to /etc/docker/daemon.json\n"; \
-		printf "              Reproduce it directly:\n"; \
+		printf "              A tunnel often refuses DNS from the bridge while the host still resolves.\n"; \
+		printf "              Set $(C)BUILD_NETWORK=host$(X) when that is the case.\n"; \
 		printf "                $(C)docker run --rm %s nslookup deb.debian.org$(X)\n" "$$probe"; \
 		fail=1; \
 		fi; \
