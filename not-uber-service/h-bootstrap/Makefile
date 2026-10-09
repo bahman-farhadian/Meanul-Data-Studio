@@ -71,7 +71,9 @@ tlc-trips-fetch:
 	month=$$(grep -E '^TLC_TRIP_DATA_MONTH=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	month=$${month:-2025-01}; \
 	url_template=$$(grep -E '^TLC_TRIP_DATA_URL_TEMPLATE=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	url_template=$${url_template:-https://d37ci6vzurychx.cloudfront.net/trip-data/fhvhv_tripdata_{month}.parquet}; \
+	if [ -z "$$url_template" ]; then \
+		printf "  $(R)FAIL$(X)    TLC_TRIP_DATA_URL_TEMPLATE is not set in $(ENV_FILE)\n"; exit 1; \
+	fi; \
 	url=$$(printf '%s' "$$url_template" | sed "s/{month}/$$month/"); \
 	dest="$$root/nus-lion-data"; file="$$dest/tlc-trips-$$month.parquet"; \
 	zone_out="$$dest/zone_demand_calibration.csv"; od_out="$$dest/od_pair_calibration.csv"; \
