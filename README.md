@@ -120,22 +120,20 @@ different failure modes) — `driver-service` and `passenger-service` are
 independent generators that happen to refer to the same trips, not a single
 simulation duplicated into two streams.
 
-Naming: the plain names above (`driver-service`, `cache-updater`, ...) are
-the docker-compose service/container names; the alphabetic directory
-prefixes in [2.8](#28-project-structure) (`j-service-driver`, ...) encode
-build order only. Shared resources carry the **`nus-` prefix — the acronym
-of *n*ot-*u*ber-*s*ervice**: the `nus-backbone` Docker network and the
-`nus/` image namespace. The data processes are `nus-pg-1`, `nus-redis-1`,
-`nus-kafka-1`, and `nus-ch-s1r1`.
+Naming: running processes use `hailpath-<job>` for the compose service
+name, `container_name`, and hostname. Directory prefixes in
+[2.8](#28-project-structure) (`j-service-driver`, ...) encode build order
+only. Built images are `hailpath/<job>`. The Docker network is
+`hailpath-net`. The one HAProxy is `hailpath-proxy`.
 
 #### Load-balancer tier (hailpath-proxy)
 
 One HAProxy publishes a stable host port for each store:
 
-- **5432 / 5433** -> the one PostgreSQL. Both ports are `nus-pg-1`.
+- **5432 / 5433** -> the one PostgreSQL. Both ports are `hailpath-postgres`.
   Debezium uses 5432;
-- **6379 / 6380** -> the one Redis. Both ports are `nus-redis-1`;
-- **9094 / 9097** -> the one Kafka broker, one port per advertised address;
+- **6379 / 6380** -> the one Redis. Both ports are `hailpath-redis`;
+- **9094** -> the one Kafka broker;
 - **8089** -> ksqlDB, the SQL reader of that broker;
 - **8123 / 9000** -> the one ClickHouse (HTTP / native);
 - **3000 / 8088** -> Grafana / Superset.
@@ -274,7 +272,7 @@ graph LR
 ### 2.3 PostgreSQL (HLD)
 
 PostgreSQL is the system of truth for all transactional/operational state
-and the NYC road network graph. It is one process, `nus-pg-1`. The
+and the NYC road network graph. It is one process, `hailpath-postgres`. The
 PostgreSQL layer relies on three pillars:
 
 - **[PostGIS](https://postgis.net/)** — the extension that stores the NYC
@@ -291,7 +289,7 @@ PostgreSQL layer relies on three pillars:
 
 **Entry point:** services connect through HAProxy (`hailpath-proxy`, see
 [2.1](#load-balancer-tier-lb-a)). Port **5432** and
-port **5433** are both `nus-pg-1`. Debezium uses the write port. `PG_HOST`
+port **5433** are both `hailpath-postgres`. Debezium uses the write port. `PG_HOST`
 is `hailpath-proxy`.
 
 **Migrations** are plain, ordered SQL files
@@ -301,7 +299,7 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 ```mermaid
 graph TB
     HAP["hailpath-proxy<br/>5432 and 5433"]
-    PG[("nus-pg-1")]
+    PG[("hailpath-postgres")]
 
     HAP --> PG
 ```
@@ -448,14 +446,14 @@ factor is 1.
 
 ### 2.6 ClickHouse (HLD)
 
-ClickHouse is one server, `nus-ch-s1r1`. `clickhouse-sink` consumes the
+ClickHouse is one server, `hailpath-clickhouse`. `clickhouse-sink` consumes the
 Kafka topics above and writes the warehouse tables that back Grafana
 (live/ops) and Superset (BI). The names those dashboards query
-(`nus.trip_events`, `nus.driver_positions`, and the rest) are the tables.
+(`hailpath.trip_events`, `hailpath.driver_positions`, and the rest) are the tables.
 Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or
 `ReplacingMergeTree`. A second copy on this host would not be a second
 machine. See
-`meanul-hailpath/e-infra-clickhouse/clickhouse-cluster-design.md`.
+`meanul-hailpath/e-infra-clickhouse/clickhouse-design.md`.
 
 **Relationship with Redis:** before inserting, the sink enriches events
 using Redis — for example, when a completed trip arrives it looks up
@@ -578,7 +576,7 @@ meanul-data-studio/
     ├── b-infra-redis/                # one Redis
     ├── c-infra-kafka/                # one KRaft broker, Schema Registry, ksqlDB, Avro schemas
     ├── d-infra-debezium/             # Kafka Connect + Avro converter, PostgreSQL CDC connector
-    ├── e-infra-clickhouse/           # one ClickHouse, table DDL, clickhouse-cluster-design.md
+    ├── e-infra-clickhouse/           # one ClickHouse, table DDL, clickhouse-design.md
     ├── f-infra-grafana/              # provisioned ClickHouse datasource + live dashboard
     ├── g-infra-superset/             # Superset + ClickHouse driver, init one-shot
     ├── h-bootstrap/                  # one-shot init service (starts last, runs once, exits)
@@ -679,14 +677,14 @@ retention is bounded.
 
 | Component | Containers | CPU ceiling | Memory ceiling |
 | --- | --- | --- | --- |
-| PostgreSQL (`nus-pg-1`, `shared_buffers` 4 GB) | 1 | 10 | 16 GB |
+| PostgreSQL (`hailpath-postgres`, `shared_buffers` 4 GB) | 1 | 10 | 16 GB |
 | HAProxy (`hailpath-proxy`) | 1 | 0.5 | 128 MB |
-| Redis (`nus-redis-1`) | 1 | 0.5 | 4 GB |
-| Kafka (`nus-kafka-1`, heap 3.5 GB) | 1 | 1.2 | 5.5 GB |
+| Redis (`hailpath-redis`) | 1 | 0.5 | 4 GB |
+| Kafka (`hailpath-kafka`, heap 3.5 GB) | 1 | 1.2 | 5.5 GB |
 | Schema Registry | 1 | 0.2 | 1 GB |
 | ksqlDB | 1 | 0.5 | 1.5 GB |
 | Debezium Connect | 1 | 0.4 | 2 GB |
-| ClickHouse (`nus-ch-s1r1`) | 1 | 1.3 | 8 GB |
+| ClickHouse (`hailpath-clickhouse`) | 1 | 1.3 | 8 GB |
 | Grafana | 1 | 0.2 | 1 GB |
 | Tiles (`hailpath-tiles`) | 1 | 1.0 | 3 GB |
 | Superset | 1 | 0.6 | 3 GB |

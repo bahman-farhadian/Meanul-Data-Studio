@@ -31,31 +31,31 @@ nothing_to_judge AS (
     -- count(trip_events) = (0 + 1 + 1 + 1), which answered 0 on an empty
     -- warehouse and reported ok - the exact false pass this bar exists to
     -- prevent, in the bar itself.
-    SELECT ((SELECT count() FROM nus.trip_events) = 0)
-         + ((SELECT count() FROM nus.dispatch_offers) = 0)
-         + ((SELECT count() FROM nus.driver_positions) = 0)
-         + ((SELECT count() FROM nus.trip_facts) = 0) AS n
+    SELECT ((SELECT count() FROM hailpath.trip_events) = 0)
+         + ((SELECT count() FROM hailpath.dispatch_offers) = 0)
+         + ((SELECT count() FROM hailpath.driver_positions) = 0)
+         + ((SELECT count() FROM hailpath.trip_facts) = 0) AS n
 ),
 dupes AS (
     SELECT
-        (SELECT count() - uniqExact(event_id) FROM nus.trip_events)
-      + (SELECT count() - uniqExact(event_id) FROM nus.dispatch_offers)
-      + (SELECT count() - uniqExact(event_id) FROM nus.driver_positions)
-      + (SELECT count() - uniqExact(event_id) FROM nus.rider_positions)
-      + (SELECT count() - uniqExact(event_id) FROM nus.hotspot_history) AS n
+        (SELECT count() - uniqExact(event_id) FROM hailpath.trip_events)
+      + (SELECT count() - uniqExact(event_id) FROM hailpath.dispatch_offers)
+      + (SELECT count() - uniqExact(event_id) FROM hailpath.driver_positions)
+      + (SELECT count() - uniqExact(event_id) FROM hailpath.rider_positions)
+      + (SELECT count() - uniqExact(event_id) FROM hailpath.hotspot_history) AS n
 ),
 blank_ids AS (
     SELECT
-        (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM nus.trip_events)
-      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM nus.dispatch_offers)
-      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM nus.driver_positions) AS n
+        (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.trip_events)
+      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.dispatch_offers)
+      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.driver_positions) AS n
 ),
 -- A trip's clock must run forwards. Int32 on purpose, so a state-machine
 -- bug shows as a negative number instead of wrapping into a huge positive.
 bad_lags AS (
     SELECT countIf(match_s < 0 OR accept_s < 0 OR arrive_s < 0
                    OR wait_s < 0 OR ride_s < 0 OR total_s < 0) AS n
-    FROM nus.trip_facts FINAL
+    FROM hailpath.trip_facts FINAL
 ),
 -- Arrival cannot precede acceptance, and a trip cannot start before the
 -- car got there.
@@ -63,58 +63,58 @@ bad_arrival AS (
     SELECT countIf(arrived_at IS NOT NULL AND accepted_at IS NULL)
          + countIf(started_at IS NOT NULL AND arrived_at IS NULL
                    AND final_status = 'completed') AS n
-    FROM nus.trip_facts FINAL
+    FROM hailpath.trip_facts FINAL
 ),
 -- A no-show can only be declared by a driver who was actually waiting,
 -- and "waited too long" needs something to have waited for.
 impossible_reason AS (
     SELECT countIf(cancellation_reason IN ('rider_no_show', 'wait_too_long')
                    AND arrived_at IS NULL) AS n
-    FROM nus.trip_facts FINAL
+    FROM hailpath.trip_facts FINAL
 ),
 -- One trip, one driver. Two acceptances means two cars sent to one rider.
 two_accepted AS (
     SELECT countIf(accepted > 1) AS n
     FROM (SELECT trip_id, countIf(status = 'accepted') AS accepted
-          FROM nus.dispatch_offers GROUP BY trip_id)
+          FROM hailpath.dispatch_offers GROUP BY trip_id)
 ),
 -- An offer chain is 1, 2, 3 ... with nothing missing. A gap means dispatch
 -- lost track of its own search.
 chain_gaps AS (
     SELECT countIf(offers != top_sequence OR top_sequence = 0) AS n
     FROM (SELECT trip_id, count() AS offers, max(sequence) AS top_sequence
-          FROM nus.dispatch_offers GROUP BY trip_id)
+          FROM hailpath.dispatch_offers GROUP BY trip_id)
 ),
 -- A trip nobody took cannot have an acceptance on record.
 accepted_but_unmatched AS (
     SELECT count() AS n FROM (
-        SELECT trip_id FROM nus.trip_facts FINAL WHERE final_status = 'no_driver_found'
+        SELECT trip_id FROM hailpath.trip_facts FINAL WHERE final_status = 'no_driver_found'
     ) AS t
     INNER JOIN (
-        SELECT trip_id FROM nus.dispatch_offers WHERE status = 'accepted'
+        SELECT trip_id FROM hailpath.dispatch_offers WHERE status = 'accepted'
     ) AS o USING trip_id
 ),
 -- A party of five cannot travel in a four-seat car. economy and premium
 -- seat four; only xl seats six.
 party_over_seats AS (
     SELECT countIf(passenger_count > 4 AND requested_vehicle_type != 'xl') AS n
-    FROM nus.trip_events
+    FROM hailpath.trip_events
 ),
 -- Money exists exactly when the trip was completed, and never otherwise.
 -- A fare on a cancelled trip is revenue that was never earned.
 fare_without_completion AS (
     SELECT countIf(final_status != 'completed' AND fare_final IS NOT NULL) AS n
-    FROM nus.trip_facts FINAL
+    FROM hailpath.trip_facts FINAL
 ),
 completion_without_fare AS (
     SELECT countIf(final_status = 'completed' AND fare_final IS NULL) AS n
-    FROM nus.trip_facts FINAL
+    FROM hailpath.trip_facts FINAL
 ),
 -- The platform takes a cut; it does not pay the driver more than the rider
 -- paid. This is the arithmetic the whole Decimal change exists to protect.
 payout_over_fare AS (
     SELECT countIf(driver_payout > fare_final) AS n
-    FROM nus.trip_facts FINAL WHERE fare_final IS NOT NULL
+    FROM hailpath.trip_facts FINAL WHERE fare_final IS NOT NULL
 ),
 -- Every terminal trip must have produced a trip_facts row. A gap means the
 -- materialized view is not keeping up, or is not firing.
@@ -137,11 +137,11 @@ payout_over_fare AS (
 -- this replaces.
 facts_missing AS (
     SELECT uniqExact(trip_id) AS n
-    FROM nus.trip_events
+    FROM hailpath.trip_events
     WHERE status IN ('completed', 'cancelled_by_passenger',
                      'cancelled_by_driver', 'no_driver_found')
       AND event_time < now() - INTERVAL 5 MINUTE
-      AND trip_id NOT IN (SELECT trip_id FROM nus.trip_facts)
+      AND trip_id NOT IN (SELECT trip_id FROM hailpath.trip_facts)
 ),
 -- An offer for a trip the warehouse has never heard of - but only once
 -- the trip has had time to appear.
@@ -158,9 +158,9 @@ facts_missing AS (
 -- twenty-second deadline each, and the sink batches every five seconds.
 -- Past that, an offer with no trip is a real orphan.
 orphan_offers AS (
-    SELECT uniqExact(trip_id) AS n FROM nus.dispatch_offers
+    SELECT uniqExact(trip_id) AS n FROM hailpath.dispatch_offers
     WHERE offered_at < now() - INTERVAL 5 MINUTE
-      AND trip_id NOT IN (SELECT trip_id FROM nus.trip_events)
+      AND trip_id NOT IN (SELECT trip_id FROM hailpath.trip_events)
 )
 -- measured is Int64 throughout: countIf answers UInt64 while the two
 -- subtractions answer Int64, and a UNION has to settle on one. Signed

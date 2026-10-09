@@ -1,5 +1,5 @@
 {
-  "name": "nus-pg",
+  "name": "hailpath-pg",
   "config": {
     "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
     "tasks.max": "1",
@@ -10,15 +10,15 @@
     "database.user": "filled in by register.py",
     "database.password": "filled in by register.py",
 
-    "topic.prefix": "nus",
+    "topic.prefix": "hailpath",
     "plugin.name": "pgoutput",
-    "slot.name": "nus_debezium",
-    "publication.name": "nus_pub",
+    "slot.name": "hailpath_debezium",
+    "publication.name": "hailpath_pub",
     "publication.autocreate.mode": "filtered",
 
     "snapshot.mode": "initial",
-    "table.include.list": "nus.drivers,nus.passengers,nus.trips,nus.city_zones,nus.vehicles,nus.trip_ratings,nus.driver_sessions",
-    "column.exclude.list": "nus.trips.route",
+    "table.include.list": "hailpath.drivers,hailpath.passengers,hailpath.trips,hailpath.city_zones,hailpath.vehicles,hailpath.trip_ratings,hailpath.driver_sessions",
+    "column.exclude.list": "hailpath.trips.route",
     "tombstones.on.delete": "true",
     "heartbeat.interval.ms": "10000",
 
@@ -27,7 +27,7 @@
 
     "transforms": "route",
     "transforms.route.type": "org.apache.kafka.connect.transforms.RegexRouter",
-    "transforms.route.regex": "nus\\.nus\\.(.*)",
+    "transforms.route.regex": "hailpath\\.hailpath\\.(.*)",
     "transforms.route.replacement": "cdc.$1",
 
     "topic.creation.enable": "true",

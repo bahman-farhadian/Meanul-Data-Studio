@@ -58,7 +58,7 @@ is better than a connector that silently follows nothing.
 ## The replication slot — the thing to watch
 
 To keep a copy of the journal for Debezium, PostgreSQL creates a
-**replication slot** (`nus_debezium`). While that slot exists, PostgreSQL
+**replication slot** (`hailpath_debezium`). While that slot exists, PostgreSQL
 **refuses to delete WAL that the slot has not read yet**. That is exactly
 what makes CDC reliable, and also the one way this component can hurt the
 database: if Connect is stopped for a long time and the slot is left behind,
@@ -76,7 +76,7 @@ So:
 ## Connecting to the REST API
 
 Connect's REST API is proxied through the entry tier like everything else in
-this stack, so `/connectors/nus-pg/status` and friends are reachable without
+this stack, so `/connectors/hailpath-pg/status` and friends are reachable without
 shelling into the container:
 
 | | via `hailpath-proxy` |
@@ -92,24 +92,24 @@ gate nothing that isn't already open one layer down.
 | Setting | Value | Why |
 | --- | --- | --- |
 | `plugin.name` | `pgoutput` | PostgreSQL's built-in logical decoding output. Nothing extra to install in the database image. |
-| `slot.name` / `publication.name` | `nus_debezium` / `nus_pub` | Named on purpose, so an operator can find and drop them by hand. |
+| `slot.name` / `publication.name` | `hailpath_debezium` / `hailpath_pub` | Named on purpose, so an operator can find and drop them by hand. |
 | `publication.autocreate.mode` | `filtered` | Debezium publishes only the listed tables, not everything. This keeps the huge OSM routing tables out of Kafka. |
 | `table.include.list` | drivers, passengers, trips, city_zones, vehicles, trip_ratings, driver_sessions | OLTP tables the cache and the warehouse need. Routing graph tables stay out. |
-| `column.exclude.list` | `nus.trips.route` | PostGIS `geometry`. Debezium cannot convert it (`Failed to properly convert data value for 'nus.trips.route' of type geometry`, confirmed on the second Dionysus run). The cache and sink never read the line. |
+| `column.exclude.list` | `hailpath.trips.route` | PostGIS `geometry`. Debezium cannot convert it (`Failed to properly convert data value for 'hailpath.trips.route' of type geometry`, confirmed on the second Dionysus run). The cache and sink never read the line. |
 | `snapshot.mode` | `initial` | Read what is already there once, then stream. This is what fills the cache after seeding. |
 | `tombstones.on.delete` | `true` | A delete leaves a null-valued message, which becomes a Redis `DEL` and lets Kafka compact the key away. |
 | `decimal.handling.mode` | `double` | Fares arrive as plain numbers instead of encoded decimals, so consumers need no special decoding. |
 | `time.precision.mode` | `connect` | Timestamps arrive as ordinary millisecond values. |
-| `transforms.route` | `nus.nus.X` -> `cdc.X` | Debezium's default topic name carries the server and schema — both happen to be named "nus" here. The rename gives the short names used everywhere else in the stack. |
+| `transforms.route` | `hailpath.hailpath.X` -> `cdc.X` | Debezium's default topic name carries the server and schema — both are named hailpath here. The rename gives the short `cdc.*` names used everywhere else in the stack. |
 | `topic.creation.*` | 3 partitions, replication factor 1, compacted | Broker-side auto-creation is off, so Connect must create its own topics with the right settings. |
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `debezium-connect` plus the `connector-register` one-shot behind the `init` profile. |
-| `Dockerfile` | Debezium's Connect image with Confluent's Avro converter added, so the `cdc.*` topics use the same encoding as every other topic. |
-| `connectors/nus-pg.json` | The connector definition. No password: it is injected at registration. |
+| `docker-compose.yaml` | Official Connect plus the `connector-register` one-shot behind the `init` profile. |
+| `converter-prepare.sh` | Downloads Confluent's Avro converter jars; Connect mounts them. |
+| `connectors/hailpath-pg.json` | The connector definition. No password: it is injected at registration. |
 | `connectors/register.py` | Sends the definition to Connect (PUT, so re-running updates it) and prints the resulting status. |
 | `.env.example` | Template for the untracked `.env` (image pins, database connection, password). |
 
@@ -129,7 +129,7 @@ gate nothing that isn't already open one layer down.
 
 ```bash
 # the connector exists and is RUNNING, and so is its task
-docker compose exec debezium-connect curl -s http://localhost:8083/connectors/nus-pg/status
+docker compose exec debezium-connect curl -s http://localhost:8083/connectors/hailpath-pg/status
 
 # the cdc.* topics Debezium created
 docker compose exec hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
@@ -170,9 +170,9 @@ keep journal files for a reader that never returns:
 
 ```bash
 # 1. delete the connector so it cannot recreate the slot
-docker compose exec debezium-connect curl -X DELETE http://localhost:8083/connectors/nus-pg
+docker compose exec debezium-connect curl -X DELETE http://localhost:8083/connectors/hailpath-pg
 
 # 2. drop the slot and the publication in PostgreSQL
-docker compose exec hailpath-postgres psql -U postgres -c "select pg_drop_replication_slot('nus_debezium');"
-docker compose exec hailpath-postgres psql -U postgres -c "drop publication if exists nus_pub;"
+docker compose exec hailpath-postgres psql -U postgres -c "select pg_drop_replication_slot('hailpath_debezium');"
+docker compose exec hailpath-postgres psql -U postgres -c "drop publication if exists hailpath_pub;"
 ```

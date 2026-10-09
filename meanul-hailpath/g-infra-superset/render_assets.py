@@ -44,11 +44,11 @@ OUT = HERE / "assets"
 NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL, "https://github.com/bahman-farhadian/Meanul-Data-Studio"
 )
-DATABASE_NAME = "ClickHouse (nus)"
+DATABASE_NAME = "ClickHouse (hailpath)"
 DATABASE_UUID = uuid.uuid5(NAMESPACE, "database/clickhouse")
 # The subdirectory name under datasets/ is Superset's own convention; it has
 # no meaning beyond grouping, since the link is database_uuid.
-DATABASE_SLUG = "clickhouse_nus"
+DATABASE_SLUG = "clickhouse_hailpath"
 
 VERSION = "1.0.0"
 
@@ -135,7 +135,7 @@ def dataset(name: str, *, description: str, main_dttm: str,
         "_path": f"datasets/{DATABASE_SLUG}/{name}.yaml",
         "_comment": comment,
         "table_name": name,
-        "schema": "nus",
+        "schema": "hailpath",
         "uuid": str(ident("dataset", name)),
         "database_uuid": str(DATABASE_UUID),
         "version": VERSION,
@@ -821,7 +821,7 @@ CHARTS = [
 # ==========================================================================
 
 MARKETPLACE = dashboard(
-    "nus-marketplace",
+    "hailpath-marketplace",
     title="hailpath - marketplace",
     description=(
         "Fulfilment, cancellations, the matching funnel, money and duration, "
@@ -920,7 +920,7 @@ DATABASE = {
     "_path": f"databases/{DATABASE_SLUG}.yaml",
     "_comment": None,
     "database_name": DATABASE_NAME,
-    "sqlalchemy_uri": "clickhousedb://nus@hailpath-proxy:8123/nus",
+    "sqlalchemy_uri": "clickhousedb://hailpath@hailpath-proxy:8123/hailpath",
     "uuid": str(DATABASE_UUID),
     "version": VERSION,
     "expose_in_sqllab": True,

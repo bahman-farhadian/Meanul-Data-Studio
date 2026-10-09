@@ -98,7 +98,7 @@ def warehouse_tables() -> set[str]:
     names: set[str] = set()
     for path in DDL_DIR.glob("*.sql"):
         for match in re.finditer(
-            r"CREATE TABLE IF NOT EXISTS nus\.([a-z0-9_]+)", path.read_text()
+            r"CREATE TABLE IF NOT EXISTS hailpath\.([a-z0-9_]+)", path.read_text()
         ):
             if not match.group(1).endswith("_local"):
                 names.add(match.group(1))
@@ -162,7 +162,7 @@ def check() -> list[str]:
             errors.append(
                 f"{path.name}: charts may only read the warehouse, not {uri!r}"
             )
-        if "@" in uri.split("//", 1)[-1].split("/")[0].replace("nus@", ""):
+        if "@" in uri.split("//", 1)[-1].split("/")[0].replace("hailpath@", ""):
             errors.append(f"{path.name}: the committed uri appears to carry a password")
         if config.get("allow_dml") is not False:
             errors.append(f"{path.name}: allow_dml must be false - charts only read")
@@ -176,8 +176,8 @@ def check() -> list[str]:
         dataset_uuids[config["uuid"]] = name
         if config["database_uuid"] not in database_uuids:
             errors.append(f"{path.name}: database_uuid is not in this bundle")
-        if config.get("schema") != "nus":
-            errors.append(f"{path.name}: schema must be nus")
+        if config.get("schema") != "hailpath":
+            errors.append(f"{path.name}: schema must be hailpath")
         if name not in allowed_in_ddl:
             errors.append(f"{path.name}: {name!r} is not a warehouse table in ddl/")
         if name not in ALLOWED_TABLES:

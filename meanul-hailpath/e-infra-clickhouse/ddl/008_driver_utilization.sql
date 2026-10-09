@@ -9,7 +9,7 @@
 -- start/end would be anyway - online_ticks vs busy_ticks per hour, not
 -- just online-vs-offline per shift.
 
-CREATE TABLE IF NOT EXISTS nus.driver_utilization_hourly
+CREATE TABLE IF NOT EXISTS hailpath.driver_utilization_hourly
 (
     hour          DateTime('UTC'),
     driver_id     FixedString(11),
@@ -23,15 +23,15 @@ ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, driver_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.driver_utilization_hourly_mv
-TO nus.driver_utilization_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.driver_utilization_hourly_mv
+TO hailpath.driver_utilization_hourly
 AS
 SELECT
     toStartOfHour(event_time)         AS hour,
     driver_id,
     countIf(status != 'offline')      AS online_ticks,
     countIf(status = 'on_trip')       AS busy_ticks
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 GROUP BY hour, driver_id;
 
 

@@ -19,9 +19,9 @@
 .PHONY: volume-quotas
 volume-quotas:
 	$(call say,Setting XFS project quotas on the data directories)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 	if [ -z "$$root" ] || [ ! -d "$$root" ]; then \
-		printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT is not set or does not exist\n"; exit 1; \
+		printf "  $(R)FAIL$(X)    HAILPATH_VOLUME_ROOT is not set or does not exist\n"; exit 1; \
 	fi; \
 	if ! command -v xfs_quota >/dev/null 2>&1; then \
 		printf "  $(R)FAIL$(X)    xfs_quota not found - install xfsprogs on the host\n"; exit 1; \
@@ -33,14 +33,14 @@ volume-quotas:
 	mount=$$(df --output=target "$$root" | tail -1); \
 	if ! grep -qE "^[^ ]+ $$mount xfs .*(pquota|prjquota)" /proc/mounts; then \
 		printf "  $(R)FAIL$(X)    %s is not mounted with pquota/prjquota - quotas cannot be set\n" "$$mount"; \
-		printf "              (see /etc/fstab; this host's own already has it - check NUS_VOLUME_ROOT\n"; \
+		printf "              (see /etc/fstab; this host's own already has it - check HAILPATH_VOLUME_ROOT\n"; \
 		printf "              actually resolves to that mount)\n"; exit 1; \
 	fi; \
 	projid=100; \
 	for entry in \
-		"nus-kafka-data-1:96g" \
-		"nus-ch-data-s1r1:112g" \
-		"nus-pgdata-1:24g"; \
+		"hailpath-kafka-data:96g" \
+		"hailpath-clickhouse-data:112g" \
+		"hailpath-pgdata:24g"; \
 	do \
 		dir=$${entry%%:*}; size=$${entry##*:}; path="$$root/$$dir"; \
 		mkdir -p "$$path"; \

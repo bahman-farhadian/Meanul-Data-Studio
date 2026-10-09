@@ -4,15 +4,15 @@
 # volume — a half-initialised PostgreSQL is far worse than none.
 .PHONY: _rm-data-tree
 _rm-data-tree:
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 	if [ -z "$$root" ] || [ ! -d "$$root" ]; then \
 		printf "  $(Y)skipped$(X) no data tree to remove\n"; \
 	else \
 		case "$$root" in /|/root|/home|/usr|/etc|/var|/boot|/data-root) \
-			printf "  $(R)REFUSED$(X) NUS_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
-		if [ "$(RM_MAP)" = 1 ]; then keep=""; else keep="nus-lion-data nus-tiles-data"; fi; \
+			printf "  $(R)REFUSED$(X) HAILPATH_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
+		if [ "$(RM_MAP)" = 1 ]; then keep=""; else keep="hailpath-lion-data hailpath-tiles-data"; fi; \
 		before=0; after=0; \
-		for d in $$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null); do \
+		for d in $$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'hailpath-*' 2>/dev/null); do \
 			base=$$(basename "$$d"); \
 			[ -n "$$keep" ] && echo " $$keep " | grep -q " $$base " && continue; \
 			before=$$((before+1)); rm -rf "$$d" 2>/dev/null || true; \
@@ -39,8 +39,8 @@ _rm-data-tree:
 .PHONY: clean-images
 clean-images:
 	$(call say,Removing images)
-	@built=$$($(COMPOSE) config --images 2>/dev/null | grep '^nus/' | sort -u); \
-	pulled=$$($(COMPOSE) --profile init config --images 2>/dev/null | grep -v '^nus/' | sort -u); \
+	@built=$$($(COMPOSE) config --images 2>/dev/null | grep '^hailpath/' | sort -u); \
+	pulled=$$($(COMPOSE) --profile init config --images 2>/dev/null | grep -v '^hailpath/' | sort -u); \
 	bases=$$(grep -oE '^(PG|CONNECT|GRAFANA|SUPERSET|PYTHON|UV)_IMAGE=.+' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
 	for i in $$built $$pulled $$bases; do \
 		if docker image inspect "$$i" >/dev/null 2>&1; then \
@@ -54,7 +54,7 @@ clean-images:
 .PHONY: clean
 clean:
 	@printf "$(R)$(B)This removes everything this project put on the host:$(X)\n"
-	@printf "  - every container, and the whole data tree under NUS_VOLUME_ROOT\n"
+	@printf "  - every container, and the whole data tree under HAILPATH_VOLUME_ROOT\n"
 	@printf "    (databases, cache, topics, warehouse, and the downloaded street map)\n"
 	@printf "  - every image it built and pulled\n"
 	@printf "  - the $(NETWORK) network\n"

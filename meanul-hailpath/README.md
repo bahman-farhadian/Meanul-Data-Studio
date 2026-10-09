@@ -20,7 +20,7 @@ steps only work once an earlier one has happened.
 ```bash
 # --- once, to set up ------------------------------------------------------
 git clone <this repo> && cd Meanul-Data-Studio/meanul-hailpath
-make init                  # .env, the nus-backbone network, the data directories
+make init                  # .env, the hailpath-net network, the data directories
 $EDITOR .env               # section 1: the eight passwords. Nothing else is required.
 make prepare               # pull every image, build the eleven, prepare LION + OSM tiles
                            # THE ONLY STEP THAT REACHES OUTSIDE THIS HOST
@@ -85,7 +85,7 @@ step again rather than starting over.
 `make prepare` is the only step that reaches the internet: it pulls the
 pinned images, builds the eleven this repository defines, and downloads and
 prepares the LION routable graph and the OSM MBTiles for Grafana. Everything
-after it is local — the containers talk to each other on `nus-backbone`, and
+after it is local — the containers talk to each other on `hailpath-net`, and
 those downloads are already on disk, ready to restore.
 
 That separation matters wherever network access is restricted, intermittent,
@@ -137,7 +137,7 @@ stack.
 ## Where the data lives
 
 The 26 named volumes are bind-mounted to a directory tree under
-`NUS_VOLUME_ROOT`, set in `.env`. That puts the databases, the topics, the
+`HAILPATH_VOLUME_ROOT`, set in `.env`. That puts the databases, the topics, the
 warehouse and the prepared street graph on whichever disk you choose,
 **without touching the Docker daemon's configuration**.
 
@@ -168,7 +168,7 @@ answers "will this host actually take the stack" before any image is pulled:
 - Docker is reachable and the compose plugin is v2+ (v1 cannot do `include:`)
 - the host has the cores and memory the budget assumes
 - **there is room for the images on Docker's data-root** (~15 GB), and room
-  for the data under `NUS_VOLUME_ROOT`, where ClickHouse grows 1–2 GB a day
+  for the data under `HAILPATH_VOLUME_ROOT`, where ClickHouse grows 1–2 GB a day
 - `.env` exists, holds no `change-me` placeholders, defines every required
   setting, and defines none of them twice
 - all fourteen components resolve from it
@@ -188,7 +188,7 @@ happened, which is the whole reason this is a Makefile and not one
 | 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
 | 5 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
 | 6 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
-| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
+| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `hailpath.trip_events`. |
 | 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
 | 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
 | 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` through the write port. |
@@ -347,7 +347,7 @@ and the coreutils any Linux already has. `make preflight` reports on the
 host; it never changes it.
 
 The only things the project puts on the host are Docker's own objects —
-containers, images and one network — the data tree under `NUS_VOLUME_ROOT`,
+containers, images and one network — the data tree under `HAILPATH_VOLUME_ROOT`,
 and your `.env`. All of it is removable with a single command, below.
 
 ## Teardown
@@ -363,9 +363,9 @@ make clean         # LEAVE NO TRACE: all of the above, plus the network and .env
 `make destroy` and `make clean` both ask for confirmation.
 
 `make clean` is the one to run when you are finished with the stack: it
-removes every container, the whole data tree under `NUS_VOLUME_ROOT`, every
+removes every container, the whole data tree under `HAILPATH_VOLUME_ROOT`, every
 image (including the base images the custom ones were built from), the
-`nus-backbone` network, and moves your `.env` aside to `.env.removed` so the
+`hailpath-net` network, and moves your `.env` aside to `.env.removed` so the
 passwords are not lost by surprise. The next `make up` starts from empty
 volumes.
 

@@ -22,7 +22,7 @@ log = get_logger(__name__)
 # e-infra-clickhouse/ddl/. Kept together so a change in one is obvious
 # against the others.
 COLUMNS = {
-    "nus.trip_events": [
+    "hailpath.trip_events": [
         "event_id",
         "trip_id", "rider_id", "driver_id", "status", "pickup_zone_id",
         "dropoff_zone_id", "passenger_count", "requested_vehicle_type",
@@ -35,26 +35,26 @@ COLUMNS = {
         "started_at", "ended_at",
         "event_time",
     ],
-    "nus.dispatch_offers": [
+    "hailpath.dispatch_offers": [
         "event_id", "trip_id", "driver_id", "sequence", "status",
         "pickup_zone_id", "eta_seconds", "distance_to_pickup_m",
         "surge_multiplier", "response_s", "offered_at", "event_time",
     ],
-    "nus.driver_positions": [
+    "hailpath.driver_positions": [
         "event_id",
         "driver_id", "trip_id", "status", "lat", "lon",
         "heading_deg", "speed_kmh", "zone_id", "event_time",
     ],
-    "nus.rider_positions": [
+    "hailpath.rider_positions": [
         "event_id",
         "rider_id", "trip_id", "lat", "lon", "accuracy_m", "zone_id", "event_time",
     ],
-    "nus.hotspot_history": [
+    "hailpath.hotspot_history": [
         "event_id",
         "zone_id", "period", "demand_score", "open_requests",
         "available_drivers", "surge_multiplier", "computed_at",
     ],
-    "nus.segment_traffic_history": [
+    "hailpath.segment_traffic_history": [
         "event_id",
         "zone_id", "period", "congestion_factor", "speed_samples",
         "segments_updated", "computed_at",

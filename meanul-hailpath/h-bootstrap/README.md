@@ -41,7 +41,7 @@ route, not an accident of picking a point nobody checked was on a road.
 None of that happens inside this container, or inside `make up` at all — see
 `lion-prepare/` for the full explanation of where it happens and why. This
 step is just the fast part: restore the graph `make lion-prepare` already
-built, from `NUS_VOLUME_ROOT/nus-lion-data/routable-graph.dump`, into the
+built, from `HAILPATH_VOLUME_ROOT/hailpath-lion-data/routable-graph.dump`, into the
 `ways` and `ways_vertices_pgr` tables pgRouting uses to answer "what is the
 best path from here to there" - skipped entirely if they already hold data.
 
@@ -75,13 +75,14 @@ week. A run that can be repeated is a run that can be debugged.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | The `bootstrap` service, gated on the infrastructure being healthy. |
-| `Dockerfile` | Two stages; the runtime image carries `pg_restore` and the virtual environment. |
+| `Dockerfile` | Two stages; Python only. The graph restore uses the pgRouting image. |
 | `pyproject.toml` / `uv.lock` | Dependencies, pinned. |
 | `migrations/*.sql` | The database schema, in name order. |
 | `bootstrap/settings.py` | Every setting, read from the environment. |
-| `bootstrap/database.py` | Creates the `nus` database and schema, if not already there. |
+| `bootstrap/database.py` | Creates the `hailpath` database and schema, if not already there. |
 | `bootstrap/migrate.py` | Runs the migrations that have not run yet. |
-| `bootstrap/osm.py` | Restores the routable graph `make lion-prepare` already built. |
+| `graph-restore.sh` | Restores the routable graph with the published pgRouting image. |
+| `bootstrap/osm.py` | Confirms that graph is in PostgreSQL. |
 | `bootstrap/zones.py` | The city grid, and snapping a random point to a real road. |
 | `bootstrap/people.py` | Drivers and passengers. |
 | `bootstrap/history.py` | The invented week, routed for real, and the traffic baseline. |
@@ -142,7 +143,7 @@ docker compose exec hailpath-postgres psql -U postgres -c "SELECT count(*) FROM 
 
 # the same week in the warehouse
 docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
-  --query "SELECT count() FROM nus.trip_events"
+  --query "SELECT count() FROM hailpath.trip_events"
 ```
 
 Then open Grafana: the dashboard should already show a week of trips.

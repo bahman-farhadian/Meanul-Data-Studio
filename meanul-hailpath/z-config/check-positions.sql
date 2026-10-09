@@ -10,7 +10,7 @@ WITH seq AS (
         status,
         abs(lat - lagInFrame(lat, 1) OVER (PARTITION BY driver_id ORDER BY event_time)) * 111000 AS dn,
         abs(lon - lagInFrame(lon, 1) OVER (PARTITION BY driver_id ORDER BY event_time)) * 85000 AS de
-    FROM nus.driver_positions
+    FROM hailpath.driver_positions
     WHERE event_time >= now() - INTERVAL 5 MINUTE
 )
 SELECT

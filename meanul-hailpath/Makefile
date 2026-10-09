@@ -12,7 +12,7 @@
 #
 # Full explanation of each piece: README.md. Architecture: ../README.md
 #
-# The long checks live in mk/. This file is the order: what `make up`,
+# The long checks live in z-mk/. This file is the order: what `make up`,
 # `make prepare`, `make verify`, and `make destroy` call.
 # =============================================================================
 
@@ -26,7 +26,7 @@ COMPOSE  := docker compose
 # has DOCKER_BUILDKIT=0 in its environment cannot silently drop the cache.
 export DOCKER_BUILDKIT := 1
 export COMPOSE_DOCKER_CLI_BUILD := 1
-NETWORK  := nus-backbone
+NETWORK  := hailpath-net
 ENV_FILE := .env
 EXAMPLE  := .env.example
 
@@ -117,7 +117,7 @@ getenv = $(or $(shell grep -E "^$(1)=" $(ENV_FILE) 2>/dev/null | tail -1 | cut -
 
 .PHONY: help
 help:
-	@printf "\n$(B)ride-hailing$(X)\n\n"
+	@printf "\n$(B)Hailpath$(X)\n\n"
 	@printf "  First time:\n"
 	@printf "    $(C)make init$(X)        create .env and the shared network\n"
 	@printf "    edit .env                set the passwords in section 1\n"
@@ -159,7 +159,7 @@ prepare:
 	@printf "  This is the only step that reaches outside this host. After it the\n"
 	@printf "  stack is self-contained: the containers talk to each other on %s,\n" "$(NETWORK)"
 	@printf "  and every runtime download — LION, TLC zones/trips, OSM tiles — is done\n"
-	@printf "  here, once, and cached under nus-lion-data and nus-tiles-data.\n\n"
+	@printf "  here, once, and cached under hailpath-lion-data and hailpath-tiles-data.\n\n"
 	@$(MAKE) --no-print-directory pull
 	@$(MAKE) --no-print-directory build
 	@$(MAKE) --no-print-directory lion-fetch
@@ -168,6 +168,8 @@ prepare:
 	@$(MAKE) --no-print-directory lion-prepare
 	@$(MAKE) --no-print-directory zone-demand-prepare
 	@$(MAKE) --no-print-directory tiles-prepare
+	@$(MAKE) --no-print-directory grafana-plugin-prepare
+	@$(MAKE) --no-print-directory avro-converter-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
 	@printf "  Images, the LION graph, and nyc.mbtiles are on disk. make destroy keeps the last two.\n\n"
 
@@ -317,11 +319,11 @@ verify-positions:
 	@docker inspect hailpath-driver --format '  hailpath-driver    started {{.State.StartedAt}}' 2>/dev/null || printf '  hailpath-driver    not running\n'
 	@docker inspect hailpath-dispatch --format '  hailpath-dispatch  started {{.State.StartedAt}}' 2>/dev/null || printf '  hailpath-dispatch  not running\n'
 	@$(COMPOSE) exec -T hailpath-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
-		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--password "$(call getenv,CH_PASSWORD)" --database hailpath --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/check-positions.sql
-	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -c \
+	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,hailpath)" -c \
 		"SELECT round((avg(ST_Length(route::geography))/1000)::numeric, 2) AS route_km, round((avg(ST_Distance(pickup_point::geography, dropoff_point::geography))/1000)::numeric, 2) AS chord_km, round(avg(ST_NPoints(route))) AS avg_vertices FROM trips WHERE route IS NOT NULL AND ended_at > now() - interval '1 hour';"
-	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" \
+	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,hailpath)" \
 		-f - < z-config/check-on-network.sql
 
 # =============================================================================
@@ -389,7 +391,7 @@ down:
 .PHONY: destroy
 destroy:
 	@printf "$(R)$(B)This deletes the databases, the cache, the topics and the warehouse.$(X)\n"
-	@printf "  LION and OSM tiles (nus-lion-data, nus-tiles-data) are kept.\n"
+	@printf "  LION and OSM tiles (hailpath-lion-data, hailpath-tiles-data) are kept.\n"
 	@printf "  $(C)make nuke$(X) is what removes those downloads.\n"
 	@read -r -p "Type 'destroy' to confirm: " a; [ "$$a" = destroy ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) down -v

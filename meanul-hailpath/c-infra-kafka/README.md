@@ -13,16 +13,11 @@ dying, so declared topics use replication factor 1 and
 partition. `auto.create.topics.enable` is false. Default retention is
 48 hours. ClickHouse is where history lives.
 
-Containers on `nus-backbone` use `hailpath-kafka:9092`. From the host,
-HAProxy publishes the one broker on two advertised addresses:
+Containers on `hailpath-net` use `hailpath-kafka:9092`. From the host,
+HAProxy publishes the one broker on `KAFKA_ADVERTISED_HOST:9094`.
 
-| Address | Port |
-| --- | --- |
-| `KAFKA_ADVERTISED_HOST_A` | `9094` |
-| `KAFKA_ADVERTISED_HOST_B` | `9097` |
-
-`make init` fills those hostnames from this machine's interfaces. A
-client bootstraps on either port. Both are `hailpath-kafka`.
+`make init` fills that hostname from this machine's default-route
+interface. Override it if the guess is wrong.
 
 ## ksqlDB
 
@@ -93,7 +88,7 @@ them, also at replication factor 1.
 | `.env.example` | Image pins, cluster id, retention, ksqlDB login. |
 
 `make up` calls `ksqldb-secrets`, `topics`, `schemas`, and `ksql-ddl`.
-`volume-perms` hands `nus-kafka-data-1` to `KAFKA_UID`. The `kafka-dirs`
+`volume-perms` hands `hailpath-kafka-data` to `KAFKA_UID`. The `kafka-dirs`
 compose service does the same chown for a standalone start of this
 directory.
 
@@ -107,7 +102,7 @@ directory.
 | `KSQLDB_ADMIN_USER` | `admin` | REST login. |
 | `KAFKA_CLUSTER_ID` | in `.env.example` | Storage identity. Do not change it after the first format. |
 | `KAFKA_RETENTION_HOURS` | `48` | Default retention. |
-| `KAFKA_ADVERTISED_HOST_A` / `_B` | required | Hostnames advertised on ports 9094 and 9097. |
+| `KAFKA_ADVERTISED_HOST` | required | Hostname advertised on port 9094. |
 
 ## Verify
 

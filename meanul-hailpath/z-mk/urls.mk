@@ -27,9 +27,8 @@ urls:
 	printf "  %-18s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,LB_A_STATS_PORT,8404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above. Kafka is the one broker below. A client\n"; \
-	printf "  is handed the address set by $(C)KAFKA_ADVERTISED_HOST_A$(X)/$(C)_B$(X)\n"; \
+	printf "  is handed the address set by $(C)KAFKA_ADVERTISED_HOST$(X)\n"; \
 	printf "  in $(ENV_FILE), not $(B)<host>$(X).\n\n"; \
-	printf "  %-10s %-24s %s\n" "" "via address A" "via address B"; \
-	printf "  %-10s %-24s %s\n" "hailpath-kafka" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9094" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9097"; \
+	printf "  %-10s %s\n" "hailpath-kafka" "$(call getenv,KAFKA_ADVERTISED_HOST):9094"; \
 	printf "\n"
 

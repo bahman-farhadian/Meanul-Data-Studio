@@ -55,8 +55,8 @@ run so the credential stays current:
 
 | Connection | Points at | Why |
 | --- | --- | --- |
-| `ClickHouse (nus)` | `hailpath-proxy:8123` | The warehouse every chart would read. |
-| `PostgreSQL (nus, read-only)` | `hailpath-proxy:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the same PostgreSQL as the write port. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
+| `ClickHouse (hailpath)` | `hailpath-proxy:8123` | The warehouse every chart would read. |
+| `PostgreSQL (hailpath, read-only)` | `hailpath-proxy:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the same PostgreSQL as the write port. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
 
 **Dataset, chart and dashboard provisioning is not part of this piece.** A
 full bundle — 20 charts, 5 datasets, one 6-section analytics dashboard —
@@ -72,7 +72,7 @@ infrastructure.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | The `superset` service and the `superset-init` one-shot behind the `init` profile. |
-| `Dockerfile` | Superset with the ClickHouse driver installed at build time. |
+| `Dockerfile` | Thin derived image. Stock `apache/superset` has no ClickHouse or PostgreSQL driver; both are installed into Superset's own virtualenv here. Official image plus a volume cannot do that, so this is the one dashboard image that is still built. |
 | `superset_config.py` | Superset's settings: its own database, cache, row limit, proxy behaviour. |
 | `init/init-superset.sh` | The four preparation steps, in order. |
 | `init/register_database.py` | Adds or refreshes the ClickHouse connection inside Superset. |
@@ -87,13 +87,13 @@ infrastructure.
 | `CLICKHOUSE_CONNECT_VERSION` | `1.7.2` | ClickHouse driver installed into the image. |
 | `SUPERSET_SECRET_KEY` | — (required) | Signs cookies, encrypts stored passwords. Set once. |
 | `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` / `SUPERSET_ADMIN_EMAIL` | `admin` / — (required) / placeholder | The Superset login. |
-| `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `hailpath-proxy` / `8123` / `nus` | Where ClickHouse is, through the entry tier. |
-| `CH_USER` / `CH_PASSWORD` | `nus` / — (required) | Must match `e-infra-clickhouse/.env`. |
+| `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `hailpath-proxy` / `8123` / `hailpath` | Where ClickHouse is, through the entry tier. |
+| `CH_USER` / `CH_PASSWORD` | `hailpath` / — (required) | Must match `e-infra-clickhouse/.env`. |
 
 ## Standalone quickstart
 
 ```bash
-docker network create nus-backbone      # once, shared by the whole stack
+docker network create hailpath-net      # once, shared by the whole stack
 cp .env.example .env                    # change every secret
 docker compose up -d --build
 docker compose run --rm superset-init
@@ -111,13 +111,13 @@ docker compose exec superset superset shell -c \
 ```
 
 In the browser, open <http://localhost:8088>, log in, and go to **SQL →
-SQL Lab**. Pick the `ClickHouse (nus)` database and run:
+SQL Lab**. Pick the `ClickHouse (hailpath)` database and run:
 
 ```sql
 SELECT hour,
        sum(completed_trips) AS trips,
        sum(revenue)         AS revenue
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 WHERE hour >= now() - INTERVAL 24 HOUR
 GROUP BY hour
 ORDER BY hour;
@@ -130,7 +130,7 @@ error, on the other hand, means the connection is wrong — check that
 ## Building dashboards that stay
 
 Charts and dashboards built in the browser live in Superset's own database,
-on the `nus-superset-home` volume. They survive restarts, but they are lost
+on the `hailpath-superset-home` volume. They survive restarts, but they are lost
 by `docker compose down -v`. To keep one for good, export it from Superset
 (**Dashboards → export**) and commit the file next to this README.
 

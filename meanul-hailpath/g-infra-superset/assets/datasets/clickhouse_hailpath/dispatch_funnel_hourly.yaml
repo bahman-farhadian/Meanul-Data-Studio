@@ -1,17 +1,17 @@
-# The funnel that finally counts the trips that did NOT complete.
-# Every other rollup in this warehouse filters status = 'completed',
-# so cancellations and unmatched requests appeared in no aggregate at
-# all until this table existed. Bucketed on when the ride was ASKED
-# for, not when it ended - a fulfilment rate is about the demand that
-# arrived in an hour.
+# The matching funnel. Dispatch offers a ride to one candidate at a
+# time with a deadline, so acceptance rate, offers per match and
+# time-to-match come from here and from nowhere else - none of them
+# existed while dispatch simply assigned a driver.
+# 'expired' and 'declined' are kept apart on purpose: a driver who
+# said no is a different supply signal from a phone left face-down.
 # SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
-table_name: 'fulfilment_hourly'
-schema: 'nus'
-uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'
+table_name: 'dispatch_funnel_hourly'
+schema: 'hailpath'
+uuid: '14a85160-f570-562c-84b0-0cf132d40c30'
 database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
 version: '1.0.0'
 main_dttm_col: 'hour'
-description: 'Every request that reached an ending, per hour and pickup zone.'
+description: 'Every offer dispatch made, and what the driver said, per hour and zone.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -45,11 +45,11 @@ columns:
     groupby: true
     filterable: true
     expression: null
-    description: 'TLC LocationID of the pickup.'
+    description: null
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'trips_ended'
+  - column_name: 'offers_made'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -61,7 +61,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'completed'
+  - column_name: 'offers_accepted'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -73,7 +73,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'cancelled_by_passenger'
+  - column_name: 'offers_declined'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -85,7 +85,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'cancelled_by_driver'
+  - column_name: 'offers_expired'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -97,7 +97,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'no_driver_found'
+  - column_name: 'offers_cancelled'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -109,19 +109,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'cancelled_after_arrival'
-    verbose_name: null
-    type: 'BIGINT'
-    is_dttm: false
-    is_active: true
-    groupby: false
-    filterable: true
-    expression: null
-    description: null
-    python_date_format: null
-    extra: null
-    advanced_data_type: null
-  - column_name: 'match_s_sum'
+  - column_name: 'eta_seconds_sum'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -133,7 +121,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'matched_trips'
+  - column_name: 'eta_offers'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -145,7 +133,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'wait_s_sum'
+  - column_name: 'accepted_eta_sum'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -157,7 +145,19 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'waited_trips'
+  - column_name: 'response_s_sum'
+    verbose_name: null
+    type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: false
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'responses'
     verbose_name: null
     type: 'BIGINT'
     is_dttm: false
@@ -170,110 +170,92 @@ columns:
     extra: null
     advanced_data_type: null
 metrics:
-  - metric_name: 'requests'
-    verbose_name: 'Requests'
+  - metric_name: 'offers'
+    verbose_name: 'Offers made'
     metric_type: 'count'
-    expression: 'sum(trips_ended)'
-    description: 'Every request that reached an ending, served or not.'
-    d3format: ',d'
-    currency: null
-    warning_text: null
-    extra: null
-  - metric_name: 'completed_trips'
-    verbose_name: 'Completed'
-    metric_type: 'count'
-    expression: 'sum(completed)'
+    expression: 'sum(offers_made)'
     description: null
     d3format: ',d'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'unmatched'
-    verbose_name: 'No driver found'
+  - metric_name: 'accepted'
+    verbose_name: 'Offers accepted'
     metric_type: 'count'
-    expression: 'sum(no_driver_found)'
-    description: 'Nobody could be offered the ride at all. A supply failure, not a cancellation.'
-    d3format: ',d'
-    currency: null
-    warning_text: null
-    extra: null
-  - metric_name: 'rider_cancels'
-    verbose_name: 'Cancelled by rider'
-    metric_type: 'count'
-    expression: 'sum(cancelled_by_passenger)'
+    expression: 'sum(offers_accepted)'
     description: null
     d3format: ',d'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'driver_cancels'
-    verbose_name: 'Cancelled by driver'
+  - metric_name: 'declined'
+    verbose_name: 'Declined'
     metric_type: 'count'
-    expression: 'sum(cancelled_by_driver)'
+    expression: 'sum(offers_declined)'
     description: null
     d3format: ',d'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'fulfilment_rate'
-    verbose_name: 'Fulfilment rate'
-    metric_type: 'avg'
-    expression: 'sum(completed) / greatest(sum(trips_ended), 1)'
-    description: 'Completed out of everything asked for. The one number that counts the requests nobody served.'
-    d3format: ',.1%'
+  - metric_name: 'expired'
+    verbose_name: 'Expired unanswered'
+    metric_type: 'count'
+    expression: 'sum(offers_expired)'
+    description: null
+    d3format: ',d'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'cancellation_rate'
-    verbose_name: 'Cancellation rate'
-    metric_type: 'avg'
-    expression: '(sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / greatest(sum(trips_ended), 1)'
-    description: 'Both sides together. A trip nobody could be found for is counted separately.'
-    d3format: ',.1%'
+  - metric_name: 'offers_wasted'
+    verbose_name: 'Offers that went nowhere'
+    metric_type: 'count'
+    expression: 'sum(offers_made) - sum(offers_accepted)'
+    description: 'Offers made that nobody took. A count, so a zone with six offers cannot outrank a zone burning three hundred.'
+    d3format: ',d'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'no_driver_rate'
-    verbose_name: 'Unmatched rate'
+  - metric_name: 'acceptance_rate'
+    verbose_name: 'Acceptance rate'
     metric_type: 'avg'
-    expression: 'sum(no_driver_found) / greatest(sum(trips_ended), 1)'
+    expression: 'sum(offers_accepted) / greatest(sum(offers_made), 1)'
     description: null
     d3format: ',.1%'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'unserved'
-    verbose_name: 'Rides lost'
-    metric_type: 'count'
-    expression: 'sum(trips_ended) - sum(completed)'
-    description: 'Requests that reached an ending and were not one. A count, not a rate, so a zone with one request cannot outrank a zone losing forty.'
-    d3format: ',d'
+  - metric_name: 'offers_per_match'
+    verbose_name: 'Offers per match'
+    metric_type: 'avg'
+    expression: 'sum(offers_made) / greatest(sum(offers_accepted), 1)'
+    description: 'How many drivers were asked before one took the ride. Rises before fulfilment falls.'
+    d3format: ',.2f'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'post_arrival_cancel_rate'
-    verbose_name: 'Cancelled after the driver arrived'
+  - metric_name: 'eta_offered_s'
+    verbose_name: 'Pickup ETA offered'
     metric_type: 'avg'
-    expression: 'sum(cancelled_after_arrival) / greatest(sum(cancelled_by_passenger) + sum(cancelled_by_driver), 1)'
-    description: 'The line a real platform draws to charge a cancellation fee.'
-    d3format: ',.1%'
-    currency: null
-    warning_text: null
-    extra: null
-  - metric_name: 'time_to_match_s'
-    verbose_name: 'Time to match'
-    metric_type: 'avg'
-    expression: 'sum(match_s_sum) / greatest(sum(matched_trips), 1)'
-    description: 'Request to a driver being picked, in seconds.'
+    expression: 'sum(eta_seconds_sum) / greatest(sum(eta_offers), 1)'
+    description: null
     d3format: ',.0f'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'rider_wait_s'
-    verbose_name: 'Rider wait at the kerb'
+  - metric_name: 'eta_accepted_s'
+    verbose_name: 'Pickup ETA accepted'
     metric_type: 'avg'
-    expression: 'sum(wait_s_sum) / greatest(sum(waited_trips), 1)'
-    description: 'Driver arriving to the rider getting in. What the ''arrived'' state exists to measure.'
+    expression: 'sum(accepted_eta_sum) / greatest(sum(offers_accepted), 1)'
+    description: 'Read the gap, not the level: offers go out nearest-first, so the accepting driver is among the furthest asked.'
+    d3format: ',.0f'
+    currency: null
+    warning_text: null
+    extra: null
+  - metric_name: 'response_s'
+    verbose_name: 'Time to answer'
+    metric_type: 'avg'
+    expression: 'sum(response_s_sum) / greatest(sum(responses), 1)'
+    description: null
     d3format: ',.0f'
     currency: null
     warning_text: null

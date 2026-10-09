@@ -2,7 +2,7 @@
 
 Every curl/wget in a Makefile must either run inside a container
 (`$(COMPOSE) exec ...`, where localhost is that container's own loopback and
-always correct) or address a compose service on nus-backbone. A host-side
+always correct) or address a compose service on hailpath-net. A host-side
 loopback call is a latent failure: Docker's published-port DNAT cannot send
 a 127.0.0.1 destination out to a real interface unless route_localnet is 1,
 so docker-proxy accepts the connection and closes it without a reply.
@@ -60,7 +60,7 @@ def test_no_health_check_uses_a_host_loopback_literal():
     assert not offenders, (
         "curl/wget against a host loopback literal: "
         + ", ".join(offenders)
-        + " - address the compose service through nus-backbone instead"
+        + " - address the compose service through hailpath-net instead"
     )
 
 

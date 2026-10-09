@@ -1,9 +1,9 @@
 {
-  "uid": "nus-marketplace",
-  "title": "NUS / Marketplace",
+  "uid": "hailpath-marketplace",
+  "title": "Hailpath / Marketplace",
   "description": "Fulfilment, cancellations, the matching funnel, take rate and ETA accuracy. Every rate is sum()/sum() over the rollups, never an average of rates.",
   "tags": [
-    "nus",
+    "hailpath",
     "marketplace"
   ],
   "timezone": "America/New_York",
@@ -49,7 +49,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT sum(completed) / sum(trips_ended) AS fulfilment_rate\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(trips_ended) > 0\n",
+          "rawSql": "SELECT sum(completed) / sum(trips_ended) AS fulfilment_rate\nFROM hailpath.fulfilment_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(trips_ended) > 0\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -117,7 +117,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    (sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / sum(trips_ended)\n        AS cancellation_rate\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(trips_ended) > 0\n",
+          "rawSql": "SELECT\n    (sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / sum(trips_ended)\n        AS cancellation_rate\nFROM hailpath.fulfilment_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(trips_ended) > 0\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -185,7 +185,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT sum(offers_accepted) / sum(offers_made) AS acceptance_rate\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(offers_made) > 0\n",
+          "rawSql": "SELECT sum(offers_accepted) / sum(offers_made) AS acceptance_rate\nFROM hailpath.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(offers_made) > 0\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -253,7 +253,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    toFloat64(sum(revenue) - sum(payout_total)) / toFloat64(sum(revenue))\n        AS take_rate\nFROM nus.trip_stats_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(revenue) > 0\n",
+          "rawSql": "SELECT\n    toFloat64(sum(revenue) - sum(payout_total)) / toFloat64(sum(revenue))\n        AS take_rate\nFROM hailpath.trip_stats_hourly\nWHERE $__timeFilter(hour)\nHAVING sum(revenue) > 0\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -321,7 +321,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(completed) / sum(trips_ended) AS fulfilment_rate\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(trips_ended) > 0\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(completed) / sum(trips_ended) AS fulfilment_rate\nFROM hailpath.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(trips_ended) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -389,7 +389,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(completed)               AS completed,\n    sum(cancelled_by_passenger)  AS cancelled_by_passenger,\n    sum(cancelled_by_driver)     AS cancelled_by_driver,\n    sum(no_driver_found)         AS no_driver_found\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(completed)               AS completed,\n    sum(cancelled_by_passenger)  AS cancelled_by_passenger,\n    sum(cancelled_by_driver)     AS cancelled_by_driver,\n    sum(no_driver_found)         AS no_driver_found\nFROM hailpath.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -506,7 +506,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(match_s_sum) / sum(matched_trips) AS time_to_match_s,\n    sum(wait_s_sum)  / sum(waited_trips)  AS rider_wait_s\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(matched_trips) > 0 AND sum(waited_trips) > 0\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(match_s_sum) / sum(matched_trips) AS time_to_match_s,\n    sum(wait_s_sum)  / sum(waited_trips)  AS rider_wait_s\nFROM hailpath.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(matched_trips) > 0 AND sum(waited_trips) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -588,7 +588,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    cancellation_reason AS reason,\n    count() AS trips\nFROM nus.trip_facts FINAL\nWHERE $__timeFilter(event_time)\n  AND final_status IN ('cancelled_by_passenger', 'cancelled_by_driver')\n  AND cancellation_reason IS NOT NULL\nGROUP BY reason\nORDER BY trips DESC\n",
+          "rawSql": "SELECT\n    cancellation_reason AS reason,\n    count() AS trips\nFROM hailpath.trip_facts FINAL\nWHERE $__timeFilter(event_time)\n  AND final_status IN ('cancelled_by_passenger', 'cancelled_by_driver')\n  AND cancellation_reason IS NOT NULL\nGROUP BY reason\nORDER BY trips DESC\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -638,7 +638,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(offers_accepted) / sum(offers_made) AS acceptance_rate\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(offers_made) > 0\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(offers_accepted) / sum(offers_made) AS acceptance_rate\nFROM hailpath.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(offers_made) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -706,7 +706,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(offers_made) / sum(offers_accepted) AS offers_per_match\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(offers_accepted) > 0\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(offers_made) / sum(offers_accepted) AS offers_per_match\nFROM hailpath.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(offers_accepted) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -774,7 +774,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    hour AS time,\n    sum(eta_seconds_sum) / sum(eta_offers)      AS eta_offered_s,\n    sum(accepted_eta_sum) / sum(offers_accepted) AS eta_accepted_s\nFROM nus.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(eta_offers) > 0 AND sum(offers_accepted) > 0\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(eta_seconds_sum) / sum(eta_offers)      AS eta_offered_s,\n    sum(accepted_eta_sum) / sum(offers_accepted) AS eta_accepted_s\nFROM hailpath.dispatch_funnel_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(eta_offers) > 0 AND sum(offers_accepted) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -856,7 +856,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    multiIf(surge_multiplier < 1.05, '1.00 (flat)',\n            surge_multiplier < 1.25, '1.05 - 1.25',\n            surge_multiplier < 1.50, '1.25 - 1.50',\n            surge_multiplier < 2.00, '1.50 - 2.00',\n                                     '2.00 +')       AS surge_band,\n    countIf(status = 'accepted') / count()           AS acceptance_rate\nFROM nus.dispatch_offers\nWHERE $__timeFilter(offered_at)\n  AND surge_multiplier IS NOT NULL\nGROUP BY surge_band\nHAVING count() > 0\nORDER BY surge_band\n",
+          "rawSql": "SELECT\n    multiIf(surge_multiplier < 1.05, '1.00 (flat)',\n            surge_multiplier < 1.25, '1.05 - 1.25',\n            surge_multiplier < 1.50, '1.25 - 1.50',\n            surge_multiplier < 2.00, '1.50 - 2.00',\n                                     '2.00 +')       AS surge_band,\n    countIf(status = 'accepted') / count()           AS acceptance_rate\nFROM hailpath.dispatch_offers\nWHERE $__timeFilter(offered_at)\n  AND surge_multiplier IS NOT NULL\nGROUP BY surge_band\nHAVING count() > 0\nORDER BY surge_band\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -908,7 +908,7 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT\n    toStartOfHour(ended_at) AS time,\n    quantile(0.5)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))\n        AS p50_error_s,\n    quantile(0.9)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))\n        AS p90_error_s\nFROM nus.trip_facts\nWHERE $__timeFilter(event_time)\n  AND final_status = 'completed'\n  AND predicted_duration_s IS NOT NULL\n  AND actual_duration_s IS NOT NULL\nGROUP BY time\nORDER BY time\n",
+          "rawSql": "SELECT\n    toStartOfHour(ended_at) AS time,\n    quantile(0.5)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))\n        AS p50_error_s,\n    quantile(0.9)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))\n        AS p90_error_s\nFROM hailpath.trip_facts\nWHERE $__timeFilter(event_time)\n  AND final_status = 'completed'\n  AND predicted_duration_s IS NOT NULL\n  AND actual_duration_s IS NOT NULL\nGROUP BY time\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -990,7 +990,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(trips_ended)                       AS requests,\n    sum(completed) / sum(trips_ended)      AS fulfilment_rate,\n    sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,\n    sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s\nFROM nus.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY pickup_zone_id\nHAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0\nORDER BY fulfilment_rate ASC\nLIMIT 15\n",
+          "rawSql": "SELECT\n    pickup_zone_id,\n    sum(trips_ended)                       AS requests,\n    sum(completed) / sum(trips_ended)      AS fulfilment_rate,\n    sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,\n    sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s\nFROM hailpath.fulfilment_hourly\nWHERE $__timeFilter(hour)\nGROUP BY pickup_zone_id\nHAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0\nORDER BY fulfilment_rate ASC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -1089,7 +1089,7 @@
     {
       "title": "Live ops",
       "type": "link",
-      "url": "/d/nus-live-ops",
+      "url": "/d/hailpath-live-ops",
       "keepTime": true
     },
     {
@@ -1101,7 +1101,7 @@
     {
       "title": "Trip",
       "type": "link",
-      "url": "/d/nus-trip",
+      "url": "/d/hailpath-trip",
       "keepTime": true
     },
     {
@@ -1113,13 +1113,13 @@
     {
       "title": "History",
       "type": "link",
-      "url": "/d/nus-history",
+      "url": "/d/hailpath-history",
       "keepTime": true
     },
     {
       "title": "Marketplace",
       "type": "link",
-      "url": "/d/nus-marketplace",
+      "url": "/d/hailpath-marketplace",
       "keepTime": true
     }
   ]

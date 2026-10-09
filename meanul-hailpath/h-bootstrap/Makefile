@@ -19,7 +19,9 @@
 bootstrap:
 	$(call say,Bootstrap — schema, street graph restore, people, a week of history)
 	@$(MAKE) --no-print-directory pg-cpus-bootstrap
-	@if $(COMPOSE) run --rm bootstrap; then \
+	@if $(COMPOSE) run --rm -e BOOTSTRAP_PHASE=schema hailpath-bootstrap \
+		&& $(COMPOSE) --profile init run --rm graph-restore \
+		&& $(COMPOSE) run --rm hailpath-bootstrap; then \
 		printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
 		$(MAKE) --no-print-directory pg-cpus-normal; \
 	else \
@@ -31,9 +33,9 @@ bootstrap:
 .PHONY: lion-fetch
 lion-fetch:
 	$(call say,Fetching the LION street map on the host)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	url=$$(grep -E '^LION_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	dest="$$root/nus-lion-data"; file="$$dest/lion.zip"; \
+	dest="$$root/hailpath-lion-data"; file="$$dest/lion.zip"; \
 	mkdir -p "$$dest"; \
 	if [ -s "$$file" ]; then \
 		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
@@ -49,9 +51,9 @@ lion-fetch:
 .PHONY: tlc-zones-fetch
 tlc-zones-fetch:
 	$(call say,Fetching NYC TLC's real taxi zones on the host)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	url=$$(grep -E '^TLC_ZONES_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	dest="$$root/nus-lion-data"; file="$$dest/taxi-zones.geojson"; \
+	dest="$$root/hailpath-lion-data"; file="$$dest/taxi-zones.geojson"; \
 	mkdir -p "$$dest"; \
 	if [ -s "$$file" ]; then \
 		printf "  $(G)ok$(X)      already there: %s (%s)\n" "$$file" "$$(du -h "$$file" | cut -f1)"; \
@@ -67,7 +69,7 @@ tlc-zones-fetch:
 .PHONY: tlc-trips-fetch
 tlc-trips-fetch:
 	$(call say,Fetching TLC's real trip records on the host)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	month=$$(grep -E '^TLC_TRIP_DATA_MONTH=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	month=$${month:-2025-01}; \
 	url_template=$$(grep -E '^TLC_TRIP_DATA_URL_TEMPLATE=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
@@ -75,7 +77,7 @@ tlc-trips-fetch:
 		printf "  $(R)FAIL$(X)    TLC_TRIP_DATA_URL_TEMPLATE is not set in $(ENV_FILE)\n"; exit 1; \
 	fi; \
 	url=$$(printf '%s' "$$url_template" | sed "s/{month}/$$month/"); \
-	dest="$$root/nus-lion-data"; file="$$dest/tlc-trips-$$month.parquet"; \
+	dest="$$root/hailpath-lion-data"; file="$$dest/tlc-trips-$$month.parquet"; \
 	zone_out="$$dest/zone_demand_calibration.csv"; od_out="$$dest/od_pair_calibration.csv"; \
 	mkdir -p "$$dest"; \
 	if [ -s "$$zone_out" ] && [ -s "$$od_out" ]; then \
@@ -97,11 +99,11 @@ tlc-trips-fetch:
 .PHONY: lion-prepare
 lion-prepare:
 	$(call say,Preparing the routable street graph)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	dir="$$root/nus-lion-data"; dump="$$dir/routable-graph.dump"; \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dir="$$root/hailpath-lion-data"; dump="$$dir/routable-graph.dump"; \
 	lion_pg_image=$$(grep -E '^LION_PG_IMAGE=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	lion_pg_image=$${lion_pg_image:-pgrouting/pgrouting:18-3.6-3.8.0}; \
-	NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v --remove-orphans >/dev/null 2>&1 || true; \
+	HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	dump_has_zones=false; \
 	if [ -s "$$dump" ] && docker run --rm -v "$$dump:/data/dump:ro" "$$lion_pg_image" \
 		pg_restore -l /data/dump 2>/dev/null | grep -q "TABLE public city_zones_source"; then \
@@ -117,9 +119,9 @@ lion-prepare:
 		printf "  This is the slow step - filtering, cost computation and topology-\n"; \
 		printf "  building over the whole LION dataset. It runs once; every bring-up\n"; \
 		printf "  after this one restores the cached result instead.\n\n"; \
-		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from lion-prepare; \
+		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from lion-prepare; \
 		status=$$?; \
-		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v; \
+		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v; \
 		if [ "$$status" -ne 0 ] || [ ! -s "$$dump" ]; then \
 			printf "  $(R)FAIL$(X)    lion-prepare did not produce %s\n" "$$dump"; exit 1; \
 		fi; \
@@ -131,19 +133,19 @@ lion-prepare:
 .PHONY: zone-demand-prepare
 zone-demand-prepare:
 	$(call say,Preparing real demand calibration from TLC's own trip records)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	dir="$$root/nus-lion-data"; \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	dir="$$root/hailpath-lion-data"; \
 	zone_out="$$dir/zone_demand_calibration.csv"; od_out="$$dir/od_pair_calibration.csv"; \
-	NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down --remove-orphans >/dev/null 2>&1 || true; \
+	HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down --remove-orphans >/dev/null 2>&1 || true; \
 	if [ -s "$$zone_out" ] && [ -s "$$od_out" ]; then \
 		printf "  $(G)ok$(X)      already built: %s, %s\n" "$$zone_out" "$$od_out"; \
 	else \
 		printf "  Reads the trip records tlc-trips-fetch already downloaded to the\n"; \
 		printf "  host, column-projected, and reduces them to two small calibration\n"; \
 		printf "  tables. Takes several minutes; runs once.\n\n"; \
-		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from zone-demand-prepare; \
+		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from zone-demand-prepare; \
 		status=$$?; \
-		NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down; \
+		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down; \
 		if [ "$$status" -ne 0 ] || [ ! -s "$$zone_out" ] || [ ! -s "$$od_out" ]; then \
 			printf "  $(R)FAIL$(X)    zone-demand-prepare did not produce %s and %s\n" "$$zone_out" "$$od_out"; exit 1; \
 		fi; \
@@ -157,7 +159,7 @@ verify-data:
 	@printf "  bootstrap marker: "
 	@$(COMPOSE) exec -T hailpath-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
 		get system:bootstrap:done 2>/dev/null || printf "(not set)\n"
-	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -t -c \
+	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,hailpath)" -t -c \
 		"SELECT 'drivers      ' || count(*) FROM drivers UNION ALL \
 		 SELECT 'passengers   ' || count(*) FROM passengers UNION ALL \
 		 SELECT 'trips        ' || count(*) FROM trips UNION ALL \
@@ -165,7 +167,7 @@ verify-data:
 		 SELECT 'road segments' || count(*) FROM ways UNION ALL \
 		 SELECT 'seg. traffic ' || count(*) FROM segment_traffic;" 2>/dev/null | sed 's/^ */  /' || true
 	@$(COMPOSE) exec -T hailpath-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT 'trip_events ' || toString(count()) FROM nus.trip_events" 2>/dev/null | sed 's/^/  /' || true
+		--query "SELECT 'trip_events ' || toString(count()) FROM hailpath.trip_events" 2>/dev/null | sed 's/^/  /' || true
 	@printf "  redis dbsize driver/passenger/trip/demand: "
 	@for n in 1 2 3 4; do \
 		$(COMPOSE) exec -T hailpath-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
@@ -174,7 +176,7 @@ verify-data:
 	@printf "\n  'trips' is PostgreSQL's OPERATING window, not the whole history. The\n"
 	@printf "  archiver prunes anything ended more than ARCHIVER_RETENTION_HOURS ago,\n"
 	@printf "  so this count sits near one retention window of traffic and the full\n"
-	@printf "  HISTORY_DAYS x HISTORY_TRIPS_PER_DAY lives in nus.trip_events instead.\n"
+	@printf "  HISTORY_DAYS x HISTORY_TRIPS_PER_DAY lives in hailpath.trip_events instead.\n"
 	@printf "  Fewer trips here than in the warehouse is the archiver working.\n"
 	@printf "  'ways' should be in the hundreds of thousands; 0 means no map import.\n"
 	@printf "  Redis db 1 (drivers) still 0 after CDC means cache-updater has nothing to apply.\n"

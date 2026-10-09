@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
 FROM ${PYTHON_IMAGE}
 
 ARG PYTHON_IMAGE
-LABEL org.opencontainers.image.title="nus/passenger-service" \
+LABEL org.opencontainers.image.title="hailpath/passenger" \
       org.opencontainers.image.description="Simulates the riders: trip requests and rider device location stream" \
       org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
       org.opencontainers.image.licenses="MIT" \
@@ -87,6 +87,6 @@ USER nus
 # Fail the build rather than ship an image whose entrypoint cannot import
 # itself — a broken path or a missed COPY would otherwise only show up as a
 # crash loop after deployment.
-RUN python -c "import passenger_service, nus_common; print('nus/passenger-service imports cleanly')"
+RUN python -c "import passenger_service, nus_common; print('hailpath/passenger imports cleanly')"
 
 CMD ["python", "-m", "passenger_service"]

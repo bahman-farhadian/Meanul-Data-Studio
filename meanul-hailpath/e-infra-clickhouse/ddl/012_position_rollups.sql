@@ -35,7 +35,7 @@
 -- a day and roughly sixty bytes a row this is about 130 MB a year per
 -- node, which is not worth expiring and is worth keeping.
 
-CREATE TABLE IF NOT EXISTS nus.driver_activity_hourly
+CREATE TABLE IF NOT EXISTS hailpath.driver_activity_hourly
 (
     hour                DateTime('UTC'),
     zone_id             LowCardinality(String),
@@ -60,8 +60,8 @@ ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.driver_activity_hourly_mv
-TO nus.driver_activity_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.driver_activity_hourly_mv
+TO hailpath.driver_activity_hourly
 AS
 SELECT
     toStartOfHour(event_time)                    AS hour,
@@ -74,11 +74,11 @@ SELECT
     sum(toFloat64(ifNull(speed_kmh, 0)))         AS speed_kmh_sum,
     countIf(speed_kmh IS NOT NULL)               AS speed_samples,
     max(ifNull(speed_kmh, toFloat32(0)))         AS max_speed_kmh
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 GROUP BY hour, zone_id;
 
 
-CREATE TABLE IF NOT EXISTS nus.rider_activity_hourly
+CREATE TABLE IF NOT EXISTS hailpath.rider_activity_hourly
 (
     hour                DateTime('UTC'),
     zone_id             LowCardinality(String),
@@ -99,8 +99,8 @@ ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.rider_activity_hourly_mv
-TO nus.rider_activity_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.rider_activity_hourly_mv
+TO hailpath.rider_activity_hourly
 AS
 SELECT
     toStartOfHour(event_time)                    AS hour,
@@ -110,7 +110,7 @@ SELECT
     uniqState(trip_id)                           AS trips,
     sum(toFloat64(ifNull(accuracy_m, 0)))        AS accuracy_m_sum,
     countIf(accuracy_m IS NOT NULL)              AS accuracy_samples
-FROM nus.rider_positions
+FROM hailpath.rider_positions
 GROUP BY hour, zone_id;
 
 

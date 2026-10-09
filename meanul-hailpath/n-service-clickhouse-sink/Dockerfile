@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
 FROM ${PYTHON_IMAGE}
 
 ARG PYTHON_IMAGE
-LABEL org.opencontainers.image.title="nus/clickhouse-sink" \
+LABEL org.opencontainers.image.title="hailpath/clickhouse-sink" \
       org.opencontainers.image.description="Consumes every Kafka topic, enriches from Redis and batch-inserts into ClickHouse" \
       org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
       org.opencontainers.image.licenses="MIT" \
@@ -87,6 +87,6 @@ USER nus
 # Fail the build rather than ship an image whose entrypoint cannot import
 # itself — a broken path or a missed COPY would otherwise only show up as a
 # crash loop after deployment.
-RUN python -c "import clickhouse_sink, nus_common; print('nus/clickhouse-sink imports cleanly')"
+RUN python -c "import clickhouse_sink, nus_common; print('hailpath/clickhouse-sink imports cleanly')"
 
 CMD ["python", "-m", "clickhouse_sink"]

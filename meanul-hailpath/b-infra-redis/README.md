@@ -67,7 +67,7 @@ make verify-redis
 A `PONG` is the check. From this directory alone:
 
 ```bash
-docker network create nus-backbone
+docker network create hailpath-net
 cp .env.example .env
 docker compose up -d
 docker compose exec hailpath-redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping

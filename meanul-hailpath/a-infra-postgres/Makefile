@@ -30,7 +30,7 @@ pg-cpus-normal:
 .PHONY: _wait-haproxy-pg-settled
 _wait-haproxy-pg-settled:
 	@printf "  waiting for HAProxy's health checks to settle after hailpath-postgres is recreated\n"
-# The stats page is read through nus-backbone, not a host address. A host
+# The stats page is read through hailpath-net, not a host address. A host
 # loopback read fails when localhost is 127.0.0.1 and route_localnet is 0.
 	@stable=0; write_up=0; read_up=0; \
 	for i in $$(seq 1 30); do \
@@ -66,11 +66,11 @@ pg-allow-cdc:
 .PHONY: verify-pg
 verify-pg:
 	$(call say,PostgreSQL)
-	@$(COMPOSE) exec -T hailpath-postgres pg_isready -U postgres -d "$(call getenv,PG_DATABASE,nus)"
+	@$(COMPOSE) exec -T hailpath-postgres pg_isready -U postgres -d "$(call getenv,PG_DATABASE,hailpath)"
 	@printf "\n  One PostgreSQL. Debezium reads this same database.\n"
 
 .PHONY: psql psql-read
 psql:
-	@$(COMPOSE) exec hailpath-postgres psql "host=hailpath-proxy port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
+	@$(COMPOSE) exec hailpath-postgres psql "host=hailpath-proxy port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,hailpath)"
 psql-read:
-	@$(COMPOSE) exec hailpath-postgres psql "host=hailpath-proxy port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
+	@$(COMPOSE) exec hailpath-postgres psql "host=hailpath-proxy port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,hailpath)"

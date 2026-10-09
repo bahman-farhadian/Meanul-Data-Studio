@@ -3,15 +3,15 @@
 Every other module in this stack — nus_common.postgres included — connects
 to whatever PG_DATABASE says. That is a problem for exactly one step: the
 very first thing this container does. On a brand new cluster, PG_DATABASE
-(now "nus", not Postgres's default "postgres") does not exist yet, so the
+(now "hailpath", not Postgres's default "postgres") does not exist yet, so the
 pooled connections nus_common.postgres hands out would fail before bootstrap
 even gets to wait_for(postgres.ping, ...).
 
 This module solves it with one raw, unpooled connection to the "postgres"
-database that always exists, used only to create "nus" and point it at its
+database that always exists, used only to create "hailpath" and point it at its
 own schema. After that, every other module in the repo - migrations, the
 OSM import, every service's queries - keeps working completely unmodified:
-ALTER DATABASE ... SET search_path makes "nus" the default schema for any
+ALTER DATABASE ... SET search_path makes "hailpath" the default schema for any
 future connection to this database, from any client, without a single query
 anywhere needing to be schema-qualified.
 """
@@ -41,7 +41,7 @@ def ensure_ready() -> None:
 
     Runs before anything touches nus_common.postgres's pools. Every check
     here is safe to run again: a restarted or re-run bootstrap must not
-    fail just because "nus" already exists from the run before.
+    fail just because "hailpath" already exists from the run before.
     """
     database = config.optional("PG_DATABASE", "postgres")
     user = config.optional("PG_USER", "postgres")

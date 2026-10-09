@@ -12,7 +12,7 @@ Filtering LION to real drivable streets, computing real costs from its
 DOT-verified posted speed limits and one-way directions, and building the
 routing topology depend on nothing this project generates — only on the
 external LION release. That work is identical on every run, so it is done
-once and cached (`NUS_VOLUME_ROOT/nus-lion-data/routable-graph.dump`) rather
+once and cached (`HAILPATH_VOLUME_ROOT/hailpath-lion-data/routable-graph.dump`) rather
 than repeated on every `make destroy && make up` cycle. `h-bootstrap`'s own
 `osm.py::import_map()` only ever restores that cached result.
 
@@ -45,6 +45,6 @@ To force a rebuild (a new LION edition, or a change to `build-graph.sql`),
 delete the cached dump first:
 
 ```
-rm -f "$NUS_VOLUME_ROOT/nus-lion-data/routable-graph.dump"
+rm -f "$HAILPATH_VOLUME_ROOT/hailpath-lion-data/routable-graph.dump"
 make lion-prepare
 ```

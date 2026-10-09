@@ -1,15 +1,15 @@
-# One row per driver per hour, counted from position reports rather
-# than from trips - so a driver who was online and never matched is
-# in the denominator, which is the only way this number means
-# anything.
+# Where the city actually travels. Directly comparable against the
+# real TLC od_pair_calibration the demand generator is built from,
+# which makes this a standing check that the simulation still looks
+# like the month it was calibrated on.
 # SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
-table_name: 'driver_utilization_hourly'
-schema: 'nus'
-uuid: '462681bd-1e53-5cba-a7f0-6f6e48ff358c'
+table_name: 'od_matrix_daily'
+schema: 'hailpath'
+uuid: '49cdf60f-3bcd-5e5d-9265-38ebd4c54537'
 database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
 version: '1.0.0'
-main_dttm_col: 'hour'
-description: 'Ticks each driver spent online, and how many of those were on a trip.'
+main_dttm_col: 'day'
+description: 'Completed trips and revenue for every pickup-to-dropoff pair, per day.'
 default_endpoint: null
 offset: 0
 cache_timeout: null
@@ -23,9 +23,9 @@ extra: null
 normalize_columns: false
 always_filter_main_dttm: false
 columns:
-  - column_name: 'hour'
+  - column_name: 'day'
     verbose_name: null
-    type: 'DATETIME'
+    type: 'DATE'
     is_dttm: true
     is_active: true
     groupby: true
@@ -35,7 +35,7 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'driver_id'
+  - column_name: 'pickup_zone_id'
     verbose_name: null
     type: 'STRING'
     is_dttm: false
@@ -47,21 +47,45 @@ columns:
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'online_ticks'
+  - column_name: 'dropoff_zone_id'
     verbose_name: null
-    type: 'BIGINT'
+    type: 'STRING'
     is_dttm: false
     is_active: true
-    groupby: false
-    filterable: false
+    groupby: true
+    filterable: true
     expression: null
     description: null
     python_date_format: null
     extra: null
     advanced_data_type: null
-  - column_name: 'busy_ticks'
+  - column_name: 'completed_trips'
     verbose_name: null
     type: 'BIGINT'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'revenue'
+    verbose_name: null
+    type: 'DECIMAL'
+    is_dttm: false
+    is_active: true
+    groupby: false
+    filterable: true
+    expression: null
+    description: null
+    python_date_format: null
+    extra: null
+    advanced_data_type: null
+  - column_name: 'route_km_total'
+    verbose_name: null
+    type: 'DOUBLE'
     is_dttm: false
     is_active: true
     groupby: false
@@ -72,30 +96,30 @@ columns:
     extra: null
     advanced_data_type: null
 metrics:
-  - metric_name: 'utilization'
-    verbose_name: 'Utilization'
-    metric_type: 'avg'
-    expression: 'sum(busy_ticks) / greatest(sum(online_ticks), 1)'
-    description: 'Share of online time spent on a trip.'
-    d3format: ',.1%'
+  - metric_name: 'trips'
+    verbose_name: 'Completed trips'
+    metric_type: 'count'
+    expression: 'sum(completed_trips)'
+    description: null
+    d3format: ',d'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'online_time'
-    verbose_name: 'Online ticks'
+  - metric_name: 'gross_revenue'
+    verbose_name: 'Revenue'
     metric_type: 'sum'
-    expression: 'sum(online_ticks)'
+    expression: 'sum(revenue)'
     description: null
-    d3format: ',d'
+    d3format: '$,.0f'
     currency: null
     warning_text: null
     extra: null
-  - metric_name: 'drivers'
-    verbose_name: 'Drivers seen'
-    metric_type: 'count_distinct'
-    expression: 'count(distinct driver_id)'
+  - metric_name: 'km_total'
+    verbose_name: 'Distance driven'
+    metric_type: 'sum'
+    expression: 'sum(route_km_total)'
     description: null
-    d3format: ',d'
+    d3format: ',.0f'
     currency: null
     warning_text: null
     extra: null

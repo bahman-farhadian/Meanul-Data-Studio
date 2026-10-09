@@ -7,7 +7,7 @@
 
 -- 1. What the real p95 trip time in a zone is right now, not just the
 -- average trip_stats_hourly's sums already answer.
-CREATE TABLE IF NOT EXISTS nus.trip_duration_percentiles_hourly
+CREATE TABLE IF NOT EXISTS hailpath.trip_duration_percentiles_hourly
 (
     hour           DateTime('UTC'),
     pickup_zone_id LowCardinality(String),
@@ -22,15 +22,15 @@ ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_duration_percentiles_hourly_mv
-TO nus.trip_duration_percentiles_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.trip_duration_percentiles_hourly_mv
+TO hailpath.trip_duration_percentiles_hourly
 AS
 SELECT
     toStartOfHour(event_time)          AS hour,
     pickup_zone_id,
     quantileState(0.5)(actual_duration_s)  AS p50_state,
     quantileState(0.95)(actual_duration_s) AS p95_state
-FROM nus.trip_events
+FROM hailpath.trip_events
 -- Only a completed trip has a real actual_duration_s - quantileState()
 -- over a Nullable column ignores NULLs on its own, but the same filter
 -- 005_rollups.sql already uses keeps this from aggregating rows that can
@@ -54,7 +54,7 @@ GROUP BY hour, pickup_zone_id;
 -- rows for the same hour combines their states correctly (a column a
 -- given MV never touched simply contributes nothing to that merge, not
 -- a wrong answer) - verified live before writing this to disk.
-CREATE TABLE IF NOT EXISTS nus.active_entities_hourly
+CREATE TABLE IF NOT EXISTS hailpath.active_entities_hourly
 (
     hour         DateTime('UTC'),
     driver_state AggregateFunction(uniq, FixedString(11)),
@@ -64,22 +64,22 @@ ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY hour;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.active_drivers_hourly_mv
-TO nus.active_entities_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.active_drivers_hourly_mv
+TO hailpath.active_entities_hourly
 AS
 SELECT
     toStartOfHour(event_time) AS hour,
     uniqState(driver_id)      AS driver_state
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 GROUP BY hour;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.active_riders_hourly_mv
-TO nus.active_entities_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.active_riders_hourly_mv
+TO hailpath.active_entities_hourly
 AS
 SELECT
     toStartOfHour(event_time) AS hour,
     uniqState(rider_id)       AS rider_state
-FROM nus.rider_positions
+FROM hailpath.rider_positions
 GROUP BY hour;
 
 

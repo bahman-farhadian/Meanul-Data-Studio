@@ -10,7 +10,7 @@
 # is documented for a single dashboard user (main README, section 2.9).
 #
 # Standalone test:
-#   docker network create nus-backbone
+#   docker network create hailpath-net
 #   cp .env.example .env                    (+ edit the passwords)
 #   docker compose up -d --build
 #   docker compose run --rm superset-init
@@ -44,22 +44,22 @@ x-superset-env: &superset-env
   # How Superset logs in to ClickHouse, through the entry tier.
   CH_HOST: ${CH_HOST:-hailpath-proxy}
   CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
-  CH_DATABASE: ${CH_DATABASE:-nus}
-  CH_USER: ${CH_USER:-nus}
+  CH_DATABASE: ${CH_DATABASE:-hailpath}
+  CH_USER: ${CH_USER:-hailpath}
   CH_PASSWORD: ${CH_PASSWORD:?set it in g-infra-superset/.env}
   # And how it logs in to PostgreSQL, for SQL Lab only. PG_READ_PORT is the
   # same process as the write port. allow_dml on this connection stays off,
   # so SQL Lab cannot change the rows the platform writes.
   PG_HOST: ${PG_HOST:-hailpath-proxy}
   PG_READ_PORT: ${PG_READ_PORT:-5433}
-  PG_DATABASE: ${PG_DATABASE:-nus}
+  PG_DATABASE: ${PG_DATABASE:-hailpath}
   PG_USER: ${PG_USER:-postgres}
   PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
 
 services:
   hailpath-superset:
     build: *superset-build
-    image: nus/superset:${NUS_VERSION:-0.1.0}
+    image: hailpath/superset:${HAILPATH_VERSION:-0.1.0}
     container_name: hailpath-superset
     hostname: hailpath-superset
     restart: unless-stopped
@@ -100,7 +100,7 @@ services:
   # first `up`, and again whenever the ClickHouse password changes.
   superset-init:
     build: *superset-build
-    image: nus/superset:${NUS_VERSION:-0.1.0}
+    image: hailpath/superset:${HAILPATH_VERSION:-0.1.0}
     profiles: ["init"]
     cpus: ${SUPERSET_INIT_CPUS:-0.5}
     mem_limit: ${SUPERSET_INIT_MEM:-2g}
@@ -123,7 +123,7 @@ services:
   # anything, and so `make verify` can fail on it.
   superset-verify:
     build: *superset-build
-    image: nus/superset:${NUS_VERSION:-0.1.0}
+    image: hailpath/superset:${HAILPATH_VERSION:-0.1.0}
     profiles: ["init"]
     cpus: ${SUPERSET_INIT_CPUS:-0.5}
     mem_limit: ${SUPERSET_INIT_MEM:-2g}
@@ -141,14 +141,14 @@ services:
 volumes:
   # Superset's own database plus anything saved in the browser.
   superset-home:
-    name: nus-superset-home
+    name: hailpath-superset-home
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-superset-home
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-superset-home
 
 networks:
   backbone:
     external: true
-    name: nus-backbone
+    name: hailpath-net

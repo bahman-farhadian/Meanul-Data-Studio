@@ -23,8 +23,8 @@ The service name stays `hailpath-clickhouse`. `make ch-client`, Compose
 
 ## Tables
 
-The names services and dashboards query are the tables. `nus.trip_events`
-and `nus.driver_positions` store the rows. There is no `*_local` table.
+The names services and dashboards query are the tables. `hailpath.trip_events`
+and `hailpath.driver_positions` store the rows. There is no `*_local` table.
 
 Raw streams use `MergeTree`. Rollups use `SummingMergeTree`,
 `AggregatingMergeTree`, or `ReplacingMergeTree(event_time)`.

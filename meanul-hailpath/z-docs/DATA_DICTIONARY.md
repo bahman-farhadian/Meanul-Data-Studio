@@ -198,7 +198,7 @@ These are the tables services and dashboards query. Each one is
 stored on the one ClickHouse. A materialized view is a trigger,
 not a table, and is not listed.
 
-### `nus.driver_positions`
+### `hailpath.driver_positions`
 
 | Column | Type |
 | --- | --- |
@@ -214,7 +214,7 @@ not a table, and is not listed.
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
-### `nus.rider_positions`
+### `hailpath.rider_positions`
 
 | Column | Type |
 | --- | --- |
@@ -228,7 +228,7 @@ not a table, and is not listed.
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
-### `nus.trip_events`
+### `hailpath.trip_events`
 
 | Column | Type |
 | --- | --- |
@@ -263,7 +263,7 @@ not a table, and is not listed.
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
-### `nus.hotspot_history`
+### `hailpath.hotspot_history`
 
 | Column | Type |
 | --- | --- |
@@ -277,7 +277,7 @@ not a table, and is not listed.
 | `computed_at` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(computed_at) |
 
-### `nus.trip_stats_hourly`
+### `hailpath.trip_stats_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -290,7 +290,7 @@ not a table, and is not listed.
 | `route_km_total` | Float64 |
 | `overrun_trips` | UInt64 |
 
-### `nus.trip_duration_percentiles_hourly`
+### `hailpath.trip_duration_percentiles_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -299,7 +299,7 @@ not a table, and is not listed.
 | `p50_state` | AggregateFunction(quantile(0.5), Nullable(UInt32)) |
 | `p95_state` | AggregateFunction(quantile(0.95), Nullable(UInt32)) |
 
-### `nus.active_entities_hourly`
+### `hailpath.active_entities_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -307,7 +307,7 @@ not a table, and is not listed.
 | `driver_state` | AggregateFunction(uniq, FixedString(11)) |
 | `rider_state` | AggregateFunction(uniq, FixedString(11)) |
 
-### `nus.trip_stats_daily`
+### `hailpath.trip_stats_daily`
 
 | Column | Type |
 | --- | --- |
@@ -320,7 +320,7 @@ not a table, and is not listed.
 | `route_km_total` | Float64 |
 | `overrun_trips` | UInt64 |
 
-### `nus.od_matrix_daily`
+### `hailpath.od_matrix_daily`
 
 | Column | Type |
 | --- | --- |
@@ -331,7 +331,7 @@ not a table, and is not listed.
 | `revenue` | Decimal64(2) |
 | `route_km_total` | Float64 |
 
-### `nus.driver_utilization_hourly`
+### `hailpath.driver_utilization_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -340,7 +340,7 @@ not a table, and is not listed.
 | `online_ticks` | UInt64 |
 | `busy_ticks` | UInt64 |
 
-### `nus.segment_traffic_history`
+### `hailpath.segment_traffic_history`
 
 | Column | Type |
 | --- | --- |
@@ -353,7 +353,7 @@ not a table, and is not listed.
 | `computed_at` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(computed_at) |
 
-### `nus.dispatch_offers`
+### `hailpath.dispatch_offers`
 
 | Column | Type |
 | --- | --- |
@@ -371,7 +371,7 @@ not a table, and is not listed.
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(offered_at) |
 
-### `nus.dispatch_funnel_hourly`
+### `hailpath.dispatch_funnel_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -388,7 +388,7 @@ not a table, and is not listed.
 | `response_s_sum` | UInt64 |
 | `responses` | UInt64 |
 
-### `nus.trip_facts`
+### `hailpath.trip_facts`
 
 | Column | Type |
 | --- | --- |
@@ -425,7 +425,7 @@ not a table, and is not listed.
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
-### `nus.fulfilment_hourly`
+### `hailpath.fulfilment_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -442,7 +442,7 @@ not a table, and is not listed.
 | `wait_s_sum` | UInt64 |
 | `waited_trips` | UInt64 |
 
-### `nus.driver_activity_hourly`
+### `hailpath.driver_activity_hourly`
 
 | Column | Type |
 | --- | --- |
@@ -457,7 +457,7 @@ not a table, and is not listed.
 | `speed_samples` | SimpleAggregateFunction(sum, UInt64) |
 | `max_speed_kmh` | SimpleAggregateFunction(max, Float32) |
 
-### `nus.rider_activity_hourly`
+### `hailpath.rider_activity_hourly`
 
 | Column | Type |
 | --- | --- |

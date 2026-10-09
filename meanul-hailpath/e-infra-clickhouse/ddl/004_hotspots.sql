@@ -2,7 +2,7 @@
 -- Redis holds only the current value (with a six-hour lifetime); this is the
 -- history behind it, which is what makes "when is this zone busy" answerable.
 
-CREATE TABLE IF NOT EXISTS nus.hotspot_history
+CREATE TABLE IF NOT EXISTS hailpath.hotspot_history
 (
     -- LowCardinality(String)/Enum8 - same reasoning as 002_positions.sql
     -- and 003_trips.sql: zone_id is TLC's own variable-width LocationID,

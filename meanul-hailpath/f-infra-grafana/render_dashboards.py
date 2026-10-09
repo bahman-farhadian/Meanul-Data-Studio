@@ -18,9 +18,9 @@ OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
 # No MapTiler, no API key, no third-party CDN.
 LOCAL_XYZ = {
     "type": "xyz",
-    "name": "NUS OSM",
+    "name": "Hailpath OSM",
     "config": {
-        "url": "/tiles/styles/nus/{z}/{x}/{y}@2x.png",
+        "url": "/tiles/styles/hailpath/{z}/{x}/{y}@2x.png",
         "attribution": "© OpenStreetMap",
         "minZoom": 0,
         "maxZoom": 14,
@@ -268,12 +268,12 @@ def dashboard(
         "annotations": {"list": []},
         "panels": panels,
         "links": [
-            {"title": "Live ops", "type": "link", "url": "/d/nus-live-ops", "keepTime": True},
+            {"title": "Live ops", "type": "link", "url": "/d/hailpath-live-ops", "keepTime": True},
             {"title": "Driver", "type": "link", "url": "/d/hailpath-driver", "keepTime": True},
-            {"title": "Trip", "type": "link", "url": "/d/nus-trip", "keepTime": True},
+            {"title": "Trip", "type": "link", "url": "/d/hailpath-trip", "keepTime": True},
             {"title": "City", "type": "link", "url": "/d/hailpath-city", "keepTime": True},
-            {"title": "History", "type": "link", "url": "/d/nus-history", "keepTime": True},
-            {"title": "Marketplace", "type": "link", "url": "/d/nus-marketplace", "keepTime": True},
+            {"title": "History", "type": "link", "url": "/d/hailpath-history", "keepTime": True},
+            {"title": "Marketplace", "type": "link", "url": "/d/hailpath-marketplace", "keepTime": True},
         ],
     }
 
@@ -287,13 +287,13 @@ OPEN_STATUSES = (
 )
 
 LIVE_OPS = dashboard(
-    uid="nus-live-ops",
-    title="NUS / Live operations",
+    uid="hailpath-live-ops",
+    title="Hailpath / Live operations",
     description=(
         "What is happening now: open trips, ingest, last driver positions, "
         "warehouse freshness. ClickHouse only."
     ),
-    tags=["nus", "live"],
+    tags=["hailpath", "live"],
     time_from="now-15m",
     refresh="10s",
     live=True,
@@ -306,7 +306,7 @@ LIVE_OPS = dashboard(
 SELECT status, count() AS trips
 FROM (
     SELECT trip_id, argMax(status, event_time) AS status
-    FROM nus.trip_events
+    FROM hailpath.trip_events
     WHERE event_time >= now() - INTERVAL 6 HOUR
     GROUP BY trip_id
 )
@@ -331,7 +331,7 @@ GROUP BY status
             "stat",
             """
 SELECT dateDiff('second', max(event_time), now()) AS lag_s
-FROM nus.trip_events
+FROM hailpath.trip_events
 """,
             16, 0, 8, 3,
             extra={
@@ -357,7 +357,7 @@ FROM nus.trip_events
             "stat",
             """
 SELECT dateDiff('second', max(event_time), now()) AS lag_s
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 """,
             16, 3, 8, 3,
             extra={
@@ -385,7 +385,7 @@ FROM nus.driver_positions
 SELECT
     $__timeInterval(event_time) AS time,
     count() AS events
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE $__timeFilter(event_time)
 GROUP BY time
 ORDER BY time
@@ -407,7 +407,7 @@ ORDER BY time
 SELECT
     $__timeInterval(event_time) AS time,
     count() AS events
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 WHERE $__timeFilter(event_time)
 GROUP BY time
 ORDER BY time
@@ -429,7 +429,7 @@ SELECT
     $__timeInterval(event_time) AS time,
     status,
     count() AS events
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE $__timeFilter(event_time)
   AND status IN ('completed', 'no_driver_found', 'cancelled_by_passenger', 'cancelled_by_driver')
 GROUP BY time, status
@@ -464,7 +464,7 @@ SELECT
     argMax(lon, event_time) AS lon,
     argMax(status, event_time) AS status,
     max(event_time) AS last_seen
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 WHERE event_time >= now() - INTERVAL 2 MINUTE
 GROUP BY driver_id
 """,
@@ -485,7 +485,7 @@ SELECT
     argMax(predicted_duration_s, event_time) AS predicted_s,
     argMax(fare_estimate, event_time) AS fare_estimate,
     max(event_time) AS last_event
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE event_time >= now() - INTERVAL 6 HOUR
 GROUP BY trip_id
 HAVING argMax(status, event_time) = 'in_progress'
@@ -502,7 +502,7 @@ LIMIT 15
 SELECT status, count() AS drivers
 FROM (
     SELECT driver_id, argMax(status, event_time) AS status
-    FROM nus.driver_positions
+    FROM hailpath.driver_positions
     WHERE event_time >= now() - INTERVAL 2 MINUTE
     GROUP BY driver_id
 )
@@ -519,10 +519,10 @@ LIMIT 5
 # ---------------------------------------------------------------------------
 
 DRIVER = dashboard(
-    uid="nus-driver",
-    title="NUS / Driver inspector",
+    uid="hailpath-driver",
+    title="Hailpath / Driver inspector",
     description="Lookup one driver_id: trail, status, speed, utilization.",
-    tags=["nus", "live", "driver"],
+    tags=["hailpath", "live", "driver"],
     time_from="now-3h",
     refresh="10s",
     live=True,
@@ -530,7 +530,7 @@ DRIVER = dashboard(
         qvar(
             "driver_id",
             "Driver",
-            "SELECT DISTINCT toString(driver_id) FROM nus.driver_positions "
+            "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_positions "
             "WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
         )
     ],
@@ -546,7 +546,7 @@ SELECT
     argMax(lon, event_time) AS lon,
     argMax(speed_kmh, event_time) AS speed_kmh,
     argMax(trip_id, event_time) AS trip_id
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 WHERE driver_id = '${driver_id}'
 """,
             0, 0, 24, 4,
@@ -557,7 +557,7 @@ WHERE driver_id = '${driver_id}'
             "geomap",
             """
 SELECT event_time, lat, lon, status, speed_kmh, trip_id
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 WHERE driver_id = '${driver_id}'
   AND $__timeFilter(event_time)
 ORDER BY event_time
@@ -571,7 +571,7 @@ ORDER BY event_time
             "table",
             """
 SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 WHERE driver_id = '${driver_id}'
   AND $__timeFilter(event_time)
 ORDER BY event_time DESC
@@ -585,7 +585,7 @@ LIMIT 15
             "timeseries",
             """
 SELECT event_time AS time, speed_kmh
-FROM nus.driver_positions
+FROM hailpath.driver_positions
 WHERE driver_id = '${driver_id}'
   AND $__timeFilter(event_time)
 ORDER BY time
@@ -603,7 +603,7 @@ ORDER BY time
 SELECT
     hour AS time,
     sum(busy_ticks) / sum(online_ticks) AS utilization
-FROM nus.driver_utilization_hourly
+FROM hailpath.driver_utilization_hourly
 WHERE driver_id = '${driver_id}'
   AND $__timeFilter(hour)
 GROUP BY hour
@@ -632,10 +632,10 @@ ORDER BY time
 # ---------------------------------------------------------------------------
 
 TRIP = dashboard(
-    uid="nus-trip",
-    title="NUS / Trip inspector",
+    uid="hailpath-trip",
+    title="Hailpath / Trip inspector",
     description="Status walk, rider trail, fares for one trip_id.",
-    tags=["nus", "live", "trip"],
+    tags=["hailpath", "live", "trip"],
     time_from="now-6h",
     refresh="10s",
     live=True,
@@ -643,7 +643,7 @@ TRIP = dashboard(
         qvar(
             "trip_id",
             "Trip",
-            "SELECT DISTINCT toString(trip_id) FROM nus.trip_events "
+            "SELECT DISTINCT toString(trip_id) FROM hailpath.trip_events "
             "WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
         )
     ],
@@ -669,7 +669,7 @@ SELECT
     is_hotspot_trip,
     fare_estimate,
     fare_final
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE trip_id = '${trip_id}'
 ORDER BY event_time
 LIMIT 12
@@ -682,7 +682,7 @@ LIMIT 12
             "geomap",
             """
 SELECT event_time, lat, lon, accuracy_m, zone_id
-FROM nus.rider_positions
+FROM hailpath.rider_positions
 WHERE trip_id = '${trip_id}'
 ORDER BY event_time
 """,
@@ -700,7 +700,7 @@ SELECT
     duration_delta_s,
     fare_estimate,
     fare_final
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE trip_id = '${trip_id}'
   AND status = 'completed'
 ORDER BY event_time DESC
@@ -716,10 +716,10 @@ LIMIT 1
 # ---------------------------------------------------------------------------
 
 CITY = dashboard(
-    uid="nus-city",
-    title="NUS / City now",
+    uid="hailpath-city",
+    title="Hailpath / City now",
     description="Zone demand, surge, congestion. Scores near 0 at the small seed are expected.",
-    tags=["nus", "live", "city"],
+    tags=["hailpath", "live", "city"],
     time_from="now-3h",
     refresh="30s",
     live=True,
@@ -727,7 +727,7 @@ CITY = dashboard(
         qvar(
             "zone_id",
             "Zone",
-            "SELECT DISTINCT toString(zone_id) FROM nus.hotspot_history "
+            "SELECT DISTINCT toString(zone_id) FROM hailpath.hotspot_history "
             "WHERE computed_at >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 300",
         )
     ],
@@ -754,7 +754,7 @@ FROM (
         argMax(surge_multiplier, computed_at) AS surge_multiplier,
         argMax(period, computed_at) AS period,
         max(computed_at) AS last_computed
-    FROM nus.hotspot_history
+    FROM hailpath.hotspot_history
     WHERE computed_at >= now() - INTERVAL 10 MINUTE
     GROUP BY zone_id
 ) AS latest
@@ -769,7 +769,7 @@ LIMIT 15
             "timeseries",
             """
 SELECT computed_at AS time, demand_score, surge_multiplier
-FROM nus.hotspot_history
+FROM hailpath.hotspot_history
 WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
@@ -791,7 +791,7 @@ ORDER BY time
             "timeseries",
             """
 SELECT computed_at AS time, open_requests, available_drivers
-FROM nus.hotspot_history
+FROM hailpath.hotspot_history
 WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
@@ -811,7 +811,7 @@ ORDER BY time
             "timeseries",
             """
 SELECT computed_at AS time, congestion_factor
-FROM nus.segment_traffic_history
+FROM hailpath.segment_traffic_history
 WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
@@ -831,7 +831,7 @@ ORDER BY time
             "timeseries",
             """
 SELECT computed_at AS time, speed_samples, segments_updated
-FROM nus.segment_traffic_history
+FROM hailpath.segment_traffic_history
 WHERE zone_id = '${zone_id}'
   AND $__timeFilter(computed_at)
 ORDER BY time
@@ -853,13 +853,13 @@ ORDER BY time
 # ---------------------------------------------------------------------------
 
 HISTORY = dashboard(
-    uid="nus-history",
-    title="NUS / ClickHouse history",
+    uid="hailpath-history",
+    title="Hailpath / ClickHouse history",
     description=(
         "Hourly and daily rollups. SummingMergeTree panels use sum(); "
         "percentiles use quantileMerge(); distinct counts use uniqMerge()."
     ),
-    tags=["nus", "history"],
+    tags=["hailpath", "history"],
     time_from="now-7d",
     refresh="1m",
     live=False,
@@ -872,7 +872,7 @@ HISTORY = dashboard(
 SELECT
     hour AS time,
     sum(completed_trips) AS completed_trips
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
@@ -895,7 +895,7 @@ ORDER BY time
 SELECT
     hour AS time,
     sum(revenue) AS revenue
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
@@ -917,7 +917,7 @@ ORDER BY time
 SELECT
     toDateTime(day) AS time,
     sum(completed_trips) AS completed_trips
-FROM nus.trip_stats_daily
+FROM hailpath.trip_stats_daily
 WHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)
 GROUP BY day
 ORDER BY time
@@ -935,7 +935,7 @@ ORDER BY time
 SELECT
     toDateTime(day) AS time,
     sum(revenue) AS revenue
-FROM nus.trip_stats_daily
+FROM hailpath.trip_stats_daily
 WHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)
 GROUP BY day
 ORDER BY time
@@ -954,7 +954,7 @@ SELECT
     hour AS time,
     quantileMerge(0.5)(p50_state) AS p50_s,
     quantileMerge(0.95)(p95_state) AS p95_s
-FROM nus.trip_duration_percentiles_hourly
+FROM hailpath.trip_duration_percentiles_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
@@ -976,7 +976,7 @@ ORDER BY time
 SELECT
     hour AS time,
     sum(busy_ticks) / sum(online_ticks) AS utilization
-FROM nus.driver_utilization_hourly
+FROM hailpath.driver_utilization_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(online_ticks) > 0
@@ -1006,7 +1006,7 @@ SELECT
     hour AS time,
     uniqMerge(driver_state) AS drivers,
     uniqMerge(rider_state) AS riders
-FROM nus.active_entities_hourly
+FROM hailpath.active_entities_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
@@ -1028,7 +1028,7 @@ ORDER BY time
 SELECT
     hour AS time,
     sum(overrun_trips) / sum(completed_trips) AS overrun_share
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(completed_trips) > 0
@@ -1054,7 +1054,7 @@ SELECT
     sum(completed_trips) AS completed_trips,
     sum(revenue) AS revenue,
     sum(route_km_total) AS route_km
-FROM nus.trip_stats_daily
+FROM hailpath.trip_stats_daily
 WHERE day = today()
 GROUP BY pickup_zone_id
 ORDER BY completed_trips DESC
@@ -1072,7 +1072,7 @@ SELECT
     dropoff_zone_id,
     sum(completed_trips) AS completed_trips,
     sum(revenue) AS revenue
-FROM nus.od_matrix_daily
+FROM hailpath.od_matrix_daily
 WHERE day = today()
 GROUP BY pickup_zone_id, dropoff_zone_id
 ORDER BY completed_trips DESC
@@ -1109,14 +1109,14 @@ LIMIT 15
 # ---------------------------------------------------------------------------
 
 MARKETPLACE = dashboard(
-    uid="nus-marketplace",
-    title="NUS / Marketplace",
+    uid="hailpath-marketplace",
+    title="Hailpath / Marketplace",
     description=(
         "Fulfilment, cancellations, the matching funnel, take rate and ETA "
         "accuracy. Every rate is sum()/sum() over the rollups, never an "
         "average of rates."
     ),
-    tags=["nus", "marketplace"],
+    tags=["hailpath", "marketplace"],
     time_from="now-24h",
     refresh="1m",
     live=False,
@@ -1126,7 +1126,7 @@ MARKETPLACE = dashboard(
             "Fulfilment rate",
             """
 SELECT sum(completed) / sum(trips_ended) AS fulfilment_rate
-FROM nus.fulfilment_hourly
+FROM hailpath.fulfilment_hourly
 WHERE $__timeFilter(hour)
 HAVING sum(trips_ended) > 0
 """,
@@ -1148,7 +1148,7 @@ HAVING sum(trips_ended) > 0
 SELECT
     (sum(cancelled_by_passenger) + sum(cancelled_by_driver)) / sum(trips_ended)
         AS cancellation_rate
-FROM nus.fulfilment_hourly
+FROM hailpath.fulfilment_hourly
 WHERE $__timeFilter(hour)
 HAVING sum(trips_ended) > 0
 """,
@@ -1166,7 +1166,7 @@ HAVING sum(trips_ended) > 0
             "Driver acceptance rate",
             """
 SELECT sum(offers_accepted) / sum(offers_made) AS acceptance_rate
-FROM nus.dispatch_funnel_hourly
+FROM hailpath.dispatch_funnel_hourly
 WHERE $__timeFilter(hour)
 HAVING sum(offers_made) > 0
 """,
@@ -1186,7 +1186,7 @@ HAVING sum(offers_made) > 0
 SELECT
     toFloat64(sum(revenue) - sum(payout_total)) / toFloat64(sum(revenue))
         AS take_rate
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 WHERE $__timeFilter(hour)
 HAVING sum(revenue) > 0
 """,
@@ -1209,7 +1209,7 @@ HAVING sum(revenue) > 0
 SELECT
     hour AS time,
     sum(completed) / sum(trips_ended) AS fulfilment_rate
-FROM nus.fulfilment_hourly
+FROM hailpath.fulfilment_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(trips_ended) > 0
@@ -1247,7 +1247,7 @@ SELECT
     sum(cancelled_by_passenger)  AS cancelled_by_passenger,
     sum(cancelled_by_driver)     AS cancelled_by_driver,
     sum(no_driver_found)         AS no_driver_found
-FROM nus.fulfilment_hourly
+FROM hailpath.fulfilment_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 ORDER BY time
@@ -1279,7 +1279,7 @@ SELECT
     hour AS time,
     sum(match_s_sum) / sum(matched_trips) AS time_to_match_s,
     sum(wait_s_sum)  / sum(waited_trips)  AS rider_wait_s
-FROM nus.fulfilment_hourly
+FROM hailpath.fulfilment_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(matched_trips) > 0 AND sum(waited_trips) > 0
@@ -1316,7 +1316,7 @@ ORDER BY time
 SELECT
     cancellation_reason AS reason,
     count() AS trips
-FROM nus.trip_facts FINAL
+FROM hailpath.trip_facts FINAL
 WHERE $__timeFilter(event_time)
   AND final_status IN ('cancelled_by_passenger', 'cancelled_by_driver')
   AND cancellation_reason IS NOT NULL
@@ -1353,7 +1353,7 @@ ORDER BY trips DESC
 SELECT
     hour AS time,
     sum(offers_accepted) / sum(offers_made) AS acceptance_rate
-FROM nus.dispatch_funnel_hourly
+FROM hailpath.dispatch_funnel_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(offers_made) > 0
@@ -1384,7 +1384,7 @@ ORDER BY time
 SELECT
     hour AS time,
     sum(offers_made) / sum(offers_accepted) AS offers_per_match
-FROM nus.dispatch_funnel_hourly
+FROM hailpath.dispatch_funnel_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(offers_accepted) > 0
@@ -1421,7 +1421,7 @@ SELECT
     hour AS time,
     sum(eta_seconds_sum) / sum(eta_offers)      AS eta_offered_s,
     sum(accepted_eta_sum) / sum(offers_accepted) AS eta_accepted_s
-FROM nus.dispatch_funnel_hourly
+FROM hailpath.dispatch_funnel_hourly
 WHERE $__timeFilter(hour)
 GROUP BY hour
 HAVING sum(eta_offers) > 0 AND sum(offers_accepted) > 0
@@ -1462,7 +1462,7 @@ SELECT
             surge_multiplier < 2.00, '1.50 - 2.00',
                                      '2.00 +')       AS surge_band,
     countIf(status = 'accepted') / count()           AS acceptance_rate
-FROM nus.dispatch_offers
+FROM hailpath.dispatch_offers
 WHERE $__timeFilter(offered_at)
   AND surge_multiplier IS NOT NULL
 GROUP BY surge_band
@@ -1505,7 +1505,7 @@ SELECT
         AS p50_error_s,
     quantile(0.9)(toInt64(actual_duration_s) - toInt64(predicted_duration_s))
         AS p90_error_s
-FROM nus.trip_facts
+FROM hailpath.trip_facts
 WHERE $__timeFilter(event_time)
   AND final_status = 'completed'
   AND predicted_duration_s IS NOT NULL
@@ -1550,7 +1550,7 @@ SELECT
     sum(completed) / sum(trips_ended)      AS fulfilment_rate,
     sum(no_driver_found) / sum(trips_ended) AS no_driver_rate,
     sum(match_s_sum) / sum(matched_trips)  AS time_to_match_s
-FROM nus.fulfilment_hourly
+FROM hailpath.fulfilment_hourly
 WHERE $__timeFilter(hour)
 GROUP BY pickup_zone_id
 HAVING sum(trips_ended) >= 20 AND sum(matched_trips) > 0

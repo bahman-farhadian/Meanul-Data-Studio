@@ -34,7 +34,7 @@ ARG CLICKHOUSE_CONNECT_VERSION=1.7.2
 # and the failure appears only when somebody runs a query in SQL Lab.
 ARG PSYCOPG2_VERSION=2.9.12
 
-LABEL org.opencontainers.image.title="nus/superset" \
+LABEL org.opencontainers.image.title="hailpath/superset" \
       org.opencontainers.image.description="Apache Superset with the ClickHouse driver, for the ride-hailing stack" \
       org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
       org.opencontainers.image.licenses="MIT" \

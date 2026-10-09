@@ -10,8 +10,8 @@ Run through the one-shot:  docker compose run --rm superset-init
 
 Two connections are registered:
 
-  ClickHouse (nus)              the warehouse every chart reads
-  PostgreSQL (nus, read-only)   the OLTP source, for exploration only
+  ClickHouse (hailpath)              the warehouse every chart reads
+  PostgreSQL (hailpath, read-only)   the OLTP source, for exploration only
 
 The PostgreSQL one points at port 5433, the same process as the write
 port, and refuses DML. Dashboards read the warehouse; this is here so the
@@ -40,9 +40,9 @@ NAMESPACE = uuid.uuid5(
     uuid.NAMESPACE_URL, "https://github.com/bahman-farhadian/Meanul-Data-Studio"
 )
 
-CLICKHOUSE_NAME = "ClickHouse (nus)"
+CLICKHOUSE_NAME = "ClickHouse (hailpath)"
 CLICKHOUSE_UUID = uuid.uuid5(NAMESPACE, "database/clickhouse")
-POSTGRES_NAME = "PostgreSQL (nus, read-only)"
+POSTGRES_NAME = "PostgreSQL (hailpath, read-only)"
 POSTGRES_UUID = uuid.uuid5(NAMESPACE, "database/postgres")
 
 
@@ -55,11 +55,11 @@ def clickhouse_uri() -> str:
     not as a malformed URI. Grafana never hits this because it takes the
     password as its own field instead of inside a URI.
     """
-    user = os.environ.get("CH_USER", "nus")
+    user = os.environ.get("CH_USER", "hailpath")
     password = os.environ["CH_PASSWORD"]
     host = os.environ.get("CH_HOST", "hailpath-proxy")
     port = os.environ.get("CH_HTTP_PORT", "8123")
-    database = os.environ.get("CH_DATABASE", "nus")
+    database = os.environ.get("CH_DATABASE", "hailpath")
     return f"clickhousedb://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{database}"
 
 

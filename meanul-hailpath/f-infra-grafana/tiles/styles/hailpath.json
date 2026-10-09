@@ -1,6 +1,6 @@
 {
   "version": 8,
-  "name": "nus-osm",
+  "name": "hailpath-osm",
   "glyphs": "{fontstack}/{range}.pbf",
   "sources": {
     "nyc": {

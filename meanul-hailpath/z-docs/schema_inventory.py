@@ -21,29 +21,29 @@ DATASETS = NUS / "g-infra-superset" / "assets" / "datasets"
 DASHBOARDS = NUS / "g-infra-superset" / "assets" / "dashboards"
 
 CREATE = re.compile(
-    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:nus\.)?([a-z_][a-z0-9_]*)"
+    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)"
     r"(?:\s+ON\s+CLUSTER\s+[a-z0-9_]+)?\s*\(",
     re.I,
 )
 # A pasted statement may still say ON CLUSTER or CREATE TABLE ... AS.
 # Shipped DDL uses neither. The parser keeps the column list either way.
 AS_TABLE = re.compile(
-    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:nus\.)?([a-z_][a-z0-9_]*)"
-    r"(?:\s+ON\s+CLUSTER\s+[a-z0-9_]+)?\s+AS\s+(?:nus\.)?([a-z_][a-z0-9_]*)",
+    r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)"
+    r"(?:\s+ON\s+CLUSTER\s+[a-z0-9_]+)?\s+AS\s+(?:hailpath\.)?([a-z_][a-z0-9_]*)",
     re.I,
 )
 ADD_COL = re.compile(
-    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:nus\.)?([a-z_][a-z0-9_]*)\s+"
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)\s+"
     r"ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)\s+(.+?);",
     re.I | re.S,
 )
 DROP_COL = re.compile(
-    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:nus\.)?([a-z_][a-z0-9_]*)\s+"
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)\s+"
     r"DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)",
     re.I,
 )
 DROP_TABLE = re.compile(
-    r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:nus\.)?([a-z_][a-z0-9_]*)",
+    r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)",
     re.I,
 )
 KSQL_OBJECT = re.compile(
@@ -297,12 +297,12 @@ def render_dictionary() -> str:
         "",
     ]
     for table, cols in warehouse_tables().items():
-        lines.append(f"### `nus.{table}`")
+        lines.append(f"### `hailpath.{table}`")
         lines.append("")
         source = aliases.get(table)
         if source:
             lines.append(
-                f"Same columns as `nus.{source}`. This is the name a query uses."
+                f"Same columns as `hailpath.{source}`. This is the name a query uses."
             )
             lines.append("")
         lines.append("| Column | Type |")

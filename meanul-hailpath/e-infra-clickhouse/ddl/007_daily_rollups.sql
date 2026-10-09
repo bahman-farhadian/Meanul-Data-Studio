@@ -11,7 +11,7 @@
 -- view's own target table is a normal, supported ClickHouse pattern - the
 -- second MV just watches trip_stats_hourly's inserts instead of
 -- trip_events's.
-CREATE TABLE IF NOT EXISTS nus.trip_stats_daily
+CREATE TABLE IF NOT EXISTS hailpath.trip_stats_daily
 (
     day              Date,
     pickup_zone_id   LowCardinality(String),
@@ -32,8 +32,8 @@ ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(day)
 ORDER BY (day, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_stats_daily_mv
-TO nus.trip_stats_daily
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.trip_stats_daily_mv
+TO hailpath.trip_stats_daily
 AS
 SELECT
     toDate(hour)             AS day,
@@ -44,7 +44,7 @@ SELECT
     sum(surge_sum)            AS surge_sum,
     sum(route_km_total)       AS route_km_total,
     sum(overrun_trips)        AS overrun_trips
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 GROUP BY day, pickup_zone_id;
 
 
@@ -53,7 +53,7 @@ GROUP BY day, pickup_zone_id;
 -- od_pair_calibration's real TLC shares. Must source from
 -- trip_events directly: dropoff_zone_id lives there, not in the
 -- hourly rollup above.
-CREATE TABLE IF NOT EXISTS nus.od_matrix_daily
+CREATE TABLE IF NOT EXISTS hailpath.od_matrix_daily
 (
     day               Date,
     pickup_zone_id    LowCardinality(String),
@@ -66,8 +66,8 @@ ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(day)
 ORDER BY (day, pickup_zone_id, dropoff_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.od_matrix_daily_mv
-TO nus.od_matrix_daily
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.od_matrix_daily_mv
+TO hailpath.od_matrix_daily
 AS
 SELECT
     toDate(event_time)          AS day,
@@ -76,7 +76,7 @@ SELECT
     count()                     AS completed_trips,
     toDecimal64(sum(ifNull(fare_final, toDecimal64(0, 2))), 2) AS revenue,
     sum(ifNull(route_km, 0))    AS route_km_total
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE status = 'completed'
 GROUP BY day, pickup_zone_id, dropoff_zone_id;
 

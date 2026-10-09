@@ -29,9 +29,9 @@ def client() -> Client:
         _client = clickhouse_connect.get_client(
             host=host,
             port=port,
-            username=config.optional("CH_USER", "nus"),
+            username=config.optional("CH_USER", "hailpath"),
             password=config.required("CH_PASSWORD"),
-            database=config.optional("CH_DATABASE", "nus"),
+            database=config.optional("CH_DATABASE", "hailpath"),
             connect_timeout=10,
             send_receive_timeout=60,
         )

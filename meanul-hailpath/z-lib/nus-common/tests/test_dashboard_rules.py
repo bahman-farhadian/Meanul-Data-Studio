@@ -41,12 +41,12 @@ PROBE = _load("nus_panel_probe", "panel-probe.py")
 
 def test_a_rate_of_raw_columns_is_refused() -> None:
     """Two partial sums divided is not a rate, whatever it looks like."""
-    bad = "SELECT completed / trips_ended AS r FROM nus.fulfilment_hourly"
+    bad = "SELECT completed / trips_ended AS r FROM hailpath.fulfilment_hourly"
     assert CHECK._check_ratios("x", 1, bad), "dividing raw rollup columns was accepted"
 
 
 def test_an_average_of_a_rate_is_refused() -> None:
-    bad = "SELECT avg(utilization) AS u FROM nus.driver_utilization_hourly"
+    bad = "SELECT avg(utilization) AS u FROM hailpath.driver_utilization_hourly"
     errors = CHECK._check_ratios("x", 1, bad)
     assert any("avg()" in e for e in errors), errors
 
@@ -54,7 +54,7 @@ def test_an_average_of_a_rate_is_refused() -> None:
 def test_sum_over_sum_is_accepted() -> None:
     good = (
         "SELECT sum(completed) / sum(trips_ended) AS r "
-        "FROM nus.fulfilment_hourly"
+        "FROM hailpath.fulfilment_hourly"
     )
     assert CHECK._check_ratios("x", 1, good) == []
 
@@ -63,7 +63,7 @@ def test_a_cast_around_the_sums_is_still_accepted() -> None:
     """Take rate divides a Float64 cast of two exact Decimal sums."""
     good = (
         "SELECT toFloat64(sum(revenue) - sum(payout_total)) / "
-        "toFloat64(sum(revenue)) AS take_rate FROM nus.trip_stats_hourly"
+        "toFloat64(sum(revenue)) AS take_rate FROM hailpath.trip_stats_hourly"
     )
     assert CHECK._check_ratios("x", 1, good) == []
 
@@ -124,9 +124,9 @@ def test_every_charting_panel_states_a_unit() -> None:
 
 
 def test_every_marketplace_panel_states_what_it_means() -> None:
-    dash = json.loads((JSON_DIR / "nus-marketplace.json").read_text())
+    dash = json.loads((JSON_DIR / "hailpath-marketplace.json").read_text())
     panels = dash.get("panels") or []
-    assert panels, "nus-marketplace has no panels"
+    assert panels, "hailpath-marketplace has no panels"
     for panel in panels:
         assert (panel.get("description") or "").strip(), (
             f"panel {panel['id']} ({panel['title']!r}) has no description"
@@ -144,8 +144,8 @@ def test_utilization_panels_say_the_seed_has_no_idle_time() -> None:
         "h-bootstrap writes driver positions only along trip paths "
         "and only as on_trip"
     )
-    history = json.loads((JSON_DIR / "nus-history.json").read_text())
-    driver = json.loads((JSON_DIR / "nus-driver.json").read_text())
+    history = json.loads((JSON_DIR / "hailpath-history.json").read_text())
+    driver = json.loads((JSON_DIR / "hailpath-driver.json").read_text())
 
     def description(dash: dict, panel_id: int) -> str:
         panel = next(p for p in dash["panels"] if p["id"] == panel_id)
@@ -210,14 +210,14 @@ def test_no_grafana_macro_survives_expansion() -> None:
 
 def test_a_rollup_panel_may_not_be_quiet_but_a_live_one_may() -> None:
     """The exemption is the panel's own window, not a list to maintain."""
-    assert PROBE.may_be_quiet("SELECT * FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 MINUTE")
-    assert PROBE.may_be_quiet("SELECT * FROM nus.hotspot_history WHERE zone_id = '${zone_id}'")
+    assert PROBE.may_be_quiet("SELECT * FROM hailpath.trip_events WHERE event_time >= now() - INTERVAL 2 MINUTE")
+    assert PROBE.may_be_quiet("SELECT * FROM hailpath.hotspot_history WHERE zone_id = '${zone_id}'")
     assert not PROBE.may_be_quiet(
-        "SELECT sum(completed) / sum(trips_ended) FROM nus.fulfilment_hourly "
+        "SELECT sum(completed) / sum(trips_ended) FROM hailpath.fulfilment_hourly "
         "WHERE $__timeFilter(hour)"
     )
 
-    marketplace = json.loads((JSON_DIR / "nus-marketplace.json").read_text())
+    marketplace = json.loads((JSON_DIR / "hailpath-marketplace.json").read_text())
     for panel in marketplace["panels"]:
         sql = (panel.get("targets") or [{}])[0].get("rawSql") or ""
         assert not PROBE.may_be_quiet(sql), (

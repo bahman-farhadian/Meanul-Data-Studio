@@ -1,13 +1,13 @@
 # A throwaway stack, entirely separate from ride-hailing's own compose
 # project - `make lion-prepare` brings this up on its own, before the real
 # stack even exists (it runs as part of `make prepare`), and tears it down
-# right after. Nothing here is ever part of a deployed nus-* container.
+# right after. Nothing here is ever part of a deployed hailpath-* container.
 #
 # The password below is not a real credential: this database exists for a
 # few minutes, on a private network only this compose project can see, and
 # is destroyed with `docker compose down -v` at the end of the same run.
 
-name: nus-lion-prepare
+name: hailpath-lion-prepare
 
 services:
   lion-pg:
@@ -92,10 +92,10 @@ services:
     # a modest reservation, not the large one lion-pg gets above.
     cpus: ${LION_PREPARE_CPUS:-4}
     volumes:
-      - ${NUS_LION_DATA_DIR:?set it}:/data
+      - ${HAILPATH_LION_DATA_DIR:?set it}:/data
     networks:
       - lion-prepare
 
 networks:
   lion-prepare:
-    name: nus-lion-prepare
+    name: hailpath-lion-prepare

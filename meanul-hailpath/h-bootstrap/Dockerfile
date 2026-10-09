@@ -15,33 +15,16 @@
 # pyproject.toml resolves the same way in both places.
 #
 #   docker build -f h-bootstrap/Dockerfile .        <- from meanul-hailpath/
+#
+# The routable graph is restored by a separate one-shot that uses the
+# published pgRouting image (graph-restore.sh). This image is Python only.
 
 ARG PYTHON_IMAGE=python:3.13.15-slim
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
-ARG PG_IMAGE=pgrouting/pgrouting:18-3.6-3.8.0
 
 # uv is copied out of its own published image rather than installed with pip:
 # one binary, one pinned version, and no dependency resolution to do first.
 FROM ${UV_IMAGE} AS uv
-
-# pg_restore must be able to read a dump written by this same major.
-# Debian's client is 17. The database, and the dump, are 18.
-# The python image does not carry the libraries that client is linked to
-# (libpq, Kerberos, LDAP), so they are taken from this image too.
-FROM ${PG_IMAGE} AS pgclient
-RUN mkdir -p /pgclient-libs \
- && ldd /usr/lib/postgresql/18/bin/pg_restore \
-    | while read -r line; do \
-        case "$line" in \
-          *'=> /'*) \
-            lib=${line#*=> }; lib=${lib%% *}; \
-            case "$lib" in \
-              */libc.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/libm.so*|*/ld-linux*) ;; \
-              *) cp -L "$lib" /pgclient-libs/ ;; \
-            esac ;; \
-        esac; \
-      done \
- && test -n "$(ls -A /pgclient-libs)"
 
 # --------------------------------------------------------------------------
 # Build stage: create the virtual environment
@@ -84,16 +67,12 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
 FROM ${PYTHON_IMAGE}
 
 ARG PYTHON_IMAGE
-LABEL org.opencontainers.image.title="nus/bootstrap" \
+LABEL org.opencontainers.image.title="hailpath/bootstrap" \
       org.opencontainers.image.description="One-shot initialiser: migrations, NYC street map, seed data and a week of history" \
       org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="${PYTHON_IMAGE}"
 
-# pg_restore loads the routable graph h-bootstrap/lion-prepare/ already
-# built. The binary is the PostgreSQL 18 client from that database image.
-# Debian's postgresql-client is 17 and refuses this dump.
-#
 # useradd and the apt packages live in this layer, before the application
 # copy, so a Python change does not re-run apt-get.
 #
@@ -112,10 +91,6 @@ RUN apt-get update \
  && mkdir -p /data/lion \
  && chown -R nus:nus /data
 
-COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_restore /usr/local/bin/pg_restore
-COPY --from=pgclient /pgclient-libs/ /usr/lib/x86_64-linux-gnu/
-RUN ldconfig
-
 COPY --from=build --chown=nus:nus /app /app
 
 WORKDIR /app/h-bootstrap
@@ -129,7 +104,6 @@ USER nus
 # migrations have been missing entirely before.
 RUN python -c "import bootstrap, nus_common" \
  && test "$(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l)" -gt 0 \
- && pg_restore --version | grep -q ' 18\.' \
  && echo "bootstrap: $(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l) migrations present"
 
 # Runs once and exits. A non-zero exit means the stack is not prepared, and

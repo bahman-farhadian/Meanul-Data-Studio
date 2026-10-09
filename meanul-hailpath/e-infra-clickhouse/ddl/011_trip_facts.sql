@@ -14,7 +14,7 @@
 -- order - so these are the times the OLTP store recorded, and the lags
 -- below are computed once on write instead of in every query.
 
-CREATE TABLE IF NOT EXISTS nus.trip_facts
+CREATE TABLE IF NOT EXISTS hailpath.trip_facts
 (
     event_id                UUID,
     trip_id                 FixedString(21),
@@ -92,8 +92,8 @@ ORDER BY trip_id
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_facts_mv
-TO nus.trip_facts
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.trip_facts_mv
+TO hailpath.trip_facts
 AS
 SELECT
     event_id,
@@ -128,7 +128,7 @@ SELECT
     payment_method,
     cancellation_reason,
     event_time
-FROM nus.trip_events
+FROM hailpath.trip_events
 WHERE status IN ('completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'no_driver_found');
 
 
@@ -136,7 +136,7 @@ WHERE status IN ('completed', 'cancelled_by_passenger', 'cancelled_by_driver', '
 -- trip_events: one row per trip is already the right grain for
 -- "how many requests ended how", and counting terminal events straight
 -- from the event stream would be the same numbers for more work.
-CREATE TABLE IF NOT EXISTS nus.fulfilment_hourly
+CREATE TABLE IF NOT EXISTS hailpath.fulfilment_hourly
 (
     hour                    DateTime('UTC'),
     pickup_zone_id          LowCardinality(String),
@@ -156,8 +156,8 @@ ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.fulfilment_hourly_mv
-TO nus.fulfilment_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.fulfilment_hourly_mv
+TO hailpath.fulfilment_hourly
 AS
 SELECT
     -- Bucketed on when the ride was ASKED for, not when it ended: a
@@ -175,7 +175,7 @@ SELECT
     countIf(match_s IS NOT NULL)                         AS matched_trips,
     sum(ifNull(toUInt64(greatest(wait_s, 0)), 0))        AS wait_s_sum,
     countIf(wait_s IS NOT NULL)                          AS waited_trips
-FROM nus.trip_facts
+FROM hailpath.trip_facts
 GROUP BY hour, pickup_zone_id;
 
 

@@ -13,10 +13,10 @@
 grafana-health:
 	$(call say,Grafana)
 	@$(COMPOSE) exec -T hailpath-grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
-	@printf "\n  Provisioned dashboards live under Dashboards → NUS.\n"
+	@printf "\n  Provisioned dashboards live under Dashboards → Hailpath.\n"
 	@printf "  Geomap tiles are same-origin /tiles/ — checked by $(C)make tiles-health$(X).\n"
 
-# The HTTP half runs through HAProxy from inside nus-backbone, never from a
+# The HTTP half runs through HAProxy from inside hailpath-net, never from a
 # host address. It used to curl 127.0.0.1:LB_A_GRAFANA_PORT and reported a
 # tiles failure on a stack whose tiles were perfectly healthy: Docker's
 # published-port DNAT cannot send a loopback destination out to a real
@@ -30,8 +30,8 @@ grafana-health:
 .PHONY: tiles-health
 tiles-health:
 	$(call say,Tiles)
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	mb="$$root/nus-tiles-data/nyc.mbtiles"; \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
+	mb="$$root/hailpath-tiles-data/nyc.mbtiles"; \
 	if [ ! -s "$$mb" ]; then \
 		printf "  $(R)FAIL$(X)    %s missing — run $(C)make tiles-prepare$(X) once\n" "$$mb"; \
 		exit 1; \
@@ -51,11 +51,11 @@ tiles-health:
 		exit 1; \
 	fi; \
 	printf "  $(G)ok$(X)      HAProxy /tiles/styles.json 200\n"; \
-	png=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/tiles/styles/nus/11/602/768.png" 2>&1 || true); \
+	png=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/tiles/styles/hailpath/11/602/768.png" 2>&1 || true); \
 	if printf '%s' "$$png" | grep -q ' 200 OK' && printf '%s' "$$png" | grep -qi 'Content-Type: *image/png'; then \
-		printf "  $(G)ok$(X)      HAProxy /tiles/styles/nus/11/602/768.png 200 image/png\n"; \
+		printf "  $(G)ok$(X)      HAProxy /tiles/styles/hailpath/11/602/768.png 200 image/png\n"; \
 	else \
-		printf "  $(R)FAIL$(X)    GET /tiles/styles/nus/11/602/768.png did not return 200 image/png\n"; \
+		printf "  $(R)FAIL$(X)    GET /tiles/styles/hailpath/11/602/768.png did not return 200 image/png\n"; \
 		printf '%s\n' "$$png" | sed -n '1,6p' | sed 's/^/              /'; \
 		exit 1; \
 	fi; \
@@ -81,7 +81,7 @@ verify-grafana:
 		| $(COMPOSE) exec -T hailpath-clickhouse clickhouse-client \
 			--user "$(call getenv,CH_USER)" \
 			--password "$(call getenv,CH_PASSWORD)" \
-			--database nus --multiquery 2>&1 || true); \
+			--database hailpath --multiquery 2>&1 || true); \
 	printf '%s\n' "$$out"; \
 	if printf '%s' "$$out" | grep -qE 'FAIL|DB::Exception'; then \
 		printf "\n  $(R)A panel did not run, or returned nothing.$(X)\n"; \
@@ -101,3 +101,8 @@ verify-grafana:
 tiles-prepare:
 	$(call say,NYC OSM tiles)
 	@bash f-infra-grafana/tiles/prepare.sh "$(ENV_FILE)"
+
+.PHONY: grafana-plugin-prepare
+grafana-plugin-prepare:
+	$(call say,Grafana ClickHouse plugin)
+	@bash f-infra-grafana/plugin-prepare.sh "$(ENV_FILE)"

@@ -37,8 +37,7 @@ services:
       args:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
-        PG_IMAGE: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
-    image: nus/bootstrap:${NUS_VERSION:-0.1.0}
+    image: hailpath/bootstrap:${HAILPATH_VERSION:-0.1.0}
     container_name: hailpath-bootstrap
     # A one-shot must not come back after it finishes. Anything else would
     # mean re-running the whole preparation on every container restart.
@@ -71,7 +70,7 @@ services:
       PG_HOST: ${PG_HOST:-hailpath-proxy}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
       PG_READ_PORT: ${PG_READ_PORT:-5433}
-      PG_DATABASE: ${PG_DATABASE:-nus}
+      PG_DATABASE: ${PG_DATABASE:-hailpath}
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
       # Raised above the code's own default (5): the threaded routing pass
@@ -85,8 +84,8 @@ services:
       # ClickHouse, through the entry tier.
       CH_HOST: ${CH_HOST:-hailpath-proxy}
       CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
-      CH_DATABASE: ${CH_DATABASE:-nus}
-      CH_USER: ${CH_USER:-nus}
+      CH_DATABASE: ${CH_DATABASE:-hailpath}
+      CH_USER: ${CH_USER:-hailpath}
       CH_PASSWORD: ${CH_PASSWORD:?must match e-infra-clickhouse/.env}
 
       # How much to create.
@@ -132,16 +131,39 @@ services:
     networks:
       - backbone
 
+  # One-shot: restore the LION dump with the same pgRouting image as the
+  # database. Bootstrap's Python image does not carry a PostgreSQL 18 client.
+  graph-restore:
+    image: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
+    profiles: ["init"]
+    depends_on:
+      hailpath-postgres:
+        condition: service_healthy
+    environment:
+      TZ: ${TZ:-UTC}
+      PGHOST: ${PG_HOST:-hailpath-proxy}
+      PGPORT: ${PG_WRITE_PORT:-5432}
+      PGDATABASE: ${PG_DATABASE:-hailpath}
+      PGUSER: ${PG_USER:-postgres}
+      PGPASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
+      SKIP_MAP_IMPORT: ${SKIP_MAP_IMPORT:-false}
+    volumes:
+      - lion-data:/data/lion:ro
+      - ./graph-restore.sh:/graph-restore.sh:ro
+    entrypoint: ["/bin/bash", "/graph-restore.sh"]
+    networks:
+      - backbone
+
 volumes:
   lion-data:
-    name: nus-lion-data
+    name: hailpath-lion-data
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-lion-data
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-lion-data
 
 networks:
   backbone:
     external: true
-    name: nus-backbone
+    name: hailpath-net

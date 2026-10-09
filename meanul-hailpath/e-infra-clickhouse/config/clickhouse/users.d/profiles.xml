@@ -19,12 +19,6 @@
             <!-- Let ClickHouse use several cores per query, but not all of
                  them; the node also has inserts to accept. -->
             <max_threads>4</max_threads>
-
-            <!-- Inserts are made safe by waiting for the replicas, matching
-                 internal_replication in the cluster definition. -->
-            <insert_quorum>2</insert_quorum>
-            <insert_quorum_parallel>1</insert_quorum_parallel>
-            <select_sequential_consistency>0</select_sequential_consistency>
         </default>
     </profiles>
 </clickhouse>

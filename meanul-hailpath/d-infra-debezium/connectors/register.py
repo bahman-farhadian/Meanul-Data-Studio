@@ -5,7 +5,7 @@ Run as a one-shot:  docker compose run --rm connector-register
 The database connection details are injected from the environment, so the
 committed JSON never holds a password. The script uses a PUT, which creates
 the connector the first time and replaces its configuration on every later
-run - so after editing nus-pg.json, running this again is all it takes.
+run - so after editing hailpath-pg.json, running this again is all it takes.
 
 A connector in RUNNING with a FAILED task is not success: that is the
 state that leaves PostgreSQL with no logical slot and Redis unfilled.
@@ -25,7 +25,7 @@ import urllib.error
 import urllib.request
 
 CONNECT_URL = os.environ.get("CONNECT_URL", "http://hailpath-debezium:8083")
-CONNECTOR_FILE = os.environ.get("CONNECTOR_FILE", "/nus-pg.json")
+CONNECTOR_FILE = os.environ.get("CONNECTOR_FILE", "/hailpath-pg.json")
 
 # How long to wait for Connect to answer. Connect loads its plugins first,
 # which takes a while on a cold start.

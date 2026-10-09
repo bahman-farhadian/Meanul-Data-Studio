@@ -13,7 +13,7 @@
 -- Postgres genuinely passes through it, and the three copies of a closed
 -- set are kept identical on principle - it simply never appears here.
 
-CREATE TABLE IF NOT EXISTS nus.dispatch_offers
+CREATE TABLE IF NOT EXISTS hailpath.dispatch_offers
 (
     -- Same envelope as every other table here: the sink refuses an
     -- event_id it has already written, because ClickHouse does not
@@ -66,7 +66,7 @@ TTL event_date + INTERVAL 30 DAY;
 -- The funnel itself, per zone per hour. Every column is a plain count or
 -- sum, so SummingMergeTree merges it with no combinator functions - the
 -- same rule 005_rollups.sql sets out.
-CREATE TABLE IF NOT EXISTS nus.dispatch_funnel_hourly
+CREATE TABLE IF NOT EXISTS hailpath.dispatch_funnel_hourly
 (
     hour              DateTime('UTC'),
     pickup_zone_id    LowCardinality(String),
@@ -88,8 +88,8 @@ ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.dispatch_funnel_hourly_mv
-TO nus.dispatch_funnel_hourly
+CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.dispatch_funnel_hourly_mv
+TO hailpath.dispatch_funnel_hourly
 AS
 SELECT
     toStartOfHour(offered_at)                          AS hour,
@@ -104,7 +104,7 @@ SELECT
     sumIf(ifNull(eta_seconds, 0), status = 'accepted') AS accepted_eta_sum,
     sum(ifNull(response_s, 0))                         AS response_s_sum,
     countIf(response_s IS NOT NULL)                    AS responses
-FROM nus.dispatch_offers
+FROM hailpath.dispatch_offers
 GROUP BY hour, pickup_zone_id;
 
 

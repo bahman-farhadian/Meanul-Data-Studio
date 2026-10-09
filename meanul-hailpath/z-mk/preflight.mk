@@ -45,10 +45,10 @@ preflight:
 		[ -z "$$dupes" ] && printf "  $(G)ok$(X)      no setting is defined twice\n" \
 			|| printf "  $(Y)warn$(X)    defined more than once (the last wins): %s\n" "$$dupes"; \
 	fi; \
-	root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
-	if [ -z "$$root" ]; then printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT is not set in $(ENV_FILE)\n"; fail=1; \
-	elif [ ! -d "$$root" ]; then printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT %s does not exist — run 'make init'\n" "$$root"; fail=1; \
-	elif [ ! -w "$$root" ]; then printf "  $(R)FAIL$(X)    NUS_VOLUME_ROOT %s is not writable\n" "$$root"; fail=1; \
+	root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	if [ -z "$$root" ]; then printf "  $(R)FAIL$(X)    HAILPATH_VOLUME_ROOT is not set in $(ENV_FILE)\n"; fail=1; \
+	elif [ ! -d "$$root" ]; then printf "  $(R)FAIL$(X)    HAILPATH_VOLUME_ROOT %s does not exist — run 'make init'\n" "$$root"; fail=1; \
+	elif [ ! -w "$$root" ]; then printf "  $(R)FAIL$(X)    HAILPATH_VOLUME_ROOT %s is not writable\n" "$$root"; fail=1; \
 	else \
 		vfree=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
 		vdev=$$(df --output=source "$$root" 2>/dev/null | tail -1); \
@@ -77,10 +77,20 @@ preflight:
 	missingimg=""; nimg=0; \
 	for i in $$($(COMPOSE) --profile init config --images 2>/dev/null | sort -u || true); do \
 		nimg=$$((nimg+1)); docker image inspect "$$i" >/dev/null 2>&1 || missingimg="$$missingimg $$i"; done; \
-	graph=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-lion-data/routable-graph.dump; \
-	mbtiles=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/nus-tiles-data/nyc.mbtiles; \
-	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$graph" ] && [ -s "$$mbtiles" ]; then \
-		printf "  $(G)ok$(X)      all %s images built; LION graph and nyc.mbtiles are on disk\n" "$$nimg"; \
+	graph=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/hailpath-lion-data/routable-graph.dump; \
+	mbtiles=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/hailpath-tiles-data/nyc.mbtiles; \
+	gfplugin=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/hailpath-grafana-plugins/grafana-clickhouse-datasource; \
+	avro=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-)/hailpath-connect-plugins/confluent-avro-converter; \
+	if [ ! -d "$$gfplugin" ]; then \
+		printf "  $(R)FAIL$(X)    Grafana ClickHouse plugin is missing — $(C)make grafana-plugin-prepare$(X)\n"; \
+		fail=1; \
+	fi; \
+	if [ $$(find "$$avro" -name '*.jar' 2>/dev/null | wc -l) -eq 0 ]; then \
+		printf "  $(R)FAIL$(X)    Avro converter jars are missing — $(C)make avro-converter-prepare$(X)\n"; \
+		fail=1; \
+	fi; \
+	if [ "$$nimg" -gt 0 ] && [ -z "$$missingimg" ] && [ -s "$$graph" ] && [ -s "$$mbtiles" ] && [ -d "$$gfplugin" ] && [ $$(find "$$avro" -name '*.jar' 2>/dev/null | wc -l) -gt 0 ]; then \
+		printf "  $(G)ok$(X)      all %s images built; LION graph, tiles, plugin and converter are on disk\n" "$$nimg"; \
 		printf "  $(G)ok$(X)      nothing left to do needs the internet\n"; \
 	else \
 		if [ -n "$$missingimg" ]; then \
@@ -93,7 +103,7 @@ preflight:
 		[ -s "$$graph" ] || printf "  $(Y)warn$(X)    the routable graph is not built yet — $(C)make lion-fetch && make lion-prepare$(X)\n"; \
 		if [ ! -s "$$mbtiles" ]; then \
 			printf "  $(R)FAIL$(X)    nyc.mbtiles is missing — Grafana maps 503/404 until $(C)make tiles-prepare$(X)\n"; \
-			printf "              Once. make destroy keeps nus-tiles-data; make nuke is what deletes it.\n"; \
+			printf "              Once. make destroy keeps hailpath-tiles-data; make nuke is what deletes it.\n"; \
 			fail=1; \
 		fi; \
 		probe=$$(grep -E '^BUSYBOX_IMAGE=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
@@ -190,11 +200,11 @@ preflight:
 # arrive from preflight, several steps away from the cause.
 .PHONY: _mk-data-tree
 _mk-data-tree:
-	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
+	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 	[ -n "$$root" ] || exit 0; \
 	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
 		mkdir -p "$$d"; done; \
-	made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'nus-*' 2>/dev/null | wc -l); \
+	made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'hailpath-*' 2>/dev/null | wc -l); \
 	free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
 	printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"
 

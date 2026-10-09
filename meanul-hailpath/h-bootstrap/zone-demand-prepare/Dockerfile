@@ -35,7 +35,7 @@ COPY h-bootstrap/zone-demand-prepare/prepare.py /app/prepare.py
 FROM ${PYTHON_IMAGE}
 
 ARG PYTHON_IMAGE
-LABEL org.opencontainers.image.title="nus/zone-demand-prepare" \
+LABEL org.opencontainers.image.title="hailpath/zone-demand-prepare" \
       org.opencontainers.image.description="Throwaway one-shot: TLC trip records to demand-calibration CSVs" \
       org.opencontainers.image.base.name="${PYTHON_IMAGE}"
 

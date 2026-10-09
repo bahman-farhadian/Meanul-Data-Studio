@@ -4,15 +4,15 @@
 # events arriving, where demand is. Superset (piece g) is the slower,
 # analytical view. Both read the same ClickHouse cluster.
 #
-# The ClickHouse connection and the NUS dashboards are provisioned from
+# The ClickHouse connection and the Hailpath dashboards are provisioned from
 # files in this directory, so a rebuilt container comes back exactly the
 # same. Dashboards query the warehouse tables, not
 # Kafka, Redis, or Postgres.
 #
 # Standalone test:
-#   docker network create nus-backbone
+#   docker network create hailpath-net
 #   cp .env.example .env                (+ edit the passwords)
-#   docker compose up -d --build
+#   docker compose up -d
 #
 # In the full stack this file is include'd by the root docker-compose.yaml
 # and reached through hailpath-proxy on port 3000. Full-stack runbook: ../README.md
@@ -21,18 +21,9 @@ name: f-infra-grafana
 
 services:
   hailpath-grafana:
-    build:
-      # Builds install packages, which needs egress from the build container.
-      # Defaults to the host's own network: a tunnel between here and this
-      # host usually cannot see a build's forwarded container traffic, even
-      # while the host's own connections work fine. Set BUILD_NETWORK=default
-      # if this host has no such gap.
-      network: ${BUILD_NETWORK:-host}
-      context: .
-      args:
-        GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:12.4.10}
-        CLICKHOUSE_PLUGIN_VERSION: ${GRAFANA_CLICKHOUSE_PLUGIN_VERSION:-4.21.2}
-    image: nus/grafana:${NUS_VERSION:-0.1.0}
+    # Official Grafana. The ClickHouse plugin is installed once by
+    # `make grafana-plugin-prepare` into a host directory and mounted below.
+    image: ${GRAFANA_IMAGE:-grafana/grafana:12.4.10}
     container_name: hailpath-grafana
     hostname: hailpath-grafana
     restart: unless-stopped
@@ -52,14 +43,15 @@ services:
       GF_NEWS_NEWS_FEED_ENABLED: "false"
       # Read by the provisioned data source file, so no password is written
       # into any file in this repository.
-      CH_USER: ${CH_USER:-nus}
+      CH_USER: ${CH_USER:-hailpath}
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/nus-live-ops.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/hailpath-live-ops.json
       # Same-origin OSM raster from hailpath-tiles via HAProxy /tiles/. No key.
-      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"NUS OSM","config":{"url":"/tiles/styles/nus/{z}/{x}/{y}@2x.png","attribution":"© OpenStreetMap","minZoom":0,"maxZoom":14}}'
+      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"Hailpath OSM","config":{"url":"/tiles/styles/hailpath/{z}/{x}/{y}@2x.png","attribution":"© OpenStreetMap","minZoom":0,"maxZoom":14}}'
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
       - grafana-data:/var/lib/grafana
+      - ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-grafana-plugins:/var/lib/grafana/plugins:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
       interval: 15s
@@ -84,7 +76,7 @@ services:
     environment:
       TZ: ${TZ:-UTC}
     volumes:
-      - ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-tiles-data:/data:ro
+      - ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-tiles-data:/data:ro
       - ./tiles/config.json:/config/config.json:ro
       - ./tiles/styles:/config/styles:ro
     healthcheck:
@@ -104,14 +96,14 @@ volumes:
   # Grafana's own small database: users and stars. Provisioned dashboards
   # come from the bind-mounted files, not this volume.
   grafana-data:
-    name: nus-grafana-data
+    name: hailpath-grafana-data
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-grafana-data
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-grafana-data
 
 networks:
   backbone:
     external: true
-    name: nus-backbone
+    name: hailpath-net

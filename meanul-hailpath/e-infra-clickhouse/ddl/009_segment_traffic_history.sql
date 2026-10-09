@@ -5,7 +5,7 @@
 -- and, once routing picks between multiple real routes (nus_common.routing),
 -- a real signal of how traffic actually shifted between them.
 
-CREATE TABLE IF NOT EXISTS nus.segment_traffic_history
+CREATE TABLE IF NOT EXISTS hailpath.segment_traffic_history
 (
     -- Same reasoning as 004_hotspots.sql: zone_id is TLC's own LocationID,
     -- period is the closed DayPeriod set shared with the Avro schema.

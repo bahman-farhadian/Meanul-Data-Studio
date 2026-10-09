@@ -24,7 +24,7 @@ datasources:
       protocol: native
       secure: false
       username: $CH_USER
-      defaultDatabase: nus
+      defaultDatabase: hailpath
       # Keep a dashboard from holding a connection open forever.
       dialTimeout: 10
       queryTimeout: 60

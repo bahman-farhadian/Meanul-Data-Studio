@@ -76,7 +76,7 @@ or `pg_read` means `hailpath-postgres` failed that check.
 For this directory alone, with no proxy:
 
 ```bash
-docker network create nus-backbone
+docker network create hailpath-net
 cp .env.example .env
 docker compose up -d --build
 docker compose exec hailpath-postgres psql -U postgres -c "select version();"

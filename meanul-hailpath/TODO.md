@@ -37,7 +37,6 @@ The cycle:
 make destroy
 make init
 make up
-make etcd-existing
 ```
 
 `make destroy` keeps the two slow artifacts on purpose — the LION routable
@@ -191,7 +190,7 @@ pin the head of a partition.
 Retest. After a clean cycle, `docker inspect dispatch-service` stays at
 `restarts=0` for the whole run. The dispatch log has zero
 `dispatch_offers_one_accepted_idx` lines. Q6 and Q7 are 0, and
-`max(accepted)` grouped by `trip_id` in `nus.dispatch_offers` is 1.
+`max(accepted)` grouped by `trip_id` in `hailpath.dispatch_offers` is 1.
 `make lag` shows `dispatch-service` on `trip_requests` moving, not stuck
 in the tens of thousands.
 
@@ -215,7 +214,7 @@ Outcome. `matched_at` is the clock after the route returns, not the
 clock from the start of the tick.
 
 Retest. `make verify-quality` reports Q3 measured 0 on the new run.
-A query of `min(match_s)` on `nus.trip_facts` is not negative.
+A query of `min(match_s)` on `hailpath.trip_facts` is not negative.
 
 **3. A replica cancel in `nearest_road_point` kills driver-service.**
 
@@ -559,7 +558,6 @@ is live by construction — nothing to rebuild or reload here.
 make destroy
 make init
 make up
-make etcd-existing
 ```
 
 Then let live traffic run long enough to complete trips before measuring:
@@ -604,13 +602,13 @@ corroborate it; both are not-bars, not gates.
 bring-up.** `make verify` went red on tiles. The stack was fine: the same
 `/tiles/styles.json` returned 200 through the same HAProxy from `::1`,
 from the LAN address, from hailpath-proxy's container IP, and from inside
-nus-backbone — and empty only from `127.0.0.1`, the single address
+hailpath-net — and empty only from `127.0.0.1`, the single address
 `tiles-health` hardcoded. Docker's published-port DNAT cannot send a
 loopback destination to a real interface while `route_localnet` is 0, so
 docker-proxy accepts and closes. `_wait-haproxy-pg-settled` had the same
 shape and survived only because `localhost` resolves to `::1` here.
 
-Both now read through nus-backbone, with a pytest guard
+Both now read through hailpath-net, with a pytest guard
 (`test_health_checks.py`) that fails if either pattern returns. The
 HAProxy `timeout tunnel` warning the same investigation exposed is gone
 too. Re-run `make verify` on the next bring-up to confirm green — the
@@ -970,14 +968,14 @@ fleet, `driver_positions` dominates everything else in the stack.
     re-check, and says the live map reads Redis rather than this table.
   - position TTL 3 days -> 1 gives 26.4 and 37.8 total (39%, ample).
   - raise the ClickHouse quota above 96 GB/node, if the data disk has the
-    room. Not yet checked - `df -h` on NUS_VOLUME_ROOT is the input.
+    room. Not yet checked - `df -h` on HAILPATH_VOLUME_ROOT is the input.
 - **DONE 2026-09-26: option C.** ClickHouse quota 96g -> 112g per node and
   the position TTL 3 days -> 2. That is 58.8 GiB against 112 (52%) and
   808 GB of 888 committed across the whole stack (91%).
 
 ### Whole-stack storage, measured
 
-`NUS_VOLUME_ROOT` is on `/dev/nvme1n1p1`, 888 GB. Committed quota after
+`HAILPATH_VOLUME_ROOT` is on `/dev/nvme1n1p1`, 888 GB. Committed quota after
 option C: kafka 3x96 = 288, clickhouse 4x112 = 448, postgres 3x24 = 72,
 total 808 GB = 91% of the disk. An XFS project quota caps a directory, it
 does not reserve space - so over-committing does not fail safely, it fails
@@ -995,7 +993,7 @@ Kafka's quotas have never been measured, unlike ClickHouse's now.
 three partitions against roughly 480 MB for all twelve `driver_location`
 partitions together. The cause is architectural, not a bug:
 driver-service persists last-known position with `UPDATE drivers SET
-last_lat, last_lon, last_seen_at` every tick, and `nus.drivers` is in
+last_lat, last_lon, last_seen_at` every tick, and `hailpath.drivers` is in
 Debezium's `table.include.list`, so every position write also becomes a
 CDC message. Driver positions therefore travel the pipeline twice. The
 compacted topic retains only the latest row per driver, which is what
@@ -1648,5 +1646,5 @@ Python process; a lone instance cannot exceed about one core of Python
 bytecode. Measured on the same run: 0.13% CPU each. One process is enough
 at this seed. Revisit only if step 12 shows either pegged.
 
-**Connector note.** `nus.trips.route` stays excluded from Debezium (PostGIS
+**Connector note.** `hailpath.trips.route` stays excluded from Debezium (PostGIS
 geometry Debezium cannot serialize) — already in `nus-pg.json`.

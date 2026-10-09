@@ -5,12 +5,12 @@ here, `h-bootstrap` loads history here, and Grafana and Superset read
 here.
 
 Why a second copy on this host is not a second machine:
-[`clickhouse-cluster-design.md`](clickhouse-cluster-design.md).
+[`clickhouse-design.md`](clickhouse-design.md).
 
 ## Tables
 
-The query name is the table. `nus.driver_positions` and
-`nus.trip_events` store the rows. Engines:
+The query name is the table. `hailpath.driver_positions` and
+`hailpath.trip_events` store the rows. Engines:
 
 | Engine | Used for |
 | --- | --- |
@@ -29,7 +29,7 @@ SELECT hour,
        sum(completed_trips) AS trips,
        sum(revenue) AS revenue,
        sum(surge_sum) / sum(completed_trips) AS avg_surge
-FROM nus.trip_stats_hourly
+FROM hailpath.trip_stats_hourly
 WHERE hour >= now() - INTERVAL 24 HOUR
 GROUP BY hour
 ORDER BY hour;
@@ -71,7 +71,7 @@ HAProxy **8123** (HTTP) and **9000** (native) both go to
 | `config/clickhouse/users.d/profiles.xml` | Per-query limits. Mounted. |
 | `ddl/*.sql` | Tables, in name order. `IF NOT EXISTS`. |
 | `ddl/apply-ddl.sh` | Applies those files. Safe to re-run. |
-| `clickhouse-cluster-design.md` | Why this is one process. |
+| `clickhouse-design.md` | Why this is one process. |
 | `.env.example` | Image pin and login. |
 
 ## Environment
@@ -98,12 +98,12 @@ The engines are MergeTree.
 From this directory alone:
 
 ```bash
-docker network create nus-backbone
+docker network create hailpath-net
 cp .env.example .env
 docker compose up -d
 docker compose run --rm ch-ddl-init
 docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
-  --query "SELECT name, engine FROM system.tables WHERE database='nus' AND engine LIKE '%MergeTree' ORDER BY name"
+  --query "SELECT name, engine FROM system.tables WHERE database='hailpath' AND engine LIKE '%MergeTree' ORDER BY name"
 ```
 
 ## Adding a table

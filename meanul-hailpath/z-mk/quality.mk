@@ -2,7 +2,7 @@
 verify-quality:
 	$(call say,Data-quality bars)
 	@out=$$($(COMPOSE) exec -T hailpath-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
-		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--password "$(call getenv,CH_PASSWORD)" --database hailpath --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/quality.sql); \
 	printf '%s\n' "$$out"; \
 	if printf '%s' "$$out" | grep -q FAIL; then \
@@ -37,7 +37,7 @@ capacity:
 	$(call say,Warehouse capacity)
 	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
 	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
-	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' z-mk/volume-quotas.mk | head -1 | sed 's/.*://; s/g$$//' || true); \
+	quota=$$(grep -oE 'hailpath-clickhouse-data:[0-9]+g' z-mk/volume-quotas.mk | head -1 | sed 's/.*://; s/g$$//' || true); \
 	quota=$${quota:-96}; \
 	if [ -z "$$full" ] || [ -z "$$now" ]; then \
 		printf "  $(R)FAIL$(X)    SEED_DRIVERS missing from .env or .env.example\n"; exit 1; \
@@ -46,7 +46,7 @@ capacity:
 	printf "  full-scale SEED_DRIVERS %s / this run %s = scale x%s, quota %sGB/node\n\n" \
 		"$$full" "$$now" "$$scale" "$$quota"; \
 	$(COMPOSE) exec -T hailpath-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
-		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--password "$(call getenv,CH_PASSWORD)" --database hailpath --multiquery \
 		--param_scale="$$scale" --param_quota_gb="$$quota" \
 		--output-format PrettyCompactMonoBlock < z-config/capacity.sql
 
@@ -54,7 +54,7 @@ capacity:
 profile:
 	$(call say,What the warehouse actually holds)
 	@$(COMPOSE) exec -T hailpath-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
-		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
+		--password "$(call getenv,CH_PASSWORD)" --database hailpath --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/profile.sql
 	$(call say,Kafka — how many messages each topic actually holds)
 	@printf "  %-28s %10s %10s\n" TOPIC PARTITIONS MESSAGES

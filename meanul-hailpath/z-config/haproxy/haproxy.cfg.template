@@ -88,16 +88,11 @@ listen redis_read
 
 # Kafka (c-infra-kafka) --------------------------------------------------------
 # One broker. A client is told the address baked into advertised.listeners,
-# so HAProxy only publishes that address. Two ports because this host can
-# have two network paths, and a broker advertises one address per listener.
+# so HAProxy only publishes that address.
 
-listen kafka-a
+listen kafka
     bind :9094
     server hailpath-kafka hailpath-kafka:9094 check
-
-listen kafka-b
-    bind :9097
-    server hailpath-kafka hailpath-kafka:9095 check
 
 # ksqlDB reads the one broker as SQL. DBeaver's Kafka support speaks this
 # REST API, not the raw broker protocol. The healthcheck must send Basic

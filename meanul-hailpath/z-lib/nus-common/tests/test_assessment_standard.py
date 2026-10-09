@@ -150,7 +150,8 @@ def test_make_steps_exist_and_demos_are_gone():
         "volume-perms", "lb-config", "ksqldb-secrets",
         "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",
         "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
-        "lion-prepare", "zone-demand-prepare", "tiles-prepare", "volume-quotas",
+        "lion-prepare", "zone-demand-prepare", "tiles-prepare",
+        "grafana-plugin-prepare", "avro-converter-prepare", "volume-quotas",
     ]
     absent = [name for name in resume if name not in root or name not in targets]
     assert absent == [], f"help or the Makefiles dropped a step that make up still needs: {absent}"
@@ -165,7 +166,20 @@ def test_make_steps_exist_and_demos_are_gone():
     assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_dump" in lion
     bootstrap = (NUS / "h-bootstrap" / "Dockerfile").read_text()
     assert "        postgresql-client" not in bootstrap
-    assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_restore" in bootstrap
+    assert "COPY --from=pgclient" not in bootstrap
+    assert "pg_restore" not in bootstrap
+    compose = (NUS / "h-bootstrap" / "docker-compose.yaml").read_text()
+    assert "\n  graph-restore:\n" in compose
+    assert "pgrouting/pgrouting:18-3.6-3.8.0" in compose
+    grafana = (NUS / "f-infra-grafana" / "docker-compose.yaml").read_text()
+    assert "grafana/grafana:12.4.10" in grafana
+    assert "\n    build:\n" not in grafana
+    assert not (NUS / "f-infra-grafana" / "Dockerfile").exists()
+    debezium_df = (NUS / "d-infra-debezium" / "Dockerfile")
+    assert not debezium_df.exists()
+    debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
+    assert "quay.io/debezium/connect:3.6.2.Final" in debezium
+    assert "confluent-avro-converter" in debezium
 
 
 def test_live_walk_and_tile_terms_are_in_the_sources():
@@ -287,7 +301,7 @@ def _avro_field_names(path: Path) -> set[str]:
 
 
 def _ch_columns(sql: str, table: str) -> set[str]:
-    needle = table if table.startswith("nus.") else f"nus.{table}"
+    needle = table if table.startswith("hailpath.") else f"hailpath.{table}"
     start = sql.index(f"CREATE TABLE IF NOT EXISTS {needle}")
     body = sql[start : sql.index("ENGINE =", start)]
     names: set[str] = set()
@@ -345,7 +359,7 @@ def test_closed_status_sets_align_across_stores():
         NUS / "c-infra-kafka" / "schemas" / "driver_location.avsc",
         "DriverStatus",
     )
-    driver_ch = _ch_enum8_symbols(positions, "nus.driver_positions")
+    driver_ch = _ch_enum8_symbols(positions, "hailpath.driver_positions")
     assert driver_pg == driver_avro == driver_ch
 
     # The effective set, not 002's: 013 drops and re-adds this constraint
@@ -355,7 +369,7 @@ def test_closed_status_sets_align_across_stores():
         NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
         "TripStatus",
     )
-    trip_ch = _ch_enum8_symbols(trips, "nus.trip_events")
+    trip_ch = _ch_enum8_symbols(trips, "hailpath.trip_events")
     assert trip_pg == trip_avro == trip_ch
     # 'arrived' must stay last in all three. An Enum8's numbers are what
     # ClickHouse stores, so moving a symbol into its lifecycle position
@@ -379,7 +393,7 @@ def test_closed_status_sets_align_across_stores():
     )
     offers_ch = _ch_enum8_symbols(
         (NUS / "e-infra-clickhouse" / "ddl" / "010_dispatch_offers.sql").read_text(),
-        "nus.dispatch_offers",
+        "hailpath.dispatch_offers",
     )
     assert offers_pg == offers_avro == offers_ch
 
@@ -388,7 +402,7 @@ def test_closed_status_sets_align_across_stores():
         NUS / "c-infra-kafka" / "schemas" / "city_hotspots.avsc",
         "DayPeriod",
     )
-    period_ch = _ch_enum8_symbols(hotspots, "nus.hotspot_history")
+    period_ch = _ch_enum8_symbols(hotspots, "hailpath.hotspot_history")
     periods = re.search(r"DAY_PERIODS\s*=\s*\(([^)]+)\)", geo)
     assert periods, geo
     period_py = re.findall(r'"([^"]+)"', periods.group(1))
@@ -415,7 +429,7 @@ def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
     pg = _pg_trips_columns()
     ch = _ch_columns(
         (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text(),
-        "nus.trip_events",
+        "hailpath.trip_events",
     )
 
     # The envelope describes the message, not the trip, so it has no trips
@@ -450,7 +464,7 @@ def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
 def test_the_two_warehouse_writers_agree_on_every_column():
     """h-bootstrap and clickhouse-sink write the same tables.
 
-    The seeded history and the live stream both insert into nus.trip_events
+    The seeded history and the live stream both insert into hailpath.trip_events
     and friends, from two separate column lists in two separate packages. A
     column added to one and not the other produces rows that disagree about
     what they contain, which is the same class of drift that hid
@@ -472,11 +486,11 @@ def test_the_two_warehouse_writers_agree_on_every_column():
         return re.findall(r'"([^"]+)"', match.group(1))
 
     for table, constant in (
-        ("nus.trip_events", "TRIP_EVENT_COLUMNS"),
-        ("nus.dispatch_offers", "DISPATCH_OFFER_COLUMNS"),
-        ("nus.driver_positions", "DRIVER_POSITION_COLUMNS"),
-        ("nus.rider_positions", "RIDER_POSITION_COLUMNS"),
-        ("nus.hotspot_history", "HOTSPOT_COLUMNS"),
+        ("hailpath.trip_events", "TRIP_EVENT_COLUMNS"),
+        ("hailpath.dispatch_offers", "DISPATCH_OFFER_COLUMNS"),
+        ("hailpath.driver_positions", "DRIVER_POSITION_COLUMNS"),
+        ("hailpath.rider_positions", "RIDER_POSITION_COLUMNS"),
+        ("hailpath.hotspot_history", "HOTSPOT_COLUMNS"),
     ):
         assert sink_columns(table) == bootstrap_columns(constant), table
 
@@ -491,7 +505,7 @@ def test_every_warehouse_table_carries_an_event_id():
     ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
     missing = []
     for path in sorted(ddl_dir.glob("*.sql")):
-        for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (nus\.\w+)", path.read_text()):
+        for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (hailpath\.\w+)", path.read_text()):
             table = match.group(1)
             # A rollup holds aggregates of many events, not one event, so
             # it has no single id to carry - and it inherits the guarantee
@@ -586,7 +600,7 @@ def test_one_postgres_and_no_patroni():
         "STATUS_STORAGE_REPLICATION_FACTOR",
     ):
         assert f"\n      {bare}:" not in debezium
-    connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text())
+    connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "hailpath-pg.json").read_text())
     assert connector["config"]["topic.creation.default.replication.factor"] == "1"
     assert connector["config"]["database.user"] == "filled in by register.py"
 
@@ -647,12 +661,12 @@ def test_declared_topics_have_avro_schemas():
 
 def test_cdc_excludes_oltp_geometry():
     connector = json.loads(
-        (NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text()
+        (NUS / "d-infra-debezium" / "connectors" / "hailpath-pg.json").read_text()
     )
     excluded = connector["config"]["column.exclude.list"]
-    assert "nus.trips.route" in excluded
+    assert "hailpath.trips.route" in excluded
     text = _standard()
-    assert "nus.trips.route" in text
+    assert "hailpath.trips.route" in text
     assert "column.exclude.list" in text
 
 
@@ -828,7 +842,7 @@ def test_partition_granularity_follows_the_ttl():
         for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
     )
     for match in re.finditer(
-        r"CREATE TABLE IF NOT EXISTS (nus\.\w+)(.*?);", ddl, re.S
+        r"CREATE TABLE IF NOT EXISTS (hailpath\.\w+)(.*?);", ddl, re.S
     ):
         table, body = match.group(1), match.group(2)
         ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body)
@@ -879,7 +893,7 @@ def test_raw_telemetry_is_rolled_up_before_it_expires():
     for raw, rollup in (("driver_positions", "driver_activity_hourly"),
                         ("rider_positions", "rider_activity_hourly")):
         body = re.search(
-            rf"CREATE TABLE IF NOT EXISTS nus\.{raw}\b.*?;", ddl, re.S
+            rf"CREATE TABLE IF NOT EXISTS hailpath\.{raw}\b.*?;", ddl, re.S
         )
         assert body, f"{raw} is not declared"
         ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body.group(0))
@@ -887,14 +901,14 @@ def test_raw_telemetry_is_rolled_up_before_it_expires():
             f"{raw} keeps {ttl.group(1) if ttl else 'no'} days of raw telemetry"
         )
 
-        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup}" in ddl, (
+        assert f"CREATE TABLE IF NOT EXISTS hailpath.{rollup}" in ddl, (
             f"{raw} expires in two days and nothing rolls it up first"
         )
-        assert f"CREATE MATERIALIZED VIEW IF NOT EXISTS nus.{rollup}_mv" in ddl
+        assert f"CREATE MATERIALIZED VIEW IF NOT EXISTS hailpath.{rollup}_mv" in ddl
         assert "ENGINE = Distributed" not in ddl
 
         rolled = re.search(
-            rf"CREATE TABLE IF NOT EXISTS nus\.{rollup}\b(.*?);", ddl, re.S
+            rf"CREATE TABLE IF NOT EXISTS hailpath\.{rollup}\b(.*?);", ddl, re.S
         ).group(1)
         # Bounded by the city: keyed on the hour and the zone, nothing
         # per-driver or per-rider, or it would scale with the fleet again.
@@ -963,7 +977,7 @@ def test_every_bar_reading_two_tables_allows_for_the_gap_between_the_reads():
     assert len(ctes) >= 14, f"only parsed {sorted(ctes)}"
 
     for name, body in ctes.items():
-        tables = set(re.findall(r"nus\.(\w+)", body))
+        tables = set(re.findall(r"hailpath\.(\w+)", body))
         if len(tables) < 2 or name in NO_SETTLE_NEEDED:
             continue
         assert "INTERVAL" in body, (
@@ -1041,7 +1055,7 @@ def _declared_tables(directory: Path) -> set[str]:
         names.update(
             re.findall(
                 r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?"
-                r"(?:nus\.)?([a-z_][a-z0-9_]*)",
+                r"(?:hailpath\.)?([a-z_][a-z0-9_]*)",
                 text,
                 flags=re.I,
             )
@@ -1091,9 +1105,9 @@ def test_dictionary_and_erd_match_the_shipped_schema():
         missing = [name for name, _typ in cols if f"| `{name}` |" not in body]
         assert missing == [], f"{table} missing columns {missing}"
     for table, cols in warehouse.items():
-        body = _dictionary_section(dictionary, f"nus.{table}")
+        body = _dictionary_section(dictionary, f"hailpath.{table}")
         missing = [name for name, _typ in cols if f"| `{name}` |" not in body]
-        assert missing == [], f"nus.{table} missing columns {missing}"
+        assert missing == [], f"hailpath.{table} missing columns {missing}"
     for table in oltp:
         assert table in erd
 

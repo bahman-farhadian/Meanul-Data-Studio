@@ -58,7 +58,7 @@ RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
 FROM ${PYTHON_IMAGE}
 
 ARG PYTHON_IMAGE
-LABEL org.opencontainers.image.title="nus/cache-updater" \
+LABEL org.opencontainers.image.title="hailpath/cache-updater" \
       org.opencontainers.image.description="Applies PostgreSQL CDC changes to Redis, keeping the cache in step with the source of truth" \
       org.opencontainers.image.source="https://github.com/bahman-farhadian/Meanul-Data-Studio" \
       org.opencontainers.image.licenses="MIT" \
@@ -87,6 +87,6 @@ USER nus
 # Fail the build rather than ship an image whose entrypoint cannot import
 # itself — a broken path or a missed COPY would otherwise only show up as a
 # crash loop after deployment.
-RUN python -c "import cache_updater, nus_common; print('nus/cache-updater imports cleanly')"
+RUN python -c "import cache_updater, nus_common; print('hailpath/cache-updater imports cleanly')"
 
 CMD ["python", "-m", "cache_updater"]

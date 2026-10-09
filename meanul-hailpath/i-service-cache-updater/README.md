@@ -98,7 +98,7 @@ If the value in Redis does not change, check the connector first — this
 service can only apply what Debezium sends:
 
 ```bash
-docker compose exec debezium-connect curl -s http://localhost:8083/connectors/nus-pg/status
+docker compose exec debezium-connect curl -s http://localhost:8083/connectors/hailpath-pg/status
 ```
 
 ## Rebuilding the cache from scratch

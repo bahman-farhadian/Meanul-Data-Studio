@@ -7,7 +7,7 @@
 # (osmdata / naciscdn / acalcutt), not MapTiler's CDN.
 #
 # Idempotent: existing files are kept; curl -C - resumes a .part. make destroy
-# keeps nus-tiles-data; make nuke is the only target that removes it.
+# keeps hailpath-tiles-data; make nuke is the only target that removes it.
 set -eu -o pipefail
 
 env_file="${1:-.env}"
@@ -29,13 +29,13 @@ fetch() {
   printf '  wrote    %s (%s)\n' "${dest}" "$(du -sh "${dest}" | cut -f1)"
 }
 
-root="$(val NUS_VOLUME_ROOT)"
+root="$(val HAILPATH_VOLUME_ROOT)"
 if [ -z "${root}" ]; then
-  printf '  FAIL    NUS_VOLUME_ROOT is not set in %s\n' "${env_file}" >&2
+  printf '  FAIL    HAILPATH_VOLUME_ROOT is not set in %s\n' "${env_file}" >&2
   exit 1
 fi
 
-dir="${root}/nus-tiles-data"
+dir="${root}/hailpath-tiles-data"
 src="${dir}/sources"
 mbtiles="${dir}/nyc.mbtiles"
 mkdir -p "${dir}" "${src}"

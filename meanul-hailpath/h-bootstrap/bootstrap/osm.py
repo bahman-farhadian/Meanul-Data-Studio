@@ -7,12 +7,10 @@ and outside this stack's lifecycle (see h-bootstrap/lion-prepare/). That step
 depends on nothing this project generates, so it is cached across every
 `make destroy && make up` cycle instead of being repeated.
 
-What runs here is just the fast part: restore that already-built graph into
-the live database, skipped entirely if it is already there.
+What runs here is the check: the restore itself is the pgRouting-image
+one-shot `graph-restore`, so this Python image does not carry pg_restore.
 """
 
-import os
-import subprocess
 from pathlib import Path
 
 from nus_common import postgres
@@ -21,22 +19,6 @@ from nus_common.logging import get_logger
 from bootstrap.settings import Settings
 
 log = get_logger(__name__)
-
-
-def _run(command: list[str], env: dict[str, str] | None = None) -> None:
-    log.info("running", extra={"command": " ".join(command[:2]) + " ..."})
-    full_env = {**os.environ, **env} if env else None
-    result = subprocess.run(command, capture_output=True, text=True, env=full_env)
-    if result.returncode != 0:
-        # The front, not the tail: for a multi-statement restore that fails
-        # partway through and keeps going (pg_restore without --exit-on-error),
-        # every later "does not exist" is downstream noise from the first,
-        # real error - truncating from the tail was hiding exactly that.
-        log.error(
-            "command failed",
-            extra={"command": command[0], "stderr": result.stderr[:4000]},
-        )
-        raise RuntimeError(f"{command[0]} exited with code {result.returncode}")
 
 
 def _already_imported() -> bool:
@@ -57,37 +39,29 @@ def _already_imported() -> bool:
 
 
 def import_map(settings: Settings) -> None:
-    """Restore the pre-built routable graph into PostgreSQL."""
+    """Confirm the pre-built routable graph is in PostgreSQL.
+
+    Restore itself is `graph-restore`, a one-shot of the published
+    pgRouting image. This process only checks that the tables are there.
+    """
     if settings.skip_map_import:
         log.warning("SKIP_MAP_IMPORT is set - routing will not work")
         return
 
-    if _already_imported():
-        log.info("street graph already imported, skipping")
-        return
-
-    dump = Path(settings.lion_dir) / "routable-graph.dump"
-    if not dump.exists() or dump.stat().st_size == 0:
-        raise RuntimeError(
+    if not _already_imported():
+        dump = Path(settings.lion_dir) / "routable-graph.dump"
+        hint = (
             f"{dump} is missing or empty. Run 'make lion-fetch' then "
             "'make lion-prepare' on the host before bootstrapping - both "
             "are also part of 'make prepare'."
+            if not dump.exists() or dump.stat().st_size == 0
+            else "make bootstrap restores it with the pgRouting image after migrations."
+        )
+        raise RuntimeError(
+            "street graph is not in PostgreSQL. " + hint
         )
 
-    log.info("restoring the routable graph", extra={"dump": str(dump)})
-    _run(
-        [
-            "pg_restore",
-            "--host", _pg("PG_HOST", "hailpath-proxy"),
-            "--port", _pg("PG_WRITE_PORT", "5432"),
-            "--dbname", _pg("PG_DATABASE", "nus"),
-            "--username", _pg("PG_USER", "postgres"),
-            "--no-owner",
-            "--no-privileges",
-            str(dump),
-        ],
-        env={"PGPASSWORD": _pg("PG_PASSWORD", "")},
-    )
+    log.info("street graph already imported")
 
     with postgres.read_connection() as conn:
         ways = postgres.fetch_one(conn, "SELECT count(*) AS n FROM ways")
@@ -113,8 +87,3 @@ def import_map(settings: Settings) -> None:
             "than expected",
             extra={"connected_pct": connected_pct},
         )
-
-
-def _pg(name: str, default: str) -> str:
-    """Read one of the PostgreSQL settings, for passing to pg_restore."""
-    return os.environ.get(name, default)

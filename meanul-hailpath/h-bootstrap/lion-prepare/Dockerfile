@@ -21,7 +21,7 @@ FROM ${PG_IMAGE} AS pgclient
 FROM ${DEBIAN_IMAGE}
 
 ARG DEBIAN_IMAGE
-LABEL org.opencontainers.image.title="nus/lion-prepare" \
+LABEL org.opencontainers.image.title="hailpath/lion-prepare" \
       org.opencontainers.image.description="Throwaway gdal+psql image that builds the routable LION graph" \
       org.opencontainers.image.base.name="${DEBIAN_IMAGE}"
 

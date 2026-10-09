@@ -9,6 +9,11 @@
 # Debezium
 # =============================================================================
 
+.PHONY: avro-converter-prepare
+avro-converter-prepare:
+	$(call say,Debezium Avro converter)
+	@bash d-infra-debezium/converter-prepare.sh "$(ENV_FILE)"
+
 .PHONY: cdc-register
 cdc-register: pg-allow-cdc
 	$(call say,Debezium connector)
@@ -17,12 +22,12 @@ cdc-register: pg-allow-cdc
 .PHONY: verify-cdc
 verify-cdc:
 	$(call say,Debezium)
-	@$(COMPOSE) exec -T hailpath-debezium curl -sS http://localhost:8083/connectors/nus-pg/status 2>/dev/null || true
+	@$(COMPOSE) exec -T hailpath-debezium curl -sS http://localhost:8083/connectors/hailpath-pg/status 2>/dev/null || true
 	@echo
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
 		--bootstrap-server hailpath-kafka:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
 	@echo
-	@$(COMPOSE) exec -T hailpath-postgres psql "host=hailpath-proxy port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)" -c \
+	@$(COMPOSE) exec -T hailpath-postgres psql "host=hailpath-proxy port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,hailpath)" -c \
 		"SELECT slot_name, plugin, active, wal_status FROM pg_replication_slots;" 2>/dev/null || true
 	@printf "\n  The connector should be RUNNING and the slot active with wal_status 'reserved'.\n"
 	@printf "  A slot that exists but is inactive makes PostgreSQL keep WAL for ever.\n"

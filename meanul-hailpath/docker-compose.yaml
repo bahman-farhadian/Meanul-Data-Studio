@@ -19,7 +19,7 @@
 # Bring the stack up with the Makefile, which runs the one-shots at the
 # points in the sequence where they belong:
 #   make help          what everything does
-#   make init          .env + the shared nus-backbone network
+#   make init          .env + the shared hailpath-net network
 #   make preflight     check the host and the settings before touching Docker
 #   make up            the whole ordered first deployment
 #
@@ -50,7 +50,7 @@ include:
 services:
   # One-shot: give each data directory to the user that will write to it.
   #
-  # The volumes are bind mounts under NUS_VOLUME_ROOT, so they take the HOST
+  # The volumes are bind mounts under HAILPATH_VOLUME_ROOT, so they take the HOST
   # directory's ownership — unlike a named volume, which Docker seeds from the
   # image. `make init` creates the tree as whoever runs it (root, normally),
   # and a container running as an unprivileged user then cannot write to its
@@ -79,20 +79,20 @@ services:
         own() { u="$$1"; shift; for d in "$$@"; do [ -d "/vol/$$d" ] || continue; chown -R "$$u" "/vol/$$d"; done; echo "  $$u  $$*"; }
         echo "handing the data directories to the users that write to them:"
         # PostgreSQL and Redis run as uid 999 in their images.
-        own 999:999 nus-pgdata-1 \
-                    nus-redis-data-1
+        own 999:999 hailpath-pgdata \
+                    hailpath-redis-data
         # Kafka's uid is configurable because the image has changed it before.
-        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1
+        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} hailpath-kafka-data
         # Grafana runs as 472 with group 0; Superset as 1000.
-        own 472:0 nus-grafana-data
-        own 1000:1000 nus-superset-home nus-tiles-data
+        own 472:0 hailpath-grafana-data hailpath-grafana-plugins
+        own 1000:1000 hailpath-superset-home hailpath-tiles-data
         # h-bootstrap and the six services all run as the 'nus' user, 10001.
-        own 10001:10001 nus-lion-data
+        own 10001:10001 hailpath-lion-data
         # ClickHouse starts as root and drops privileges itself, so its
         # data directory stays root-owned.
         echo "done"
     volumes:
-      - ${NUS_VOLUME_ROOT:?set it in .env}:/vol
+      - ${HAILPATH_VOLUME_ROOT:?set it in .env}:/vol
     networks:
       - backbone
 
@@ -122,7 +122,7 @@ services:
       - backbone
 
   hailpath-proxy:
-    image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
+    image: ${HAPROXY_IMAGE:-haproxy:3.4.4}
     container_name: hailpath-proxy
     hostname: hailpath-proxy
     restart: unless-stopped
@@ -145,13 +145,12 @@ services:
       - "${LB_A_SUPERSET_PORT:-8088}:8088"
       - "${LB_A_KSQLDB_PORT:-8089}:8089"
       - "${LB_A_DEBEZIUM_PORT:-8083}:8083"
-      # Fixed literals, not a `${VAR:-default}:CONTAINER` pair like every
+      # Fixed literal, not a `${VAR:-default}:CONTAINER` pair like every
       # line above: a broker's advertised address is baked into its own
       # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
       # port a client is told to dial here has to be the exact port it can
       # actually reach — remapping the host side would silently break that.
       - "9094:9094"
-      - "9097:9097"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s
@@ -163,14 +162,14 @@ services:
 volumes:
   # Rendered by haproxy-config-render; never mounted read-write anywhere else.
   haproxy-config:
-    name: nus-haproxy-config
+    name: hailpath-haproxy-config
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in .env}/nus-haproxy-config
+      device: ${HAILPATH_VOLUME_ROOT:?set it in .env}/hailpath-haproxy-config
 
 networks:
   backbone:
     external: true
-    name: nus-backbone
+    name: hailpath-net

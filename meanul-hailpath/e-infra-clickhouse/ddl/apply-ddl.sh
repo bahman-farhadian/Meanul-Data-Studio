@@ -39,4 +39,4 @@ done
 
 echo
 echo "tables now on the server:"
-client --query "SELECT database, name, engine FROM system.tables WHERE database = 'nus' ORDER BY name FORMAT PrettyCompact"
+client --query "SELECT database, name, engine FROM system.tables WHERE database = 'hailpath' ORDER BY name FORMAT PrettyCompact"

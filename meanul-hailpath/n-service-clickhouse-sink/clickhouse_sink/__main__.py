@@ -142,7 +142,7 @@ def _collect(batches: Batches, topic: str, value: dict,
              hotspots: HotspotCache, threshold: float) -> None:
     """Turn one message into one row waiting to be inserted."""
     if topic == "driver_location":
-        batches.add("nus.driver_positions", [
+        batches.add("hailpath.driver_positions", [
             value["event_id"],
             value["driver_id"], value.get("trip_id"), value.get("status"),
             value["lat"], value["lon"],
@@ -152,7 +152,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         return
 
     if topic == "rider_location":
-        batches.add("nus.rider_positions", [
+        batches.add("hailpath.rider_positions", [
             value["event_id"],
             value["rider_id"], value.get("trip_id"),
             value["lat"], value["lon"], value.get("accuracy_m"),
@@ -161,7 +161,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         return
 
     if topic == "city_hotspots":
-        batches.add("nus.hotspot_history", [
+        batches.add("hailpath.hotspot_history", [
             value["event_id"],
             value["zone_id"], value["period"], value["demand_score"],
             value["open_requests"], value["available_drivers"],
@@ -170,7 +170,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         return
 
     if topic == "segment_traffic_updates":
-        batches.add("nus.segment_traffic_history", [
+        batches.add("hailpath.segment_traffic_history", [
             value["event_id"],
             value["zone_id"], value["period"], value["congestion_factor"],
             value["speed_samples"], value["segments_updated"],
@@ -188,7 +188,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         score = hotspots.score(value.get("pickup_zone_id"))
         is_hotspot = None if score is None else int(score >= threshold)
 
-        batches.add("nus.trip_events", [
+        batches.add("hailpath.trip_events", [
             value["event_id"],
             value["trip_id"], value["rider_id"], value.get("driver_id"),
             value["status"], value.get("pickup_zone_id") or "",
@@ -220,7 +220,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         response_s = None
         if responded is not None:
             response_s = int((_moment(responded) - _moment(offered)).total_seconds())
-        batches.add("nus.dispatch_offers", [
+        batches.add("hailpath.dispatch_offers", [
             value["event_id"], value["trip_id"], value["driver_id"],
             value["sequence"], value["status"],
             value.get("pickup_zone_id") or "",

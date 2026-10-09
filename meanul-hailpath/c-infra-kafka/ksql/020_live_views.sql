@@ -2,7 +2,7 @@
 --
 -- Everything in 010 is a view over a topic: useful for a SQL client, but it
 -- computes nothing. This file adds a materialized table, and the question is
--- fair - why, when nus.dispatch_funnel_hourly already exists in ClickHouse?
+-- fair - why, when hailpath.dispatch_funnel_hourly already exists in ClickHouse?
 --
 -- Because of latency and granularity, which are the two things that rollup
 -- cannot give. A record reaches that rollup through the sink's batch (up to

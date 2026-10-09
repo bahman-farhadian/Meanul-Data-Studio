@@ -1,16 +1,16 @@
 {
-  "uid": "nus-city",
-  "title": "NUS / City now",
-  "description": "Zone demand, surge, congestion. Scores near 0 at the small seed are expected.",
+  "uid": "hailpath-driver",
+  "title": "Hailpath / Driver inspector",
+  "description": "Lookup one driver_id: trail, status, speed, utilization.",
   "tags": [
-    "nus",
+    "hailpath",
     "live",
-    "city"
+    "driver"
   ],
   "timezone": "America/New_York",
   "schemaVersion": 39,
   "version": 11,
-  "refresh": "30s",
+  "refresh": "10s",
   "liveNow": true,
   "editable": false,
   "graphTooltip": 1,
@@ -22,15 +22,15 @@
   "templating": {
     "list": [
       {
-        "name": "zone_id",
-        "label": "Zone",
+        "name": "driver_id",
+        "label": "Driver",
         "type": "query",
         "datasource": {
           "type": "grafana-clickhouse-datasource",
           "uid": "hailpath-clickhouse"
         },
-        "definition": "SELECT DISTINCT toString(zone_id) FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 300",
-        "query": "SELECT DISTINCT toString(zone_id) FROM nus.hotspot_history WHERE computed_at >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 300",
+        "definition": "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
+        "query": "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
         "refresh": 2,
         "sort": 1,
         "includeAll": false,
@@ -49,15 +49,15 @@
   "panels": [
     {
       "id": 1,
-      "title": "Latest demand by zone",
-      "type": "table",
+      "title": "Latest position",
+      "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
-        "h": 21,
+        "h": 4,
         "w": 24,
         "x": 0,
         "y": 0
@@ -71,7 +71,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    zone_id,\n    demand_score,\n    open_requests,\n    available_drivers,\n    surge_multiplier,\n    period,\n    last_computed\nFROM (\n    SELECT\n        zone_id,\n        argMax(demand_score, computed_at) AS demand_score,\n        argMax(open_requests, computed_at) AS open_requests,\n        argMax(available_drivers, computed_at) AS available_drivers,\n        argMax(surge_multiplier, computed_at) AS surge_multiplier,\n        argMax(period, computed_at) AS period,\n        max(computed_at) AS last_computed\n    FROM nus.hotspot_history\n    WHERE computed_at >= now() - INTERVAL 10 MINUTE\n    GROUP BY zone_id\n) AS latest\nORDER BY demand_score DESC\nLIMIT 15\n",
+          "rawSql": "SELECT\n    argMax(status, event_time) AS status,\n    argMax(lat, event_time) AS lat,\n    argMax(lon, event_time) AS lon,\n    argMax(speed_kmh, event_time) AS speed_kmh,\n    argMax(trip_id, event_time) AS trip_id\nFROM hailpath.driver_positions\nWHERE driver_id = '${driver_id}'\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -84,18 +84,18 @@
     },
     {
       "id": 2,
-      "title": "Demand score, and the surge it sets (selected zone)",
-      "type": "timeseries",
+      "title": "Map trail",
+      "type": "geomap",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "hailpath-clickhouse"
       },
-      "description": "Both are dimensionless, which is the only reason they share an axis: the score is roughly 0..1 and the multiplier starts at 1.0. The pair is the point - surge is derived from the score, so the two lines moving apart means the derivation is stale, not that demand changed.",
+      "description": "",
       "gridPos": {
-        "h": 8,
+        "h": 20,
         "w": 12,
         "x": 0,
-        "y": 21
+        "y": 4
       },
       "targets": [
         {
@@ -104,50 +104,85 @@
             "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
-          "format": 0,
-          "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, demand_score, surge_multiplier\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT event_time, lat, lon, status, speed_kmh, trip_id\nFROM hailpath.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
       ],
       "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "decimals": 2,
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 0
-          }
-        },
+        "defaults": {},
         "overrides": []
       },
       "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
+        "view": {
+          "allLayers": true,
+          "id": "coords",
+          "lat": 40.75,
+          "lon": -73.98,
+          "zoom": 11
         },
-        "tooltip": {
-          "mode": "multi"
-        }
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true,
+          "showAttribution": true
+        },
+        "basemap": {
+          "type": "xyz",
+          "name": "Hailpath OSM",
+          "config": {
+            "url": "/tiles/styles/hailpath/{z}/{x}/{y}@2x.png",
+            "attribution": "\u00a9 OpenStreetMap",
+            "minZoom": 0,
+            "maxZoom": 14
+          }
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Trail",
+            "config": {
+              "style": {
+                "size": {
+                  "fixed": 7,
+                  "min": 3,
+                  "max": 12
+                },
+                "color": {
+                  "fixed": "dark-green"
+                },
+                "opacity": 0.9,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                }
+              }
+            },
+            "location": {
+              "mode": "coords",
+              "latitude": "lat",
+              "longitude": "lon"
+            },
+            "tooltip": true
+          }
+        ]
       }
     },
     {
       "id": 3,
-      "title": "Open requests vs free drivers (selected zone)",
-      "type": "timeseries",
+      "title": "Status over time",
+      "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "hailpath-clickhouse"
       },
-      "description": "Both are counts of the same kind of thing, so one axis is honest. The gap between them is the imbalance surge exists to close.",
+      "description": "",
       "gridPos": {
-        "h": 8,
+        "h": 20,
         "w": 12,
         "x": 12,
-        "y": 21
+        "y": 4
       },
       "targets": [
         {
@@ -156,49 +191,33 @@
             "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
-          "format": 0,
-          "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, open_requests, available_drivers\nFROM nus.hotspot_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "format": 1,
+          "queryType": "table",
+          "rawSql": "SELECT event_time, status, speed_kmh, heading_deg, zone_id, trip_id, lat, lon\nFROM hailpath.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY event_time DESC\nLIMIT 15\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
       ],
       "fieldConfig": {
-        "defaults": {
-          "unit": "short",
-          "custom": {
-            "drawStyle": "line",
-            "lineWidth": 2,
-            "fillOpacity": 0
-          }
-        },
+        "defaults": {},
         "overrides": []
       },
-      "options": {
-        "legend": {
-          "showLegend": true,
-          "displayMode": "list",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi"
-        }
-      }
+      "options": {}
     },
     {
       "id": 4,
-      "title": "Congestion factor (selected zone)",
+      "title": "Speed",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "hailpath-clickhouse"
       },
-      "description": "1.0 is free-flow and higher is slower. Split from the sample counts below: a factor that lives between 1 and 2 is a flat line at the bottom of a chart scaled to hundreds of samples.",
+      "description": "Straight from the device, as reported.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 29
+        "y": 24
       },
       "targets": [
         {
@@ -209,16 +228,15 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, congestion_factor\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "rawSql": "SELECT event_time AS time, speed_kmh\nFROM hailpath.driver_positions\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(event_time)\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
-          "decimals": 3,
-          "min": 0.9,
+          "unit": "velocitykmh",
+          "decimals": 1,
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
@@ -240,18 +258,18 @@
     },
     {
       "id": 5,
-      "title": "How much evidence that factor rests on (selected zone)",
+      "title": "Hourly utilization (busy / online ticks)",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "hailpath-clickhouse"
       },
-      "description": "Real position reports behind each reading, and the road segments it was applied to. A congestion factor computed from three samples is a guess with a decimal point.",
+      "description": "Ticks spent on a trip out of ticks spent online. A share, so it is drawn as one - 0.42 is 42% of this driver's shift. h-bootstrap writes driver positions only along trip paths and only as on_trip, so the history has no idle telemetry and this reads 100% across the seeded window, then drops to the live figure. The cliff is the seam between seeded and live, not a collapse in efficiency.",
       "gridPos": {
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 29
+        "y": 24
       },
       "targets": [
         {
@@ -262,30 +280,50 @@
           "editorType": "sql",
           "format": 0,
           "queryType": "timeseries",
-          "rawSql": "SELECT computed_at AS time, speed_samples, segments_updated\nFROM nus.segment_traffic_history\nWHERE zone_id = '${zone_id}'\n  AND $__timeFilter(computed_at)\nORDER BY time\n",
+          "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM hailpath.driver_utilization_hourly\nWHERE driver_id = '${driver_id}'\n  AND $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
       ],
       "fieldConfig": {
         "defaults": {
-          "unit": "short",
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 0.35
+              },
+              {
+                "color": "green",
+                "value": 0.55
+              }
+            ]
+          },
           "custom": {
             "drawStyle": "line",
             "lineWidth": 2,
-            "fillOpacity": 0
+            "fillOpacity": 10
           }
         },
         "overrides": []
       },
       "options": {
         "legend": {
-          "showLegend": true,
+          "showLegend": false,
           "displayMode": "list",
           "placement": "bottom"
         },
         "tooltip": {
-          "mode": "multi"
+          "mode": "single"
         }
       }
     }
@@ -294,7 +332,7 @@
     {
       "title": "Live ops",
       "type": "link",
-      "url": "/d/nus-live-ops",
+      "url": "/d/hailpath-live-ops",
       "keepTime": true
     },
     {
@@ -306,7 +344,7 @@
     {
       "title": "Trip",
       "type": "link",
-      "url": "/d/nus-trip",
+      "url": "/d/hailpath-trip",
       "keepTime": true
     },
     {
@@ -318,13 +356,13 @@
     {
       "title": "History",
       "type": "link",
-      "url": "/d/nus-history",
+      "url": "/d/hailpath-history",
       "keepTime": true
     },
     {
       "title": "Marketplace",
       "type": "link",
-      "url": "/d/nus-marketplace",
+      "url": "/d/hailpath-marketplace",
       "keepTime": true
     }
   ]

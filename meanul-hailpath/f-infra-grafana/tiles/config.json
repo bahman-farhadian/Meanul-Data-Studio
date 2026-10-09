@@ -13,8 +13,8 @@
     "maxRendererPoolSizes": [4, 2, 1]
   },
   "styles": {
-    "nus": {
-      "style": "nus.json"
+    "hailpath": {
+      "style": "hailpath.json"
     }
   },
   "data": {

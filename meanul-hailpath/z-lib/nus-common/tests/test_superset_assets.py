@@ -114,7 +114,7 @@ def test_ids_are_derived_from_the_same_namespace_as_the_connection() -> None:
         uuid.NAMESPACE_URL, "https://github.com/bahman-farhadian/Meanul-Data-Studio"
     )
     expected = str(uuid.uuid5(namespace, "database/clickhouse"))
-    written = CHECK.load(ASSETS / "databases" / "clickhouse_nus.yaml")["uuid"]
+    written = CHECK.load(ASSETS / "databases" / "clickhouse_hailpath.yaml")["uuid"]
     assert written == expected
 
     registrar = (SUPERSET / "init" / "register_database.py").read_text()

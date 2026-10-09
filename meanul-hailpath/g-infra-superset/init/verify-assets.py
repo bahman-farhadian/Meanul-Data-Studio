@@ -172,7 +172,7 @@ def main() -> int:
 
         database = (
             db.session.query(Database)
-            .filter_by(database_name="ClickHouse (nus)")
+            .filter_by(database_name="ClickHouse (hailpath)")
             .one_or_none()
         )
         if database is None:
@@ -189,7 +189,7 @@ def main() -> int:
             selected = ", ".join(
                 f"{expression} AS {name}" for name, expression in metrics_of(path)
             )
-            sql = f"SELECT count() AS rows_seen, {selected} FROM nus.{table} WHERE {where}"
+            sql = f"SELECT count() AS rows_seen, {selected} FROM hailpath.{table} WHERE {where}"
             try:
                 frame = database.get_df(sql)
             except Exception as exc:  # noqa: BLE001 - any failure is the finding
@@ -251,7 +251,7 @@ def main() -> int:
             limit = int(params.get("row_limit") or 10000)
             sql = (
                 "SELECT " + ", ".join(grouping + selected)
-                + f" FROM nus.{table} WHERE " + " AND ".join(where)
+                + f" FROM hailpath.{table} WHERE " + " AND ".join(where)
                 + (f" GROUP BY {', '.join(grouping)}" if grouping else "")
                 + f" LIMIT {limit + 1}"
             )

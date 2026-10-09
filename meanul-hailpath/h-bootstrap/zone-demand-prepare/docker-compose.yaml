@@ -12,7 +12,7 @@
 # in h-bootstrap/Makefile for why (repeated network egress on every
 # retry, real cost on a metered host).
 
-name: nus-zone-demand-prepare
+name: hailpath-zone-demand-prepare
 
 services:
   zone-demand-prepare:
@@ -27,4 +27,4 @@ services:
       TLC_TRIP_DATA_MONTH: ${TLC_TRIP_DATA_MONTH:-2025-01}
       OUTPUT_DIR: /data
     volumes:
-      - ${NUS_LION_DATA_DIR:?set it}:/data
+      - ${HAILPATH_LION_DATA_DIR:?set it}:/data

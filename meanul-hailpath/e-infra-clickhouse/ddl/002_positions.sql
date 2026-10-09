@@ -2,7 +2,7 @@
 --
 -- One table per stream. Services and dashboards query these names.
 
-CREATE TABLE IF NOT EXISTS nus.driver_positions
+CREATE TABLE IF NOT EXISTS hailpath.driver_positions
 (
     -- Ids are FixedString, not String: every one of these is a fixed-width
     -- format by construction (see z-lib/nus-common/nus_common/ids.py, the
@@ -74,7 +74,7 @@ ORDER BY (driver_id, event_time)
 TTL event_date + INTERVAL 2 DAY;
 
 
-CREATE TABLE IF NOT EXISTS nus.rider_positions
+CREATE TABLE IF NOT EXISTS hailpath.rider_positions
 (
     -- rider_id is a passenger id (psg-NNNNNN) - see driver_positions above
     -- for why FixedString, not String.

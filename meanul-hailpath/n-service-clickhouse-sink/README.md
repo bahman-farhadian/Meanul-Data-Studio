@@ -11,10 +11,10 @@ service before it is worth running at all.
 
 | Topic | ClickHouse table |
 | --- | --- |
-| `driver_location` | `nus.driver_positions` |
-| `rider_location` | `nus.rider_positions` |
-| `trip_lifecycle` | `nus.trip_events` |
-| `city_hotspots` | `nus.hotspot_history` |
+| `driver_location` | `hailpath.driver_positions` |
+| `rider_location` | `hailpath.rider_positions` |
+| `trip_lifecycle` | `hailpath.trip_events` |
+| `city_hotspots` | `hailpath.hotspot_history` |
 | `trip_requests` | nothing — see below |
 
 `trip_requests` is consumed but not stored. Every request also appears on
@@ -88,16 +88,16 @@ here.
 ```bash
 # rows arriving in the last five minutes
 docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
-  --query "SELECT 'positions' AS what, count() FROM nus.driver_positions
+  --query "SELECT 'positions' AS what, count() FROM hailpath.driver_positions
              WHERE event_time > now() - INTERVAL 5 MINUTE
            UNION ALL
-           SELECT 'trip events', count() FROM nus.trip_events
+           SELECT 'trip events', count() FROM hailpath.trip_events
              WHERE event_time > now() - INTERVAL 5 MINUTE"
 
 # the enrichment actually happened
 docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT status, count(), avg(duration_delta_s), avg(hotspot_score)
-             FROM nus.trip_events
+             FROM hailpath.trip_events
             WHERE event_time > now() - INTERVAL 1 HOUR
             GROUP BY status"
 
@@ -119,5 +119,5 @@ logs for a memory limit before changing anything here.
 The hourly summary that Grafana and Superset read is filled automatically by
 a materialized view inside ClickHouse as these rows land, so nothing here has
 to maintain it. That view runs per node, which is why every query against
-`nus.trip_stats_hourly` aggregates — see
+`hailpath.trip_stats_hourly` aggregates — see
 [`../e-infra-clickhouse/README.md`](../e-infra-clickhouse/README.md#reading-the-hourly-summary-correctly).

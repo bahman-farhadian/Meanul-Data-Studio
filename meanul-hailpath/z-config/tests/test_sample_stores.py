@@ -24,7 +24,7 @@ from sample_graph import LATS, LONS, WATER_LAT, WATER_LON, load as load_graph
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPO / "z-config" / "sample-stack" / "docker-compose.yaml"
 SCRATCH = Path(os.environ.get("NUS_SAMPLE_SCRATCH", "/tmp/grok-goal-9d807b438e5a/implementer"))
-PROJECT = "nus-goal-sample"
+PROJECT = "hailpath-goal-sample"
 
 
 def _compose(*args: str, env: dict | None = None, check: bool = True) -> subprocess.CompletedProcess:
@@ -48,9 +48,9 @@ def _compose(*args: str, env: dict | None = None, check: bool = True) -> subproc
 def sample_env():
     SCRATCH.mkdir(parents=True, exist_ok=True)
     passwords = {
-        "NUS_SAMPLE_PG_PASSWORD": os.environ.get("NUS_SAMPLE_PG_PASSWORD") or secrets.token_urlsafe(12),
-        "NUS_SAMPLE_REDIS_PASSWORD": os.environ.get("NUS_SAMPLE_REDIS_PASSWORD") or secrets.token_urlsafe(12),
-        "NUS_SAMPLE_CH_PASSWORD": os.environ.get("NUS_SAMPLE_CH_PASSWORD") or secrets.token_urlsafe(12),
+        "HAILPATH_SAMPLE_PG_PASSWORD": os.environ.get("HAILPATH_SAMPLE_PG_PASSWORD") or secrets.token_urlsafe(12),
+        "HAILPATH_SAMPLE_REDIS_PASSWORD": os.environ.get("HAILPATH_SAMPLE_REDIS_PASSWORD") or secrets.token_urlsafe(12),
+        "HAILPATH_SAMPLE_CH_PASSWORD": os.environ.get("HAILPATH_SAMPLE_CH_PASSWORD") or secrets.token_urlsafe(12),
     }
     env = {**os.environ, **passwords}
     boot_log = SCRATCH / "boot-failed.log"
@@ -81,14 +81,14 @@ def sample_env():
             "PG_WRITE_PORT": "15432",
             "PG_READ_PORT": "15432",
             "PG_USER": "postgres",
-            "PG_PASSWORD": passwords["NUS_SAMPLE_PG_PASSWORD"],
-            "PG_DATABASE": "nus",
-            "REDIS_URL": f"redis://:{passwords['NUS_SAMPLE_REDIS_PASSWORD']}@127.0.0.1:16379/0",
+            "PG_PASSWORD": passwords["HAILPATH_SAMPLE_PG_PASSWORD"],
+            "PG_DATABASE": "hailpath",
+            "REDIS_URL": f"redis://:{passwords['HAILPATH_SAMPLE_REDIS_PASSWORD']}@127.0.0.1:16379/0",
             "CH_HOST": "127.0.0.1",
             "CH_HTTP_PORT": "18123",
-            "CH_USER": "nus",
-            "CH_PASSWORD": passwords["NUS_SAMPLE_CH_PASSWORD"],
-            "CH_DATABASE": "nus",
+            "CH_USER": "hailpath",
+            "CH_PASSWORD": passwords["HAILPATH_SAMPLE_CH_PASSWORD"],
+            "CH_DATABASE": "hailpath",
             "KAFKA_BOOTSTRAP": "127.0.0.1:19092",
             "SCHEMA_REGISTRY_URL": "http://127.0.0.1:18081",
             "SCHEMA_DIR": str(REPO / "c-infra-kafka" / "schemas"),
@@ -460,7 +460,7 @@ def test_broker_cache_and_databases(sample_env):
     assert seen[0]["driver_id"] == "drv-0000001"
     assert abs(seen[0]["lat"] - trail[0][0]) < 1e-6
 
-    clickhouse.client().command("CREATE DATABASE IF NOT EXISTS nus")
+    clickhouse.client().command("CREATE DATABASE IF NOT EXISTS hailpath")
     # A cut-down copy of e-infra-clickhouse/ddl/002_positions.sql - enough
     # columns to take a real Batches row, in the order clickhouse_sink
     # declares them. event_id leads it there and has to lead it here: the
@@ -468,7 +468,7 @@ def test_broker_cache_and_databases(sample_env):
     # ProgrammingError, not a silently shifted row.
     clickhouse.client().command(
         """
-        CREATE TABLE IF NOT EXISTS nus.driver_positions (
+        CREATE TABLE IF NOT EXISTS hailpath.driver_positions (
             event_id UUID,
             driver_id String,
             trip_id Nullable(String),
@@ -487,7 +487,7 @@ def test_broker_cache_and_databases(sample_env):
     batches = Batches()
     for i, (lat, lon, heading, speed) in enumerate(trail):
         batches.add(
-            "nus.driver_positions",
+            "hailpath.driver_positions",
             [
                 str(uuid.uuid4()),
                 "drv-0000001",
@@ -505,7 +505,7 @@ def test_broker_cache_and_databases(sample_env):
     assert sent == len(trail)
 
     rows = clickhouse.client().query(
-        "SELECT lat, lon, status FROM nus.driver_positions "
+        "SELECT lat, lon, status FROM hailpath.driver_positions "
         "WHERE driver_id = 'drv-0000001' AND status = 'on_trip' "
         "ORDER BY event_time"
     ).result_rows

@@ -32,9 +32,9 @@ ALIAS_SHADOWS_COLUMN = re.compile(
     r"(?is)(?:max|min|argMax|argMin|anyLast|any)\s*\([^;]*?\)\s+AS\s+"
     r"(event_time|computed_at|hour)\b"
 )
-# nus.foo after FROM/JOIN, not after a function name.
+# hailpath.foo after FROM/JOIN, not after a function name.
 TABLE_REF = re.compile(
-    r"(?i)(?:FROM|JOIN)\s+(?:nus\.)?([a-z][a-z0-9_]*)"
+    r"(?i)(?:FROM|JOIN)\s+(?:hailpath\.)?([a-z][a-z0-9_]*)"
 )
 
 # SummingMergeTree: a row is a PARTIAL sum until a merge that may not have
@@ -74,7 +74,7 @@ def warehouse_tables() -> set[str]:
     for path in DDL_DIR.glob("*.sql"):
         text = path.read_text()
         for match in re.finditer(
-            r"CREATE TABLE IF NOT EXISTS nus\.([a-z0-9_]+)", text
+            r"CREATE TABLE IF NOT EXISTS hailpath\.([a-z0-9_]+)", text
         ):
             name = match.group(1)
             if name.endswith("_local"):
@@ -96,7 +96,7 @@ def _check_live_ops_open_trips(dash: dict) -> list[str]:
 
     open_panel = by_title.get("Open trips by last status")
     if open_panel is None:
-        return ["nus-live-ops missing panel 'Open trips by last status'"]
+        return ["hailpath-live-ops missing panel 'Open trips by last status'"]
     sql = (open_panel.get("targets") or [{}])[0].get("rawSql") or ""
     if not re.search(r"INTERVAL\s+\d+\s+HOUR", sql, re.I):
         errors.append(
@@ -120,7 +120,7 @@ def _check_live_ops_open_trips(dash: dict) -> list[str]:
 
     inprog = by_title.get("In-progress trips")
     if inprog is None:
-        errors.append("nus-live-ops missing panel 'In-progress trips'")
+        errors.append("hailpath-live-ops missing panel 'In-progress trips'")
     else:
         sql = (inprog.get("targets") or [{}])[0].get("rawSql") or ""
         if not re.search(r"INTERVAL\s+\d+\s+HOUR", sql, re.I):
@@ -289,7 +289,7 @@ def check() -> list[str]:
                         f"{uid} panel {panel.get('id')}: prefer_column_name_to_alias "
                         "makes ORDER BY alias match the raw column (ClickHouse 215)"
                     )
-                if re.search(r"nus\.[a-z0-9_]+_local\b", sql):
+                if re.search(r"hailpath\.[a-z0-9_]+_local\b", sql):
                     errors.append(f"{uid} queries a *_local table: {sql[:80]!r}")
                 tables = set(TABLE_REF.findall(sql))
                 for name in tables:
@@ -346,16 +346,16 @@ def check() -> list[str]:
             + ", ".join(sorted(HISTORICAL_ANY))
         )
 
-    live_ops = JSON_DIR / "nus-live-ops.json"
+    live_ops = JSON_DIR / "hailpath-live-ops.json"
     if live_ops.is_file():
         errors.extend(_check_live_ops_open_trips(json.loads(live_ops.read_text())))
 
     for path in JSON_DIR.glob("*.json"):
         blob = path.read_text()
         if '"type": "geomap"' in blob:
-            if "/tiles/styles/nus/" not in blob or '"type": "xyz"' not in blob:
+            if "/tiles/styles/hailpath/" not in blob or '"type": "xyz"' not in blob:
                 errors.append(
-                    f"{path.name}: geomap must use same-origin /tiles/styles/nus "
+                    f"{path.name}: geomap must use same-origin /tiles/styles/hailpath "
                     "(self-hosted OSM; no MapTiler key)"
                 )
             if "maptiler" in blob.lower() or "cartocdn.com" in blob:
@@ -363,29 +363,29 @@ def check() -> list[str]:
                     f"{path.name}: geomap must not call a third-party tile CDN"
                 )
 
-    marketplace = JSON_DIR / "nus-marketplace.json"
+    marketplace = JSON_DIR / "hailpath-marketplace.json"
     if not marketplace.is_file():
-        errors.append("nus-marketplace.json is missing - the KPI tier is unprovisioned")
+        errors.append("hailpath-marketplace.json is missing - the KPI tier is unprovisioned")
     else:
         dash = json.loads(marketplace.read_text())
         blob = marketplace.read_text()
         for needle in ("fulfilment_hourly", "dispatch_funnel_hourly"):
             if needle not in blob:
-                errors.append(f"nus-marketplace does not read {needle}")
+                errors.append(f"hailpath-marketplace does not read {needle}")
         for panel in dash.get("panels") or []:
             if not (panel.get("description") or "").strip():
                 errors.append(
-                    f"nus-marketplace panel {panel.get('id')} "
+                    f"hailpath-marketplace panel {panel.get('id')} "
                     f"({panel.get('title')!r}) has no description - a KPI "
                     "nobody can define is a KPI nobody should act on"
                 )
 
-    history = JSON_DIR / "nus-history.json"
+    history = JSON_DIR / "hailpath-history.json"
     if history.is_file():
         blob = history.read_text()
         for needle in ("sum(", "quantileMerge(", "uniqMerge("):
             if needle not in blob:
-                errors.append(f"nus-history.json missing {needle}")
+                errors.append(f"hailpath-history.json missing {needle}")
 
     print(f"dashboards: {len(files)}")
     print(f"warehouse tables in ddl: {len(allowed)}")

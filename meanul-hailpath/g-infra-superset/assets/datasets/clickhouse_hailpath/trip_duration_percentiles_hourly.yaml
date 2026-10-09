@@ -4,7 +4,7 @@
 # meaningless. They are therefore marked ungroupable and
 # unfilterable, so the only way to reach them is the metrics below.
 table_name: 'trip_duration_percentiles_hourly'
-schema: 'nus'
+schema: 'hailpath'
 uuid: '61968db3-6d87-5e78-a2ee-e36e15dffd12'
 database_uuid: 'ec88ab80-c915-5ac9-8e2d-519bbed66b8f'
 version: '1.0.0'

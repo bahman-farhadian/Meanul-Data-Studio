@@ -119,7 +119,7 @@ even if each store is internally consistent.
 
 | # | Bar | Pass | Fail | Instrument kind |
 | --- | --- | --- | --- | --- |
-| S11 | Client names | Services and dashboards query the warehouse table names (`nus.trip_events`, `nus.driver_positions`, …), never `*_local`, never Kafka, never Redis, never OLTP | Grafana SQL on `*_local` or on a `cdc.*` topic | Version dashboard check |
+| S11 | Client names | Services and dashboards query the warehouse table names (`hailpath.trip_events`, `hailpath.driver_positions`, …), never `*_local`, never Kafka, never Redis, never OLTP | Grafana SQL on `*_local` or on a `cdc.*` topic | Version dashboard check |
 | S12 | Minted id type | Warehouse columns for minted ids are `FixedString(N)` where `N` is the mint width in `shared-lib` | `FixedString` reject at insert; or `String` for a mint this codebase controls | Warehouse DDL; `shared-lib` |
 | S13 | Closed-set type | Warehouse columns for S4 sets are `Enum8` with the same symbols, same spelling | A new category silently accepted as a string | Warehouse DDL vs Avro vs `CHECK` |
 | S14 | Event time | Event timestamps are `DateTime64(3, 'UTC')` (or equivalent UTC DateTime64) | Timezone-less DateTime, or a non-UTC timezone | Warehouse DDL |
@@ -152,7 +152,7 @@ interpret a message, is a fail.
 | B7 | Cache before announce | If a consumer of an event needs cache state the producer owns, that write happens **before** the produce | Event arrives, cache key empty, generator skips the real path | Coordinator source order; live simulation bars |
 | B8 | `cdc.*` vs declared | `cdc.*` carry OLTP row images for the cache. Declared topics carry domain events for coordinators and the warehouse. A generator does not publish a domain event by writing OLTP and hoping CDC fans it out to the warehouse | Warehouse fed only from CDC row images for a high-frequency stream | Connector `table.include.list`; warehouse-sink subscriptions |
 
-The replication slot this bar scores is `nus_debezium`.
+The replication slot this bar scores is `hailpath_debezium`.
 
 ---
 
@@ -299,13 +299,13 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | S4, S12, S13, S17, G7 | `make verify-walk`; `test_assessment_standard.py` |
 | S5 | `z-lib/nus-common/nus_common/ids.py` (`drv-` 11, `psg-` 11, `trp-` 21) |
 | S8 | Compose `TZ=UTC`, `SIM_TIMEZONE`; `nus_common/geo.py` |
-| S9, M5 | No `driver_positions` table in `h-bootstrap/migrations/`; ticks on `driver_location` → `nus.driver_positions` |
-| S10 | `d-infra-debezium/connectors/nus-pg.json` `column.exclude.list` includes `nus.trips.route` |
+| S9, M5 | No `driver_positions` table in `h-bootstrap/migrations/`; ticks on `driver_location` → `hailpath.driver_positions` |
+| S10 | `d-infra-debezium/connectors/hailpath-pg.json` `column.exclude.list` includes `hailpath.trips.route` |
 | S11 | `make grafana-check` (uid `hailpath-clickhouse`, warehouse table names, no `maptiler`) |
 | S15 | `make verify-ch` (one server, MergeTree engines) |
 | B1, B2, B4 | `c-infra-kafka/topics/topics.tsv` + `c-infra-kafka/schemas/*.avsc` |
 | B3 | `make verify-kafka`; `create-topics.sh` `--replication-factor 1` `min.insync.replicas=1` |
-| B5 | `make verify-cdc` (connector `nus-pg`, slot `nus_debezium`, plugin `pgoutput`, `wal_status` `reserved`) |
+| B5 | `make verify-cdc` (connector `nus-pg`, slot `hailpath_debezium`, plugin `pgoutput`, `wal_status` `reserved`) |
 | B7, M3 | `l-service-dispatch/dispatch_service/__main__.py`: `store_live_state` then `announce` |
 | C3 | `nus_common/redis_client.py` DB 0–4 |
 | C5 | `wait_for_bootstrap` in every generator/coordinator/sink/archiver; **absent** from `i-service-cache-updater` |
@@ -379,20 +379,20 @@ field, so this cannot be got wrong quietly.
 
 #### `d-infra-debezium`
 
-Connector `nus-pg`, slot `nus_debezium`, plugin `pgoutput`.
+Connector `nus-pg`, slot `hailpath_debezium`, plugin `pgoutput`.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Connector | `"state":"RUNNING"` on connector **and** task | Connector RUNNING with task FAILED | `make verify-cdc` |
-| Slot | `nus_debezium` active `t`, `wal_status` `reserved` | Slot missing or inactive (WAL retains forever) | `make verify-cdc` |
-| Geometry | `nus.trips.route` is in `column.exclude.list` | Geometry on a CDC topic (Debezium `DataException`) | `d-infra-debezium/connectors/nus-pg.json` |
+| Slot | `hailpath_debezium` active `t`, `wal_status` `reserved` | Slot missing or inactive (WAL retains forever) | `make verify-cdc` |
+| Geometry | `hailpath.trips.route` is in `column.exclude.list` | Geometry on a CDC topic (Debezium `DataException`) | `d-infra-debezium/connectors/hailpath-pg.json` |
 | Topics | `cdc.drivers`, `cdc.passengers`, `cdc.trips`, `cdc.city_zones`, `cdc.vehicles`, `cdc.trip_ratings`, `cdc.driver_sessions` | `no cdc.* topics yet` after `make up` has finished `cdc-register` | `make verify-cdc` |
 
-The slot this section scores is `nus_debezium`. Debezium opens it on the same Postgres that takes writes.
+The slot this section scores is `hailpath_debezium`. Debezium opens it on the same Postgres that takes writes.
 
 #### `e-infra-clickhouse`
 
-One server, `nus-ch-s1r1`. Services and dashboards query the table names (`nus.trip_events`, `nus.driver_positions`, …). Those names are the tables. Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or `ReplacingMergeTree`. There is no `*_local` table.
+One server, `nus-ch-s1r1`. Services and dashboards query the table names (`hailpath.trip_events`, `hailpath.driver_positions`, …). Those names are the tables. Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or `ReplacingMergeTree`. There is no `*_local` table.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
@@ -405,13 +405,13 @@ Grafana plus `hailpath-tiles` (piece f is both). Same-origin OSM at `/tiles/`.
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Process | Grafana `/api/health` database ok | Unhealthy | `make grafana-health` |
-| Tiles file | `nyc.mbtiles` non-empty under `NUS_VOLUME_ROOT/nus-tiles-data` | Missing file | `make tiles-health` |
+| Tiles file | `nyc.mbtiles` non-empty under `HAILPATH_VOLUME_ROOT/hailpath-tiles-data` | Missing file | `make tiles-health` |
 | Tiles container | `hailpath-tiles` health `healthy` | not running / unhealthy (HAProxy 503 HTML) | `make tiles-health` |
-| Tiles HTTP | `GET /tiles/styles.json` → 200; `GET /tiles/styles/nus/11/602/768.png` → 200 `image/png` | 503 HTML, 404, or non-PNG | `make tiles-health` |
-| Dashboards | Geomap URL contains `/tiles/styles/nus/` and `"type": "xyz"`; no `maptiler` / `cartocdn.com`; panels use uid `hailpath-clickhouse` and the warehouse tables | Third-party tile CDN or `*_local` | `make grafana-check` |
+| Tiles HTTP | `GET /tiles/styles.json` → 200; `GET /tiles/styles/hailpath/11/602/768.png` → 200 `image/png` | 503 HTML, 404, or non-PNG | `make tiles-health` |
+| Dashboards | Geomap URL contains `/tiles/styles/hailpath/` and `"type": "xyz"`; no `maptiler` / `cartocdn.com`; panels use uid `hailpath-clickhouse` and the warehouse tables | Third-party tile CDN or `*_local` | `make grafana-check` |
 
 `make up` starts `grafana` and `tiles` (`PIECE_F`). `make destroy` keeps
-`nus-tiles-data`. `make nuke` is what deletes the MBTiles.
+`hailpath-tiles-data`. `make nuke` is what deletes the MBTiles.
 
 #### `g-infra-superset`
 
@@ -431,7 +431,7 @@ One-shot: migrations, LION restore, people, history, warehouse load, then
 | --- | --- | --- | --- |
 | Marker | Redis `system:bootstrap:done` is `1` | `(not set)` | `make verify-data` |
 | OLTP seed | `drivers` = `SEED_DRIVERS`; `passengers` = `SEED_PASSENGERS`; `city_zones` = 263 (TLC); `ways` in the hundreds of thousands | `ways` = 0 (`SKIP_MAP_IMPORT` or failed restore) | `make verify-data` |
-| Warehouse seed | After bootstrap, `nus.trip_events` count is at least `HISTORY_DAYS × HISTORY_TRIPS_PER_DAY` (one warehouse row per seeded trip). Live traffic then adds lifecycle rows. | 0 events after a finished `make up` | `make verify-data` |
+| Warehouse seed | After bootstrap, `hailpath.trip_events` count is at least `HISTORY_DAYS × HISTORY_TRIPS_PER_DAY` (one warehouse row per seeded trip). Live traffic then adds lifecycle rows. | 0 events after a finished `make up` | `make verify-data` |
 | History routes | Seeded trips that have a `route` are on-network (same 75 m / long two-point bars as §9.4), produced by `nus_common.routing.route()` | Unsnapped harbour points or two-point chords in history | `z-config/check-on-network.sql` (window is last hour for live; all-time `route IS NOT NULL` is the history form) |
 
 #### `i-service-cache-updater`
@@ -453,7 +453,7 @@ on a timer.
 | --- | --- | --- | --- |
 | Movement | `follow()` walks `linestring_vertices` of Redis WKT or `routing.drive_path`; empty path and `is_chord_path` path do not lerp the chord | Euclidean hop between two ends | `make verify-walk` (`j-service-driver/tests`) |
 | Live polyline | Latest tick: `path_p50` is not 2 while `online` > 0. `path_chord` is the count of online paths with ≤ 2 vertices (short real LION blocks allowed). | `path_p50` = 2 with a live fleet | `docker logs driver-service` tick JSON (`path_p50`, `path_chord`); `make verify-positions` |
-| Stream | `nus.driver_positions` `newest` within a minute of now on a live stack | Table empty while the service is up | `make profile` section 1 |
+| Stream | `hailpath.driver_positions` `newest` within a minute of now on a live stack | Table empty while the service is up | `make profile` section 1 |
 
 #### `k-service-passenger`
 
@@ -481,7 +481,7 @@ Hotspots and `segment_traffic` updates.
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Process | Container not restart-looping; lag on `driver_location` may be tens of seconds, must not only grow | Restart loop; lag only growing | `make lag` group `city-service`; `make errors` |
-| Warehouse | `nus.hotspot_history` `newest` current on a live stack | Empty while city-service is up | `make profile` section 1 |
+| Warehouse | `hailpath.hotspot_history` `newest` current on a live stack | Empty while city-service is up | `make profile` section 1 |
 
 `hot_zones: 0` at 40 req/min over 263 zones is expected (0.6 cutoff). Not a fail.
 
@@ -589,14 +589,14 @@ Demand, `day_period`, and TLC `zone_weight` use `SIM_TIMEZONE`
 (version-1 default `America/New_York`) via `nus_common.geo.in_sim_tz` /
 `sim_zoneinfo`.
 
-Browser tiles: `/tiles/styles/nus/{z}/{x}/{y}@2x.png` (and the 1× PNG).
+Browser tiles: `/tiles/styles/hailpath/{z}/{x}/{y}@2x.png` (and the 1× PNG).
 HAProxy on `LB_A_GRAFANA_PORT` (default 3000) strips `/tiles/` on the tiles
 backend and forwards to `hailpath-tiles:8080`.
 
 | GET | Pass |
 | --- | --- |
 | `/tiles/styles.json` | HTTP 200 |
-| `/tiles/styles/nus/11/602/768.png` | HTTP 200, `Content-Type` `image/png` |
+| `/tiles/styles/hailpath/11/602/768.png` | HTTP 200, `Content-Type` `image/png` |
 
 Fail: HTTP 503 body `No server is available to handle this request`
 (`hailpath-tiles` down); MapTiler “API KEY REQUIRED”; `maptiler` in dashboard
@@ -724,7 +724,7 @@ SQL and pytest the bars cite:
 | `c-infra-kafka/schemas/` | B1 |
 | `c-infra-kafka/topics/topics.tsv` | B2, B4 |
 | `e-infra-clickhouse/ddl/` | S11–S16 |
-| `d-infra-debezium/connectors/nus-pg.json` | S10, B5 |
+| `d-infra-debezium/connectors/hailpath-pg.json` | S10, B5 |
 
 ---
 

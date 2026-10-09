@@ -14,42 +14,24 @@ services:
     hostname: hailpath-postgres
     restart: unless-stopped
     cpus: ${PG_CPUS:-10}
-    mem_limit: ${PG_MEM:-9g}
-    memswap_limit: ${PG_MEM:-9g}
+    mem_limit: ${PG_MEM:-16g}
+    memswap_limit: ${PG_MEM:-16g}
     environment:
       TZ: ${TZ:-UTC}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set it in a-infra-postgres/.env}
-      POSTGRES_DB: ${PG_DATABASE:-nus}
+      POSTGRES_DB: ${PG_DATABASE:-hailpath}
       PGDATA: /var/lib/postgresql/data
+    volumes:
+      - hailpath-pgdata:/var/lib/postgresql/data
+      - ./pg_hba.conf:/etc/pg_hba.conf:ro
+      - ./postgresql.conf:/etc/postgresql/postgresql.conf:ro
     command:
       - postgres
       - -c
-      - hba_file=/etc/pg_hba.conf
-      # logical WAL is what Debezium's pgoutput slot reads
-      - -c
-      - wal_level=logical
-      - -c
-      - max_connections=200
-      # A quarter of the 16g container ceiling. The 128MB default left
-      # street search on the page cache and the cgroup OOM-killed the process.
-      - -c
-      - shared_buffers=4GB
-      - -c
-      - max_wal_senders=10
-      - -c
-      - max_replication_slots=10
-      - -c
-      - password_encryption=scram-sha-256
-      - -c
-      - timezone=UTC
-      - -c
-      - log_timezone=UTC
-    volumes:
-      - pgdata-1:/var/lib/postgresql/data
-      - ./pg_hba.conf:/etc/pg_hba.conf:ro
+      - config_file=/etc/postgresql/postgresql.conf
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ${PG_DATABASE:-nus}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${PG_DATABASE:-hailpath}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -58,15 +40,15 @@ services:
       - backbone
 
 volumes:
-  pgdata-1:
-    name: nus-pgdata-1
+  hailpath-pgdata:
+    name: hailpath-pgdata
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-pgdata-1
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-pgdata
 
 networks:
   backbone:
     external: true
-    name: nus-backbone
+    name: hailpath-net

@@ -7,11 +7,11 @@
 # keeps messages small and lets a schema change without breaking old readers.
 #
 # External clients still dial the address this broker advertises. HAProxy
-# only publishes that address (one port per host path). It does not hide
-# extra brokers, because there is only this one.
+# publishes that one address. It does not hide extra brokers, because there
+# is only this one.
 #
 # Standalone test:
-#   docker network create nus-backbone     (once, shared by the whole stack)
+#   docker network create hailpath-net     (once, shared by the whole stack)
 #   cp .env.example .env
 #   docker compose run --rm kafka-dirs     (one-shot, prepares the volumes)
 #   docker compose up -d
@@ -23,7 +23,7 @@
 name: c-infra-kafka
 
 x-kafka-broker: &kafka-broker
-  image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
+  image: ${KAFKA_IMAGE:-apache/kafka:4.3.1}
   restart: unless-stopped
   cpus: ${KAFKA_CPUS:-1.2}
   mem_limit: ${KAFKA_MEM:-5.5g}
@@ -49,7 +49,7 @@ x-kafka-env: &kafka-env
   KAFKA_PROCESS_ROLES: broker,controller
   KAFKA_CONTROLLER_QUORUM_VOTERS: 1@hailpath-kafka:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXT_A:PLAINTEXT,EXT_B:PLAINTEXT
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
   KAFKA_LOG_DIRS: /var/lib/kafka/data
   # One broker. A topic copy on the same host would not survive the host
@@ -80,7 +80,7 @@ services:
   # Check the uid the image really uses with:
   #   docker run --rm ${KAFKA_IMAGE} id
   kafka-dirs:
-    image: ${BUSYBOX_IMAGE:-busybox:1.37.0}
+    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
     profiles: ["init"]
     cpus: ${KAFKA_DIRS_CPUS:-0.25}
     mem_limit: ${KAFKA_DIRS_MEM:-64m}
@@ -90,7 +90,7 @@ services:
       - -c
       - chown -R ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} /data-1 && echo "kafka data dir ready"
     volumes:
-      - kafka-data-1:/data-1
+      - hailpath-kafka-data:/data-1
     networks:
       - backbone
 
@@ -101,26 +101,25 @@ services:
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "1"
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
+      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
       # INTERNAL: what other containers are told to connect to — the name
-      # they resolve on nus-backbone, not localhost. EXT_A/EXT_B: what an
-      # external client is told, one port per address this broker answers
-      # on through hailpath-proxy (see the header comment for why there are two).
-      # The port numbers are not a separate .env knob: HAProxy cannot read
+      # they resolve on hailpath-net, not localhost. EXTERNAL: what a client
+      # on the host network is told, through hailpath-proxy on port 9094.
+      # The port number is not a separate .env knob: HAProxy cannot read
       # ${VAR} from its own environment (confirmed, not assumed — the same
-      # finding that shaped how Redis's password reaches it), so these have
-      # to match haproxy.cfg's literal bind ports exactly. A variable here
+      # finding that shaped how Redis's password reaches it), so this has
+      # to match haproxy.cfg's literal bind port exactly. A variable here
       # that silently drifts from a hardcoded number there is worse than
       # both being plainly fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://hailpath-kafka:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9094,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9097
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://hailpath-kafka:9092,EXTERNAL://${KAFKA_ADVERTISED_HOST:?set it in .env}:9094
     volumes:
-      - kafka-data-1:/var/lib/kafka/data
+      - hailpath-kafka-data:/var/lib/kafka/data
 
   # The Schema Registry keeps every topic's Avro schema and hands out the ids
   # that travel inside each message. It stores them in a Kafka topic, so it
   # holds no state of its own and can be restarted freely.
   hailpath-schema-registry:
-    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.3.1}
     container_name: hailpath-schema-registry
     hostname: hailpath-schema-registry
     restart: unless-stopped
@@ -164,7 +163,7 @@ services:
   # once the brokers are healthy. Re-runs are safe - existing topics are
   # skipped, so this is also how a newly added topic is rolled out.
   kafka-topics-init:
-    image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
+    image: ${KAFKA_IMAGE:-apache/kafka:4.3.1}
     profiles: ["init"]
     cpus: ${KAFKA_TOPICS_CPUS:-0.25}
     mem_limit: ${KAFKA_TOPICS_MEM:-512m}
@@ -189,7 +188,7 @@ services:
   # It is worth doing on its own account. Without this, the contract for a
   # topic is whatever the first producer to connect happened to send.
   schema-init:
-    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.3.1}
     profiles: ["init"]
     cpus: ${SCHEMA_INIT_CPUS:-0.25}
     mem_limit: ${SCHEMA_INIT_MEM:-512m}
@@ -362,23 +361,23 @@ services:
     networks:
       - backbone
 volumes:
-  kafka-data-1:
-    name: nus-kafka-data-1
+  hailpath-kafka-data:
+    name: hailpath-kafka-data
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-kafka-data-1
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-data
 
   ksqldb-secrets:
-    name: nus-ksqldb-secrets
+    name: hailpath-ksqldb-secrets
     driver: local
     driver_opts:
       type: none
       o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-ksqldb-secrets
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-ksqldb-secrets
 
 networks:
   backbone:
     external: true
-    name: nus-backbone
+    name: hailpath-net

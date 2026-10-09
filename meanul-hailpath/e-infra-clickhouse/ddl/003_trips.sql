@@ -5,7 +5,7 @@
 -- hotspot trip, and how far the real duration drifted from the predicted one.
 -- Those lookups come from Redis, never from the OLTP database.
 
-CREATE TABLE IF NOT EXISTS nus.trip_events
+CREATE TABLE IF NOT EXISTS hailpath.trip_events
 (
     -- FixedString/Enum8 for the ids and status this codebase mints itself
     -- (nus_common/ids.py) and constrains itself (Avro's TripStatus, and

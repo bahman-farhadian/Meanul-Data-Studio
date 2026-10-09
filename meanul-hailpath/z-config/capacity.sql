@@ -26,7 +26,7 @@ SELECT
     count()                                              AS parts,
     uniqExact(partition)                                 AS partitions
 FROM system.parts
-WHERE database = 'nus' AND active AND rows > 0
+WHERE database = 'hailpath' AND active AND rows > 0
 GROUP BY table
 ORDER BY sum(bytes_on_disk) DESC;
 
@@ -78,21 +78,21 @@ FROM (
     -- until passenger-service reaches its loop.
     SELECT 'driver_positions' AS table, count() / window_s AS rows_per_s,
            {scale:Float64} AS grows_with
-      FROM nus.driver_positions WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.driver_positions WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'rider_positions', count() / window_s, {scale:Float64}
-      FROM nus.rider_positions WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.rider_positions WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'trip_events', count() / window_s, {scale:Float64}
-      FROM nus.trip_events WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.trip_events WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'dispatch_offers', count() / window_s, {scale:Float64}
-      FROM nus.dispatch_offers WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.dispatch_offers WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'hotspot_history', count() / window_s, 1.0
-      FROM nus.hotspot_history WHERE computed_at > now() - toIntervalSecond(window_s)
+      FROM hailpath.hotspot_history WHERE computed_at > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'segment_traffic_history', count() / window_s, 1.0
-      FROM nus.segment_traffic_history WHERE computed_at > now() - toIntervalSecond(window_s)
+      FROM hailpath.segment_traffic_history WHERE computed_at > now() - toIntervalSecond(window_s)
 ) AS t
 INNER JOIN (
     SELECT table, sum(bytes_on_disk) / sum(rows) AS bytes_per_row
-    FROM system.parts WHERE database = 'nus' AND active AND rows > 0
+    FROM system.parts WHERE database = 'hailpath' AND active AND rows > 0
     GROUP BY table
 ) AS p ON p.table = t.table
 INNER JOIN (
@@ -102,7 +102,7 @@ INNER JOIN (
     -- 002_positions.sql is not the wording system.tables returns.
     SELECT name AS table,
            toUInt32OrZero(extract(create_table_query, 'toIntervalDay\\((\\d+)\\)')) AS ttl_days
-    FROM system.tables WHERE database = 'nus'
+    FROM system.tables WHERE database = 'hailpath'
 ) AS d ON d.table = t.table
 WHERE d.ttl_days > 0
 ORDER BY p.bytes_per_row * t.rows_per_s * d.ttl_days DESC;
@@ -141,27 +141,27 @@ FROM (
     -- until passenger-service reaches its loop.
     SELECT 'driver_positions' AS table, count() / window_s AS rows_per_s,
            {scale:Float64} AS grows_with
-      FROM nus.driver_positions WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.driver_positions WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'rider_positions', count() / window_s, {scale:Float64}
-      FROM nus.rider_positions WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.rider_positions WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'trip_events', count() / window_s, {scale:Float64}
-      FROM nus.trip_events WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.trip_events WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'dispatch_offers', count() / window_s, {scale:Float64}
-      FROM nus.dispatch_offers WHERE event_time > now() - toIntervalSecond(window_s)
+      FROM hailpath.dispatch_offers WHERE event_time > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'hotspot_history', count() / window_s, 1.0
-      FROM nus.hotspot_history WHERE computed_at > now() - toIntervalSecond(window_s)
+      FROM hailpath.hotspot_history WHERE computed_at > now() - toIntervalSecond(window_s)
     UNION ALL SELECT 'segment_traffic_history', count() / window_s, 1.0
-      FROM nus.segment_traffic_history WHERE computed_at > now() - toIntervalSecond(window_s)
+      FROM hailpath.segment_traffic_history WHERE computed_at > now() - toIntervalSecond(window_s)
     ) AS t
     INNER JOIN (
         SELECT table, sum(bytes_on_disk) / sum(rows) AS bytes_per_row
-        FROM system.parts WHERE database = 'nus' AND active AND rows > 0
+        FROM system.parts WHERE database = 'hailpath' AND active AND rows > 0
         GROUP BY table
     ) AS p ON p.table = t.table
     INNER JOIN (
         SELECT name AS table,
                toUInt32OrZero(extract(create_table_query, 'toIntervalDay\\((\\d+)\\)')) AS ttl_days
-        FROM system.tables WHERE database = 'nus'
+        FROM system.tables WHERE database = 'hailpath'
     ) AS d ON d.table = t.table
     WHERE d.ttl_days > 0
 );
@@ -178,6 +178,6 @@ SELECT
     max(partition)                                        AS newest,
     round(sum(rows) / uniqExact(partition))               AS rows_per_partition
 FROM system.parts
-WHERE database = 'nus' AND active AND rows > 0
+WHERE database = 'hailpath' AND active AND rows > 0
   AND table IN ('driver_positions', 'rider_positions', 'trip_events')
 GROUP BY table ORDER BY table;

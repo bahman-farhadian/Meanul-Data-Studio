@@ -1,9 +1,9 @@
 {
-  "uid": "nus-trip",
-  "title": "NUS / Trip inspector",
+  "uid": "hailpath-trip",
+  "title": "Hailpath / Trip inspector",
   "description": "Status walk, rider trail, fares for one trip_id.",
   "tags": [
-    "nus",
+    "hailpath",
     "live",
     "trip"
   ],
@@ -29,8 +29,8 @@
           "type": "grafana-clickhouse-datasource",
           "uid": "hailpath-clickhouse"
         },
-        "definition": "SELECT DISTINCT toString(trip_id) FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
-        "query": "SELECT DISTINCT toString(trip_id) FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
+        "definition": "SELECT DISTINCT toString(trip_id) FROM hailpath.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
+        "query": "SELECT DISTINCT toString(trip_id) FROM hailpath.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
         "refresh": 2,
         "sort": 1,
         "includeAll": false,
@@ -71,7 +71,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    event_time,\n    status,\n    driver_id,\n    rider_id,\n    pickup_zone_id,\n    dropoff_zone_id,\n    route_km,\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    surge_multiplier,\n    hotspot_score,\n    is_hotspot_trip,\n    fare_estimate,\n    fare_final\nFROM nus.trip_events\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\nLIMIT 12\n",
+          "rawSql": "SELECT\n    event_time,\n    status,\n    driver_id,\n    rider_id,\n    pickup_zone_id,\n    dropoff_zone_id,\n    route_km,\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    surge_multiplier,\n    hotspot_score,\n    is_hotspot_trip,\n    fare_estimate,\n    fare_final\nFROM hailpath.trip_events\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\nLIMIT 12\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -106,7 +106,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT event_time, lat, lon, accuracy_m, zone_id\nFROM nus.rider_positions\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\n",
+          "rawSql": "SELECT event_time, lat, lon, accuracy_m, zone_id\nFROM hailpath.rider_positions\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -130,9 +130,9 @@
         },
         "basemap": {
           "type": "xyz",
-          "name": "NUS OSM",
+          "name": "Hailpath OSM",
           "config": {
-            "url": "/tiles/styles/nus/{z}/{x}/{y}@2x.png",
+            "url": "/tiles/styles/hailpath/{z}/{x}/{y}@2x.png",
             "attribution": "\u00a9 OpenStreetMap",
             "minZoom": 0,
             "maxZoom": 14
@@ -193,7 +193,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    fare_estimate,\n    fare_final\nFROM nus.trip_events\nWHERE trip_id = '${trip_id}'\n  AND status = 'completed'\nORDER BY event_time DESC\nLIMIT 1\n",
+          "rawSql": "SELECT\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    fare_estimate,\n    fare_final\nFROM hailpath.trip_events\nWHERE trip_id = '${trip_id}'\n  AND status = 'completed'\nORDER BY event_time DESC\nLIMIT 1\n",
           "refId": "A",
           "pluginVersion": "4.21.2"
         }
@@ -209,7 +209,7 @@
     {
       "title": "Live ops",
       "type": "link",
-      "url": "/d/nus-live-ops",
+      "url": "/d/hailpath-live-ops",
       "keepTime": true
     },
     {
@@ -221,7 +221,7 @@
     {
       "title": "Trip",
       "type": "link",
-      "url": "/d/nus-trip",
+      "url": "/d/hailpath-trip",
       "keepTime": true
     },
     {
@@ -233,13 +233,13 @@
     {
       "title": "History",
       "type": "link",
-      "url": "/d/nus-history",
+      "url": "/d/hailpath-history",
       "keepTime": true
     },
     {
       "title": "Marketplace",
       "type": "link",
-      "url": "/d/nus-marketplace",
+      "url": "/d/hailpath-marketplace",
       "keepTime": true
     }
   ]

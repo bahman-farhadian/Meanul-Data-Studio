@@ -11,10 +11,10 @@
 # dashboards have.
 dashboard_title: 'hailpath - marketplace'
 description: 'Fulfilment, cancellations, the matching funnel, money and duration, read from the warehouse rollups and never from raw events.'
-uuid: '36a5bb3e-3e82-5074-852a-b981f4c11532'
+uuid: '0b70c581-80cf-503e-b471-7d1e82ff2357'
 version: '1.0.0'
 published: true
-slug: 'nus-marketplace'
+slug: 'hailpath-marketplace'
 css: ''
 certified_by: null
 certification_details: null

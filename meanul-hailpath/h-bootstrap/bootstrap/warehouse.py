@@ -78,24 +78,24 @@ def already_loaded() -> bool:
     dashboard. ClickHouse has no primary key to protect against that, so the
     check is done here.
     """
-    count = clickhouse.client().command("SELECT count() FROM nus.trip_events")
+    count = clickhouse.client().command("SELECT count() FROM hailpath.trip_events")
     return int(count) > 0
 
 
 def load_week(week) -> dict[str, int]:
     """Load everything the generator produced. Returns the counts."""
     return {
-        "trip_events": _load("nus.trip_events", week.trip_events, TRIP_EVENT_COLUMNS),
+        "trip_events": _load("hailpath.trip_events", week.trip_events, TRIP_EVENT_COLUMNS),
         "dispatch_offers": _load(
-            "nus.dispatch_offers", week.offer_events, DISPATCH_OFFER_COLUMNS
+            "hailpath.dispatch_offers", week.offer_events, DISPATCH_OFFER_COLUMNS
         ),
         "driver_positions": _load(
-            "nus.driver_positions", week.driver_positions, DRIVER_POSITION_COLUMNS
+            "hailpath.driver_positions", week.driver_positions, DRIVER_POSITION_COLUMNS
         ),
         "rider_positions": _load(
-            "nus.rider_positions", week.rider_positions, RIDER_POSITION_COLUMNS
+            "hailpath.rider_positions", week.rider_positions, RIDER_POSITION_COLUMNS
         ),
         "hotspot_history": _load(
-            "nus.hotspot_history", week.hotspots, HOTSPOT_COLUMNS
+            "hailpath.hotspot_history", week.hotspots, HOTSPOT_COLUMNS
         ),
     }
