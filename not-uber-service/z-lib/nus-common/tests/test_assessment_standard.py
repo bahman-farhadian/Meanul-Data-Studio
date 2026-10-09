@@ -535,6 +535,8 @@ def test_one_clickhouse_merge_tree():
     assert "PIECE_E  := ch-s1r1" in root
     assert "ch-secrets" not in root
     assert "ch-secrets-init" not in compose
+    assert not (NUS / "e-infra-clickhouse" / "config" / "keeper" / "keeper.xml").exists()
+    assert not (NUS / "e-infra-clickhouse" / "config" / "clickhouse" / "config.d" / "cluster.xml").exists()
 
 
 def test_one_postgres_and_no_patroni():
@@ -554,6 +556,7 @@ def test_one_postgres_and_no_patroni():
     root = (NUS / "Makefile").read_text()
     assert "PIECE_A  := pg-1" in root
     assert "etcd" not in root.lower()
+    assert not (NUS / "a-infra-postgres" / "etcd.env").exists()
     debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
     assert "CDC_PG_HOST" in debezium or "PG_HOST" in debezium
     connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text())
