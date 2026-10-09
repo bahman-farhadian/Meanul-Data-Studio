@@ -1,22 +1,20 @@
 # =============================================================================
 # not-uber-service — stack control
 # =============================================================================
-# Everything runs from this directory. `make` on its own prints the short help.
-# `make help-all` prints every target, including the ones that belong to one
-# piece.
+# Everything runs from this directory. `make` prints the commands you run.
+# `make help-all` prints the checks, the shells, and the step names inside
+# `make up` and `make prepare`.
 #
-# This file is the runbook made executable: the same order, the same one-shots
-# at the same points. What it adds is that the order cannot be got wrong by
-# accident — several steps only work if something else has happened first, and
-# `make up` puts them where they belong.
+# This file is the runbook made executable. Several steps only work once
+# something else has happened, and `make up` puts them in that order. Those
+# steps stay as targets so a failed run can resume at the step that failed.
+# They are not a second procedure.
 #
 # ONE MAKEFILE PER COMPONENT, included below, exactly like the root
 # docker-compose.yaml includes each component's own compose file. This file
 # keeps only what is genuinely stack-wide: setup, the ordered bring-up,
-# teardown, and diagnostics that cross more than one component. Everything
-# specific to one piece — its own verify-*, a shell into it, a failover demo —
-# lives in that piece's own Makefile and shows under its own heading in
-# `make help-all`.
+# teardown, and diagnostics that cross more than one component. A piece's
+# own check or shell lives in that piece's Makefile.
 #
 # Full explanation of each piece: README.md. Architecture: ../README.md
 # =============================================================================
@@ -155,11 +153,19 @@ help:
 	@printf "    $(C)make stop$(X)        stop, keep data\n"
 	@printf "    $(C)make down$(X)        remove containers, keep data\n"
 	@printf "    $(C)make destroy$(X)     remove containers and data volumes. Keeps the map\n\n"
-	@printf "  Every other target, including one piece at a time: $(C)make help-all$(X)\n\n"
+	@printf "  Checks, shells, and the step names inside make up: $(C)make help-all$(X)\n\n"
 
 help-all:
-	@printf "\n$(B)not-uber-service$(X) — every target\n"
-	@printf "  Day to day is $(C)make help$(X). This list is the whole catalog.\n"
+	@printf "\n$(B)not-uber-service$(X) — checks, shells, and step names\n"
+	@printf "  Day to day is $(C)make help$(X).\n\n"
+	@printf "  $(B)make up$(X) runs these. Type one only to resume a step that failed:\n"
+	@printf "    volume-perms  lb-config  certgen  ch-secrets  ksqldb-secrets\n"
+	@printf "    topics  schemas  ksql-ddl  ch-ddl  superset-init  bootstrap  cdc-register\n\n"
+	@printf "  $(B)make prepare$(X) runs these. Skip prepare when the map files are already on disk:\n"
+	@printf "    lion-fetch  tlc-zones-fetch  tlc-trips-fetch\n"
+	@printf "    lion-prepare  zone-demand-prepare  tiles-prepare\n\n"
+	@printf "  $(B)make volume-quotas$(X) is optional and once. It needs root and an XFS mount with pquota.\n"
+	@printf "  $(B)make up$(X) does not call it.\n"
 	@awk 'BEGIN {FS = ":.*##"} \
 		/^##@/ { printf "\n$(B)%s$(X)\n", substr($$0, 5) } \
 		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  $(C)%-16s$(X) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
@@ -575,11 +581,11 @@ reload: ## Rebuild-aware restart, keeps data:  make build && make reload SVC=dri
 	@docker inspect $(SVC) --format '  {{.Name}} now running image {{.Image}} started {{.State.StartedAt}}' 2>/dev/null || true
 
 # =============================================================================
-##@ One-shots (idempotent — safe to re-run at any time)
+# One-shots. make up calls these. They are not separate commands.
 # =============================================================================
 
 .PHONY: volume-perms
-volume-perms: ## Hand each data directory to the user that writes to it (BEFORE first start)
+volume-perms:
 	$(call say,Data directory ownership)
 	@$(COMPOSE) run --rm volume-perms
 
@@ -602,7 +608,7 @@ volume-perms: ## Hand each data directory to the user that writes to it (BEFORE 
 # hit, rather than solving the underlying growth. Re-check real usage
 # (xfs_quota -x -c 'report -p' <mount>) after a real run and adjust.
 .PHONY: volume-quotas
-volume-quotas: ## Cap disk usage per data directory with XFS project quotas (run ONCE, on the HOST)
+volume-quotas:
 	$(call say,Setting XFS project quotas on the data directories)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 	if [ -z "$$root" ] || [ ! -d "$$root" ]; then \
@@ -637,7 +643,7 @@ volume-quotas: ## Cap disk usage per data directory with XFS project quotas (run
 	printf "\n  Check any time with: $(C)sudo xfs_quota -x -c 'report -p' %s$(X)\n" "$$mount"
 
 .PHONY: lb-config
-lb-config: ## Render haproxy.cfg with REDIS_PASSWORD (BEFORE lb-a/lb-b first start)
+lb-config:
 	$(call say,Entry tier config)
 	@$(COMPOSE) run --rm haproxy-config-render
 

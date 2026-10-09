@@ -6,7 +6,7 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ f-infra-grafana
+##@ Grafana
 # =============================================================================
 
 .PHONY: grafana-health
@@ -98,6 +98,6 @@ verify-grafana: ## Every provisioned panel's query, run against the live warehou
 # cannot become a silent `pipefail` Error 1 (this Makefile uses bash -eu
 # -o pipefail).
 .PHONY: tiles-prepare
-tiles-prepare: ## Build nyc.mbtiles (Planetiler) for the Grafana map
+tiles-prepare:
 	$(call say,NYC OSM tiles)
 	@bash f-infra-grafana/tiles/prepare.sh "$(ENV_FILE)"

@@ -114,6 +114,45 @@ def test_named_make_targets_exist():
     assert missing == [], f"ASSESSMENT.md names make targets that do not exist: {missing}"
 
 
+def test_make_steps_exist_and_demos_are_gone():
+    """make up and make prepare call real targets. The old demo aliases do not."""
+    targets = _makefile_targets()
+    texts = []
+    root = (NUS / "Makefile").read_text()
+    texts.append(root)
+    for inc in re.finditer(r"^include\s+(\S+)", root, re.M):
+        path = NUS / inc.group(1)
+        if path.is_file():
+            texts.append(path.read_text())
+    called = set()
+    for text in texts:
+        called.update(
+            re.findall(r"\$\(MAKE\)[^\n]*--no-print-directory\s+([A-Za-z_][A-Za-z0-9_-]*)", text)
+        )
+    # Prerequisite lists: `cdc-register: pg-allow-cdc`
+    for text in texts:
+        for match in re.finditer(r"^[a-zA-Z0-9_-]+:\s+([a-zA-Z0-9_].*)$", text, re.M):
+            for name in match.group(1).split():
+                if name.startswith("#"):
+                    break
+                called.add(name)
+    missing = sorted(name for name in called if name not in targets and not name.startswith("."))
+    assert missing == [], f"a recipe calls a target that does not exist: {missing}"
+    gone = ["failover-pg", "failover-redis", "patronictl", "kafka-dirs", "superset-import"]
+    still = sorted(name for name in gone if name in targets)
+    assert still == [], f"removed make targets are still defined: {still}"
+    # The help-all resume list is the user-facing name of each step make up
+    # and make prepare call, except pull/build/preflight which have their own lines.
+    resume = [
+        "volume-perms", "lb-config", "certgen", "ch-secrets", "ksqldb-secrets",
+        "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",
+        "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
+        "lion-prepare", "zone-demand-prepare", "tiles-prepare", "volume-quotas",
+    ]
+    absent = [name for name in resume if name not in root or name not in targets]
+    assert absent == [], f"help or the Makefiles dropped a step that make up still needs: {absent}"
+
+
 def test_live_walk_and_tile_terms_are_in_the_sources():
     text = _standard()
     ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()

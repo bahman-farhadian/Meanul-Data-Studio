@@ -12,11 +12,11 @@
 # Nothing like that exists yet — add it here when it does.
 
 # =============================================================================
-##@ h-bootstrap
+##@ Data
 # =============================================================================
 
 .PHONY: bootstrap
-bootstrap: ## Run h-bootstrap and follow it (schema, people, a week of history)
+bootstrap:
 	$(call say,Bootstrap — schema, street graph restore, people, a week of history)
 	@$(MAKE) --no-print-directory pg-cpus-bootstrap
 	@if $(COMPOSE) run --rm bootstrap; then \
@@ -29,7 +29,7 @@ bootstrap: ## Run h-bootstrap and follow it (schema, people, a week of history)
 	fi
 
 .PHONY: lion-fetch
-lion-fetch: ## Download NYC's official LION street data on the HOST
+lion-fetch:
 	$(call say,Fetching the LION street map on the host)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	url=$$(grep -E '^LION_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
@@ -47,7 +47,7 @@ lion-fetch: ## Download NYC's official LION street data on the HOST
 	fi
 
 .PHONY: tlc-zones-fetch
-tlc-zones-fetch: ## Download NYC TLC's real taxi zones on the HOST
+tlc-zones-fetch:
 	$(call say,Fetching NYC TLC's real taxi zones on the host)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	url=$$(grep -E '^TLC_ZONES_URL=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
@@ -65,7 +65,7 @@ tlc-zones-fetch: ## Download NYC TLC's real taxi zones on the HOST
 	fi
 
 .PHONY: tlc-trips-fetch
-tlc-trips-fetch: ## Download one real month of TLC trip records on the HOST
+tlc-trips-fetch:
 	$(call say,Fetching TLC's real trip records on the host)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	month=$$(grep -E '^TLC_TRIP_DATA_MONTH=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
@@ -93,7 +93,7 @@ tlc-trips-fetch: ## Download one real month of TLC trip records on the HOST
 	fi
 
 .PHONY: lion-prepare
-lion-prepare: ## Build the routable graph from LION, once (the slow step, cached after)
+lion-prepare:
 	$(call say,Preparing the routable street graph)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	dir="$$root/nus-lion-data"; dump="$$dir/routable-graph.dump"; \
@@ -127,7 +127,7 @@ lion-prepare: ## Build the routable graph from LION, once (the slow step, cached
 	printf "  $(G)ok$(X)      handed to the bootstrap user; it will skip straight to restoring it\n"
 
 .PHONY: zone-demand-prepare
-zone-demand-prepare: ## Build real TLC-trip-record demand calibration, once (cached after)
+zone-demand-prepare:
 	$(call say,Preparing real demand calibration from TLC's own trip records)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	dir="$$root/nus-lion-data"; \

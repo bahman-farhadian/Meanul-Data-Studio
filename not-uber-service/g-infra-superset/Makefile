@@ -6,24 +6,19 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ g-infra-superset
+##@ Superset
 # =============================================================================
 
 .PHONY: superset-init
-superset-init: ## Superset's own tables, admin user, roles and ClickHouse connection
+superset-init:
 	$(call say,Superset initialisation)
 	@$(COMPOSE) run --rm superset-init
 
 .PHONY: superset-assets
-superset-assets: ## Re-write assets/ from render_assets.py, then validate it (local, no stack)
+superset-assets: ## Rewrite assets/ from the renderer and check the files. No running stack
 	$(call say,Superset assets)
 	@python3 g-infra-superset/render_assets.py
 	@python3 g-infra-superset/check-assets.py
-
-.PHONY: superset-import
-superset-import: ## Re-import the datasets, charts and dashboard onto a running Superset
-	$(call say,Superset asset import)
-	@$(COMPOSE) run --rm superset-init
 
 .PHONY: superset-health
 superset-health: ## Superset answers on its health endpoint

@@ -6,11 +6,11 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ d-infra-debezium
+##@ Debezium
 # =============================================================================
 
 .PHONY: cdc-register
-cdc-register: pg-allow-cdc ## Register the Debezium connector (only AFTER bootstrap made the tables)
+cdc-register: pg-allow-cdc
 	$(call say,Debezium connector)
 	@$(COMPOSE) run --rm connector-register
 

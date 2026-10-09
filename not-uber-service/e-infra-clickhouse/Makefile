@@ -6,16 +6,16 @@
 # is and how to verify it: README.md.
 
 # =============================================================================
-##@ e-infra-clickhouse
+##@ ClickHouse
 # =============================================================================
 
 .PHONY: ch-secrets
-ch-secrets: ## Write the ClickHouse inter-node login (BEFORE the nodes start)
+ch-secrets:
 	$(call say,ClickHouse cluster credentials)
 	@$(COMPOSE) run --rm ch-secrets-init
 
 .PHONY: ch-ddl
-ch-ddl: ## Create the ClickHouse tables (after the four nodes are healthy)
+ch-ddl:
 	$(call say,ClickHouse tables)
 	@$(COMPOSE) run --rm ch-ddl-init
 

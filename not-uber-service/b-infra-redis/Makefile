@@ -6,7 +6,7 @@
 # to verify it: README.md.
 
 # =============================================================================
-##@ b-infra-redis
+##@ Redis
 # =============================================================================
 
 .PHONY: verify-redis
@@ -23,7 +23,4 @@ verify-redis: ## Node roles, what Sentinel believes, and whether it could fail o
 redis-cli: ## A redis-cli shell on the current primary
 	@$(COMPOSE) exec redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning
 
-.PHONY: failover-redis
-failover-redis: ## Demo: ask Sentinel to promote a Redis replica
-	@$(COMPOSE) exec sentinel-1 redis-cli -p 26379 sentinel failover nus-cache
-	@printf "\n  Watch it land: make verify-redis\n"
+

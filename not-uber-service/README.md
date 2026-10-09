@@ -267,14 +267,6 @@ A shell into any of the data stores, through the proxy where there is one:
 ```bash
 make psql          # the current leader          make redis-cli
 make psql-read     # the replica pool            make ch-client
-make patronictl ARGS=list
-```
-
-Failover demos:
-
-```bash
-make failover-pg      # hand the PostgreSQL leadership to another node
-make failover-redis   # ask Sentinel to promote a replica
 ```
 
 ## Bringing one piece up at a time

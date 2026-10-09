@@ -6,21 +6,16 @@
 # to verify it: README.md.
 
 # =============================================================================
-##@ c-infra-kafka
+##@ Kafka
 # =============================================================================
 
-.PHONY: kafka-dirs
-kafka-dirs: ## Hand the Kafka volumes to the user inside the image (covered by volume-perms)
-	$(call say,Kafka data directory ownership)
-	@$(COMPOSE) run --rm kafka-dirs
-
 .PHONY: ksqldb-secrets
-ksqldb-secrets: ## Write ksqlDB's Basic-auth credentials (BEFORE ksqldb-server's first start)
+ksqldb-secrets:
 	$(call say,ksqlDB credentials)
 	@$(COMPOSE) run --rm ksqldb-secrets-init
 
 .PHONY: topics
-topics: ## Create the Kafka topics from topics.tsv (after the brokers are healthy)
+topics:
 	$(call say,Kafka topics)
 	@$(COMPOSE) run --rm kafka-topics-init
 
@@ -35,12 +30,12 @@ verify-kafka: ## Brokers, the controller quorum, and every topic's replication
 	@printf "\n  Every partition should list three replicas and three in-sync.\n"
 
 .PHONY: schemas
-schemas: ## Register every .avsc as <topic>-value (before any producer runs)
+schemas:
 	$(call say,Avro schemas)
 	@$(COMPOSE) run --rm schema-init
 
 .PHONY: ksql-ddl
-ksql-ddl: ## Register every ksqlDB stream and table from ksql/*.sql (after the topics exist)
+ksql-ddl:
 	$(call say,ksqlDB streams and tables)
 	@$(COMPOSE) run --rm ksql-init
 

@@ -6,11 +6,11 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ a-infra-postgres
+##@ Postgres
 # =============================================================================
 
 .PHONY: certgen
-certgen: ## Generate the etcd TLS material (skips itself once the certs exist)
+certgen:
 	$(call say,etcd TLS certificates)
 	@$(COMPOSE) run --rm etcd-certgen
 
@@ -25,12 +25,12 @@ etcd-existing: ## Post-bootstrap: flip etcd to 'existing' (LOCAL STATE — never
 	@printf "  on a live cluster 'new' would let a member with a lost volume start its own.\n"
 
 .PHONY: etcd-new
-etcd-new: ## Put etcd back to 'new' (only before a fresh bootstrap from empty volumes)
+etcd-new:
 	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=existing$$/ETCD_INITIAL_CLUSTER_STATE=new/' $(ETCD_ENV)
 	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
 
 .PHONY: pg-cpus-bootstrap
-pg-cpus-bootstrap: ## Raise PG_CPUS to PG_CPUS_BOOTSTRAP for the routing burst (recreates pg-1/2/3)
+pg-cpus-bootstrap:
 	$(call say,Raising PG_CPUS for bootstrap's routing burst)
 	@sed -i "s/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_BOOTSTRAP,10)/" $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
@@ -39,7 +39,7 @@ pg-cpus-bootstrap: ## Raise PG_CPUS to PG_CPUS_BOOTSTRAP for the routing burst (
 	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: pg-cpus-normal
-pg-cpus-normal: ## Put PG_CPUS back to its steady-state value (recreates pg-1/2/3)
+pg-cpus-normal:
 	$(call say,Returning PG_CPUS to its steady-state value)
 	@sed -i 's/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_STEADY,10)/' $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
@@ -48,7 +48,7 @@ pg-cpus-normal: ## Put PG_CPUS back to its steady-state value (recreates pg-1/2/
 	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: _wait-haproxy-pg-settled
-_wait-haproxy-pg-settled: ## Wait past the post-recreation flap, not just pg-1/2/3's own healthcheck
+_wait-haproxy-pg-settled:
 	@printf "  waiting for HAProxy's own health checks to settle: recreating\n"
 	@printf "  pg-1/2/3 together causes a burst of Docker DNS churn that can flap a\n"
 	@printf "  backend down for a moment, and haproxy.cfg.template deliberately kills\n"
@@ -84,7 +84,7 @@ _wait-haproxy-pg-settled: ## Wait past the post-recreation flap, not just pg-1/2
 	exit 1
 
 .PHONY: pg-allow-cdc
-pg-allow-cdc: ## Allow Debezium's postgres user a logical replication connection
+pg-allow-cdc:
 	$(call say,Patroni pg_hba: replication for postgres)
 	@$(COMPOSE) exec -T pg-1 curl -sfS \
 		-u "$(call getenv,PATRONI_REST_USER,patroni):$(call getenv,PATRONI_REST_PASSWORD)" \
@@ -109,15 +109,8 @@ verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 	@printf "  so pg_write shows 1 UP and pg_read shows 2 UP. A node down in BOTH is the\n"
 	@printf "  only real failure signal.\n"
 
-.PHONY: psql psql-read patronictl
+.PHONY: psql psql-read
 psql: ## A psql shell on the current leader, through the proxy
 	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
 psql-read: ## A psql shell on the replica pool, through the proxy
 	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
-patronictl: ## patronictl, for switchover and friends:  make patronictl ARGS=list
-	@$(COMPOSE) exec pg-1 patronictl -c /etc/patroni/patroni.yml $(or $(ARGS),list)
-
-.PHONY: failover-pg
-failover-pg: ## Demo: hand the PostgreSQL leadership to another node
-	@$(COMPOSE) exec pg-1 patronictl -c /etc/patroni/patroni.yml switchover --force
-	@printf "\n  HAProxy follows the promotion on its own. Watch: make verify-pg\n"
