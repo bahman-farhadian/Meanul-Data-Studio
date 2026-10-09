@@ -130,7 +130,7 @@ def _direct(db: int) -> Redis:
             socket_timeout=2.0,
         )
     return Redis(
-        host=config.optional("REDIS_HOST", "redis-1"),
+        host=config.optional("REDIS_HOST", "nus-redis"),
         port=int(config.optional("REDIS_PORT", "6379")),
         password=config.required("REDIS_PASSWORD"),
         db=db,

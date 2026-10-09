@@ -19,10 +19,10 @@ verify-cdc:
 	$(call say,Debezium)
 	@$(COMPOSE) exec -T debezium-connect curl -sS http://localhost:8083/connectors/nus-pg/status 2>/dev/null || true
 	@echo
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server nus-kafka-1:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
+	@$(COMPOSE) exec -T nus-kafka /opt/kafka/bin/kafka-topics.sh \
+		--bootstrap-server nus-kafka:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
 	@echo
-	@$(COMPOSE) exec -T pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)" -c \
+	@$(COMPOSE) exec -T nus-postgres psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)" -c \
 		"SELECT slot_name, plugin, active, wal_status FROM pg_replication_slots;" 2>/dev/null || true
 	@printf "\n  The connector should be RUNNING and the slot active with wal_status 'reserved'.\n"
 	@printf "  A slot that exists but is inactive makes PostgreSQL keep WAL for ever.\n"

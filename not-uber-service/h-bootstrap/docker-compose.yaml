@@ -52,15 +52,15 @@ services:
     memswap_limit: ${BOOTSTRAP_MEM:-24g}
     # Nothing may be prepared before the things being prepared are up.
     depends_on:
-      pg-1:
+      nus-postgres:
         condition: service_healthy
-      redis-1:
+      nus-redis:
         condition: service_healthy
-      kafka-1:
+      nus-kafka:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
-      ch-s1r1:
+      nus-clickhouse:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
@@ -79,7 +79,7 @@ services:
       PG_POOL_SIZE: ${PG_POOL_SIZE:-24}
 
       # Redis.
-      REDIS_HOST: ${REDIS_HOST:-redis-1}
+      REDIS_HOST: ${REDIS_HOST:-nus-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       # ClickHouse, through the entry tier.

@@ -16,7 +16,7 @@
 name: j-service-driver
 
 services:
-  driver-service:
+  nus-driver:
     build:
       # Builds install packages, which needs egress from the build container.
       # Defaults to the host's own network: a tunnel between here and this
@@ -30,30 +30,30 @@ services:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
     image: nus/driver-service:${NUS_VERSION:-0.1.0}
-    container_name: driver-service
+    container_name: nus-driver
     restart: unless-stopped
     cpus: ${DRIVER_SERVICE_CPUS:-2}
     mem_limit: ${DRIVER_SERVICE_MEM:-2048m}
     memswap_limit: ${DRIVER_SERVICE_MEM:-2048m}
     depends_on:
-      kafka-1:
+      nus-kafka:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
-      redis-1:
+      nus-redis:
         condition: service_healthy
-      pg-1:
+      nus-postgres:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
       SIM_TIMEZONE: ${SIM_TIMEZONE:-America/New_York}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
-      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092}
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-nus-kafka:9092}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
       KAFKA_GROUP_ID: ${DRIVER_GROUP_ID:-driver-service}
 
-      REDIS_HOST: ${REDIS_HOST:-redis-1}
+      REDIS_HOST: ${REDIS_HOST:-nus-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       PG_HOST: ${PG_HOST:-lb-a}

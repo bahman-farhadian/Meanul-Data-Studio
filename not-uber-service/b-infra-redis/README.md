@@ -5,11 +5,11 @@ ClickHouse sink look up profiles, active trips, hotspot scores, and the
 driver geo index here. They do not query PostgreSQL for those lookups.
 `cache-updater` applies Debezium's CDC stream.
 
-One process, `redis-1` / `nus-redis-1`. Clients use `REDIS_HOST`
-(default `redis-1`, `nus-redis-1` in the root example).
+One process, `nus-redis` / `nus-redis`. Clients use `REDIS_HOST`
+(default `nus-redis`, `nus-redis` in the root example).
 
 HAProxy publishes that process on **6379** and **6380**. Both ports are
-`nus-redis-1`. `make verify-redis`
+`nus-redis`. `make verify-redis`
 is a PING.
 
 Logical databases are fixed in
@@ -43,7 +43,7 @@ safe to evict. Persistence is AOF only (`save ""`).
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `redis-1`. Included by the root compose. |
+| `docker-compose.yaml` | `nus-redis`. Included by the root compose. |
 | `redis/redis.conf` | Template: network, memory, persistence. |
 | `redis/entrypoint.sh` | Copies the template once and appends the password and `maxmemory`. |
 | `.env.example` | Image pin, password, `maxmemory`. |
@@ -56,7 +56,7 @@ safe to evict. Persistence is AOF only (`save ""`).
 | `REDIS_IMAGE` | `redis:8.10.1` | Pinned image. |
 | `REDIS_PASSWORD` | required | `requirepass`. |
 | `REDIS_MAXMEMORY` | `2560mb` | Dataset ceiling, below the container limit. |
-| `REDIS_HOST` | `redis-1` | Address clients open. The root example sets `nus-redis-1`. |
+| `REDIS_HOST` | `nus-redis` | Address clients open. The root example sets `nus-redis`. |
 
 ## Verify
 
@@ -70,7 +70,7 @@ A `PONG` is the check. From this directory alone:
 docker network create nus-backbone
 cp .env.example .env
 docker compose up -d
-docker compose exec redis-1 redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping
+docker compose exec nus-redis redis-cli -a "$REDIS_PASSWORD" --no-auth-warning ping
 ```
 
 ## Teardown

@@ -30,6 +30,6 @@ urls:
 	printf "  is handed the address set by $(C)KAFKA_ADVERTISED_HOST_A$(X)/$(C)_B$(X)\n"; \
 	printf "  in $(ENV_FILE), not $(B)<host>$(X).\n\n"; \
 	printf "  %-10s %-24s %s\n" "" "via address A" "via address B"; \
-	printf "  %-10s %-24s %s\n" "kafka-1" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9094" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9097"; \
+	printf "  %-10s %-24s %s\n" "nus-kafka" "$(call getenv,KAFKA_ADVERTISED_HOST_A):9094" "$(call getenv,KAFKA_ADVERTISED_HOST_B):9097"; \
 	printf "\n"
 

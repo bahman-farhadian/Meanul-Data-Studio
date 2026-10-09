@@ -191,7 +191,7 @@ happened, which is the whole reason this is a Makefile and not one
 | 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
 | 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
 | 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
-| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `nus-pg-1` through the write port. |
+| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `nus-postgres` through the write port. |
 | 11 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
@@ -221,8 +221,8 @@ expects one replica in sync. `verify-ch` lists MergeTree engines.
 Two results that look wrong and are not:
 
 - **A down server on an HAProxy backend means that one process failed the
-  check.** Ports 5432 and 5433 are both `nus-pg-1`. Ports 6379 and 6380
-  are both `nus-redis-1`.
+  check.** Ports 5432 and 5433 are both `nus-postgres`. Ports 6379 and 6380
+  are both `nus-redis`.
 - **Empty dashboard panels before bootstrap finishes are fine.** An error is
   not.
 
@@ -250,7 +250,7 @@ because it runs one pgRouting query per trip, so fewer requests is the fix.
 A shell into any of the data stores, through the proxy where there is one:
 
 ```bash
-make psql          # port 5432, nus-pg-1         make redis-cli
+make psql          # port 5432, nus-postgres         make redis-cli
 make psql-read     # port 5433, same process     make ch-client
 ```
 
@@ -293,14 +293,14 @@ $EDITOR .env        # Section 1 — all 8 passwords need real values, even
                      # before Docker will start anything at all
 
 # build/pull ONLY piece a's images — not `make prepare`, which does all 14
-docker compose build pg-1
+docker compose build nus-postgres
 docker compose pull lb-a
 
 # the one-shots piece a needs before its first start
 docker compose run --rm volume-perms          # whole tree, harmless to run unscoped
 docker compose run --rm haproxy-config-render # lb-a's config — piece a's entry tier needs this too
 
-# start it — lb-a, pg-1, nothing else
+# start it — lb-a, nus-postgres, nothing else
 make up-piece PIECE=a
 
 make ps
@@ -310,7 +310,7 @@ make verify-pg
 
 Connect a SQL client through `lb-a`
 (see [Connecting](a-infra-postgres/README.md#connecting)):
-host = this server, port `5432` or `5433` (both are `nus-pg-1`), database
+host = this server, port `5432` or `5433` (both are `nus-postgres`), database
 `nus`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. The `nus`
 schema and its tables arrive with `h-bootstrap`, several pieces later.
 

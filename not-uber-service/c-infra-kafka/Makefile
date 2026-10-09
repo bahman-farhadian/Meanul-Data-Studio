@@ -22,11 +22,11 @@ topics:
 .PHONY: verify-kafka
 verify-kafka:
 	$(call say,Kafka)
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh \
-		--bootstrap-server nus-kafka-1:9092 2>/dev/null | grep -E '^nus-kafka-[0-9]' || true
+	@$(COMPOSE) exec -T nus-kafka /opt/kafka/bin/kafka-broker-api-versions.sh \
+		--bootstrap-server nus-kafka:9092 2>/dev/null | grep -E '^nus-kafka-[0-9]' || true
 	@echo
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server nus-kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
+	@$(COMPOSE) exec -T nus-kafka /opt/kafka/bin/kafka-topics.sh \
+		--bootstrap-server nus-kafka:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
 	@printf "\n  Every partition has one replica. That replica is in sync.\n"
 
 .PHONY: schemas

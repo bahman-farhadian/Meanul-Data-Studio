@@ -50,12 +50,12 @@ listen stats
 listen pg_write
     bind :5432
     option tcp-check
-    server nus-pg-1 nus-pg-1:5432 check
+    server nus-postgres nus-postgres:5432 check
 
 listen pg_read
     bind :5433
     option tcp-check
-    server nus-pg-1 nus-pg-1:5432 check
+    server nus-postgres nus-postgres:5432 check
 
 # Redis (b-infra-redis) --------------------------------------------------------
 # One Redis. Both host ports are that same node, so an existing read-port
@@ -72,7 +72,7 @@ listen redis_write
     tcp-check send QUIT\r\n
     tcp-check expect string +OK
     default-server on-marked-down shutdown-sessions
-    server nus-redis-1 nus-redis-1:6379 check
+    server nus-redis nus-redis:6379 check
 
 listen redis_read
     bind :6380
@@ -84,20 +84,20 @@ listen redis_read
     tcp-check send QUIT\r\n
     tcp-check expect string +OK
     default-server on-marked-down shutdown-sessions
-    server nus-redis-1 nus-redis-1:6379 check
+    server nus-redis nus-redis:6379 check
 
 # Kafka (c-infra-kafka) --------------------------------------------------------
 # One broker. A client is told the address baked into advertised.listeners,
 # so HAProxy only publishes that address. Two ports because this host can
 # have two network paths, and a broker advertises one address per listener.
 
-listen kafka-1-a
+listen kafka-a
     bind :9094
-    server nus-kafka-1 nus-kafka-1:9094 check
+    server nus-kafka nus-kafka:9094 check
 
-listen kafka-1-b
+listen kafka-b
     bind :9097
-    server nus-kafka-1 nus-kafka-1:9095 check
+    server nus-kafka nus-kafka:9095 check
 
 # ksqlDB reads the one broker as SQL. DBeaver's Kafka support speaks this
 # REST API, not the raw broker protocol. The healthcheck must send Basic
@@ -136,11 +136,11 @@ listen ch_http
     option httpchk
     http-check send meth GET uri /ping
     http-check expect status 200
-    server nus-ch-s1r1 nus-ch-s1r1:8123 check
+    server nus-clickhouse nus-clickhouse:8123 check
 
 listen ch_native
     bind :9000
-    server nus-ch-s1r1 nus-ch-s1r1:9000 check
+    server nus-clickhouse nus-clickhouse:9000 check
 
 # Grafana (f-infra-grafana) + self-hosted OSM tiles ---------------------------
 # Same origin as Grafana so the browser never talks to MapTiler. HTTP mode

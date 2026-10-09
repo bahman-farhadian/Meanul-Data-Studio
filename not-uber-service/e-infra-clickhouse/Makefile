@@ -17,10 +17,10 @@ ch-ddl:
 .PHONY: verify-ch
 verify-ch:
 	$(call say,ClickHouse)
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
+	@$(COMPOSE) exec -T nus-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
 		--query "SELECT name, engine FROM system.tables WHERE database='nus' AND engine LIKE '%MergeTree' ORDER BY name FORMAT PrettyCompact" 2>/dev/null || true
 	@printf "\n  One ClickHouse. The engines are MergeTree.\n"
 
 .PHONY: ch-client
 ch-client:
-	@$(COMPOSE) exec ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" --database nus
+	@$(COMPOSE) exec nus-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" --database nus

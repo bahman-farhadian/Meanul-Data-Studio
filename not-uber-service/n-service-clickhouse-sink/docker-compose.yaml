@@ -14,7 +14,7 @@
 name: n-service-clickhouse-sink
 
 services:
-  clickhouse-sink:
+  nus-clickhouse-sink:
     build:
       # Builds install packages, which needs egress from the build container.
       # Defaults to the host's own network: a tunnel between here and this
@@ -28,34 +28,30 @@ services:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
     image: nus/clickhouse-sink:${NUS_VERSION:-0.1.0}
-    # No fixed container_name: KAFKA_GROUP_ID is already shared, not
-    # per-instance, so this can run as more than one replica
-    # (docker compose up --scale clickhouse-sink=N) and Kafka's own
-    # partition assignment splits driver_location/rider_location/etc.
-    # across them - a fixed name would make that impossible. See TODO.md.
+    container_name: nus-clickhouse-sink
     restart: unless-stopped
     cpus: ${CLICKHOUSE_SINK_CPUS:-2.5}
     mem_limit: ${CLICKHOUSE_SINK_MEM:-2048m}
     memswap_limit: ${CLICKHOUSE_SINK_MEM:-2048m}
     depends_on:
-      kafka-1:
+      nus-kafka:
         condition: service_healthy
       schema-registry:
         condition: service_healthy
-      redis-1:
+      nus-redis:
         condition: service_healthy
-      ch-s1r1:
+      nus-clickhouse:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
       SIM_TIMEZONE: ${SIM_TIMEZONE:-America/New_York}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
-      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-kafka-1:9092}
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-nus-kafka:9092}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
       KAFKA_GROUP_ID: ${SINK_GROUP_ID:-clickhouse-sink}
 
-      REDIS_HOST: ${REDIS_HOST:-redis-1}
+      REDIS_HOST: ${REDIS_HOST:-nus-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       # ClickHouse through the one proxy.

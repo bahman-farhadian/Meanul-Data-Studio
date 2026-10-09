@@ -32,7 +32,7 @@ log = get_logger(__name__)
 
 
 def _bootstrap() -> str:
-    return config.optional("KAFKA_BOOTSTRAP", "kafka-1:9092")
+    return config.optional("KAFKA_BOOTSTRAP", "nus-kafka:9092")
 
 
 def _registry() -> SchemaRegistryClient:

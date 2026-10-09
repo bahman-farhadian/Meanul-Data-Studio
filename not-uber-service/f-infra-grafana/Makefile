@@ -78,7 +78,7 @@ grafana-check:
 verify-grafana:
 	$(call say,Grafana panels)
 	@out=$$(python3 f-infra-grafana/panel-probe.py \
-		| $(COMPOSE) exec -T ch-s1r1 clickhouse-client \
+		| $(COMPOSE) exec -T nus-clickhouse clickhouse-client \
 			--user "$(call getenv,CH_USER)" \
 			--password "$(call getenv,CH_PASSWORD)" \
 			--database nus --multiquery 2>&1 || true); \

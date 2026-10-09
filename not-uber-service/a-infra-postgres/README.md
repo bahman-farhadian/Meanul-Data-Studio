@@ -1,7 +1,7 @@
 # a-infra-postgres — one PostgreSQL
 
 The system of truth for operational state and the NYC road network.
-One process, `pg-1` / `nus-pg-1`. HAProxy publishes it on stable host
+One process, `nus-postgres` / `nus-postgres`. HAProxy publishes it on stable host
 ports. Debezium tails this same database.
 
 The image is `postgres:18.6` with PostGIS and pgRouting installed.
@@ -12,7 +12,7 @@ Debezium can open a `pgoutput` slot. Timestamps are UTC.
 process. A 9 GB cap was not enough: the process was killed near 8.3 GB.
 
 Clients use `PG_HOST=nus-lb-a`. Port **5432** and port **5433** are both
-`nus-pg-1`. Debezium uses 5432.
+`nus-postgres`. Debezium uses 5432.
 
 `pg_hba.conf` allows local sockets, scram-sha-256 for network logins,
 and a replication line for the `postgres` user. A replication connection
@@ -22,7 +22,7 @@ does not match `all`, and the logical slot needs that line.
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `pg-1`. Included by the root compose. |
+| `docker-compose.yaml` | `nus-postgres`. Included by the root compose. |
 | `pg_hba.conf` | Local trust, network scram, replication for `postgres`. Mounted into the container. |
 | `.env.example` | Image pin, database name, superuser password. |
 
@@ -48,7 +48,7 @@ From `not-uber-service/`:
 make verify-pg
 ```
 
-That runs `pg_isready` on `nus-pg-1`.
+That runs `pg_isready` on `nus-postgres`.
 
 ## Connecting
 
@@ -68,10 +68,10 @@ make psql-read
 ```
 
 `make psql` uses port 5432. `make psql-read` uses port 5433. Both land
-on `nus-pg-1`.
+on `nus-postgres`.
 
 HAProxy stats: <http://localhost:8404/stats>. A down server on `pg_write`
-or `pg_read` means `nus-pg-1` failed that check.
+or `pg_read` means `nus-postgres` failed that check.
 
 For this directory alone, with no proxy:
 
@@ -79,7 +79,7 @@ For this directory alone, with no proxy:
 docker network create nus-backbone
 cp .env.example .env
 docker compose up -d --build
-docker compose exec pg-1 psql -U postgres -c "select version();"
+docker compose exec nus-postgres psql -U postgres -c "select version();"
 ```
 
 ## Teardown

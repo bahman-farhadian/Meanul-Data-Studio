@@ -68,7 +68,7 @@ deletes rows, it does not announce anything about them.
 ```bash
 # how many trips are old enough to prune right now, and how many never will
 # be until they finish
-docker compose exec pg-1 psql -U postgres -d nus -c \
+docker compose exec nus-postgres psql -U postgres -d nus -c \
   "SELECT
      count(*) FILTER (WHERE ended_at IS NOT NULL AND ended_at < now() - interval '24 hours') AS prunable,
      count(*) FILTER (WHERE ended_at IS NULL) AS still_active,

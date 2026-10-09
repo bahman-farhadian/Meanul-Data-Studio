@@ -14,8 +14,8 @@ pg-cpus-bootstrap:
 	$(call say,Raising PG_CPUS for bootstrap's routing burst)
 	@sed -i "s/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_BOOTSTRAP,10)/" $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1
-	$(call ok,pg-1 recreated with the higher ceiling)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) nus-postgres
+	$(call ok,nus-postgres recreated with the higher ceiling)
 	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: pg-cpus-normal
@@ -23,13 +23,13 @@ pg-cpus-normal:
 	$(call say,Returning PG_CPUS to its steady-state value)
 	@sed -i 's/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_STEADY,10)/' $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1
-	$(call ok,pg-1 recreated at the steady-state ceiling)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) nus-postgres
+	$(call ok,nus-postgres recreated at the steady-state ceiling)
 	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: _wait-haproxy-pg-settled
 _wait-haproxy-pg-settled:
-	@printf "  waiting for HAProxy's health checks to settle after pg-1 is recreated\n"
+	@printf "  waiting for HAProxy's health checks to settle after nus-postgres is recreated\n"
 # The stats page is read through nus-backbone, not a host address. A host
 # loopback read fails when localhost is 127.0.0.1 and route_localnet is 0.
 	@stable=0; write_up=0; read_up=0; \
@@ -55,7 +55,7 @@ _wait-haproxy-pg-settled:
 .PHONY: pg-allow-cdc
 pg-allow-cdc:
 	$(call say,PostgreSQL pg_hba: replication for Debezium)
-	@row=$$($(COMPOSE) exec -T pg-1 psql -U postgres -d postgres -tA -c \
+	@row=$$($(COMPOSE) exec -T nus-postgres psql -U postgres -d postgres -tA -c \
 		"SELECT count(*) FROM pg_hba_file_rules WHERE 'replication' = ANY(database) AND 'postgres' = ANY(user_name)"); \
 	if [ "$$row" = "0" ] || [ -z "$$row" ]; then \
 		printf "  $(R)FAIL$(X)    pg_hba has no replication line for postgres\n"; \
@@ -66,11 +66,11 @@ pg-allow-cdc:
 .PHONY: verify-pg
 verify-pg:
 	$(call say,PostgreSQL)
-	@$(COMPOSE) exec -T pg-1 pg_isready -U postgres -d "$(call getenv,PG_DATABASE,nus)"
+	@$(COMPOSE) exec -T nus-postgres pg_isready -U postgres -d "$(call getenv,PG_DATABASE,nus)"
 	@printf "\n  One PostgreSQL. Debezium reads this same database.\n"
 
 .PHONY: psql psql-read
 psql:
-	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
+	@$(COMPOSE) exec nus-postgres psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
 psql-read:
-	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
+	@$(COMPOSE) exec nus-postgres psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"

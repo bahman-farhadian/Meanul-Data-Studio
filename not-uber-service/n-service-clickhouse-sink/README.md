@@ -87,7 +87,7 @@ here.
 
 ```bash
 # rows arriving in the last five minutes
-docker compose exec ch-s1r1 clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT 'positions' AS what, count() FROM nus.driver_positions
              WHERE event_time > now() - INTERVAL 5 MINUTE
            UNION ALL
@@ -95,15 +95,15 @@ docker compose exec ch-s1r1 clickhouse-client --user nus --password "$CH_PASSWOR
              WHERE event_time > now() - INTERVAL 5 MINUTE"
 
 # the enrichment actually happened
-docker compose exec ch-s1r1 clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT status, count(), avg(duration_delta_s), avg(hotspot_score)
              FROM nus.trip_events
             WHERE event_time > now() - INTERVAL 1 HOUR
             GROUP BY status"
 
 # is it keeping up?
-docker compose exec kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka-1:9092 --describe --group clickhouse-sink
+docker compose exec nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server nus-kafka:9092 --describe --group clickhouse-sink
 ```
 
 Healthy looks like: row counts rising steadily, `duration_delta_s` and

@@ -1,7 +1,7 @@
 .PHONY: verify-quality
 verify-quality:
 	$(call say,Data-quality bars)
-	@out=$$($(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+	@out=$$($(COMPOSE) exec -T nus-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/quality.sql); \
 	printf '%s\n' "$$out"; \
@@ -45,7 +45,7 @@ capacity:
 	scale=$$(awk -v a="$$full" -v b="$$now" 'BEGIN{printf "%.4f", (b>0? a/b : 1)}'); \
 	printf "  full-scale SEED_DRIVERS %s / this run %s = scale x%s, quota %sGB/node\n\n" \
 		"$$full" "$$now" "$$scale" "$$quota"; \
-	$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+	$(COMPOSE) exec -T nus-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
 		--param_scale="$$scale" --param_quota_gb="$$quota" \
 		--output-format PrettyCompactMonoBlock < z-config/capacity.sql
@@ -53,13 +53,13 @@ capacity:
 .PHONY: profile
 profile:
 	$(call say,What the warehouse actually holds)
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
+	@$(COMPOSE) exec -T nus-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/profile.sql
 	$(call say,Kafka — how many messages each topic actually holds)
 	@printf "  %-28s %10s %10s\n" TOPIC PARTITIONS MESSAGES
-	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-get-offsets.sh \
-		--bootstrap-server nus-kafka-1:9092 2>/dev/null \
+	@$(COMPOSE) exec -T nus-kafka /opt/kafka/bin/kafka-get-offsets.sh \
+		--bootstrap-server nus-kafka:9092 2>/dev/null \
 		| awk -F: '$$1 !~ /^(__|_schemas|connect_)/ {parts[$$1]++; total[$$1]+=$$3} \
 		           END{for (t in total) printf "  %-28s %10d %10d\n", t, parts[t], total[t]}' \
 		| sort || true
@@ -67,23 +67,23 @@ profile:
 	@printf "  pipeline shows itself — every consumer downstream of it will read 0 lag\n"
 	@printf "  while doing nothing at all.\n\n"
 	@for g in $(GROUPS); do \
-		$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-			--bootstrap-server nus-kafka-1:9092 --describe --group "$$g" 2>/dev/null \
+		$(COMPOSE) exec -T nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+			--bootstrap-server nus-kafka:9092 --describe --group "$$g" 2>/dev/null \
 			| awk -v g="$$g" 'NR>1 && $$6 != "-" {lag+=$$6; n++} END{if(n) printf "  %-24s partitions=%d total_lag=%d\n", g, n, lag}' || true; \
 	done
 	$(call say,Redis — what the services put in the cache)
 	@printf "  %-12s %s\n" "db" "keys"
 	@i=0; for name in system driver passenger trip demand; do \
-		n=$$($(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
+		n=$$($(COMPOSE) exec -T nus-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
 			-n $$i DBSIZE 2>/dev/null | tr -d '\r'); \
 		printf "  %-12s %s\n" "$$i $$name" "$$n"; \
 		i=$$((i+1)); \
 	done
-	@$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
+	@$(COMPOSE) exec -T nus-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \
 		--scan --count 1000 2>/dev/null \
 		| sed -E 's/[0-9a-f-]{8,}.*//; s/[0-9]+$$//' | sort | uniq -c | sort -rn | head -20 \
 		| awk '{printf "  %8s  %s*\n", $$1, $$2}' || true
-	@printf "  bootstrap flag: %s\n" "$$($(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning get system:bootstrap:done 2>/dev/null | tr -d '\r')"
+	@printf "  bootstrap flag: %s\n" "$$($(COMPOSE) exec -T nus-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning get system:bootstrap:done 2>/dev/null | tr -d '\r')"
 	@printf "  SCAN above is db 0 only. driver:* lives in db 1; 0 keys there means\n"
 	@printf "  cache-updater has not applied cdc.drivers and the fleet will not start.\n"
 

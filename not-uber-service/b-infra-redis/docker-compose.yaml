@@ -1,4 +1,4 @@
-# b-infra-redis — one Redis. Clients use nus-redis-1.
+# b-infra-redis — one Redis. Clients use nus-redis.
 # HAProxy publishes that one address on the host ports.
 #
 # Standalone test:
@@ -45,13 +45,13 @@ x-redis-entrypoint: &redis-entrypoint ./redis/entrypoint.sh:/entrypoint.sh:ro
 x-redis-template: &redis-template ./redis/redis.conf:/templates/redis.conf:ro
 
 services:
-  redis-1:
+  nus-redis:
     <<: *redis-node
-    container_name: nus-redis-1
-    hostname: nus-redis-1
+    container_name: nus-redis
+    hostname: nus-redis
     environment:
       <<: *redis-env
-      REDIS_NODE: nus-redis-1
+      REDIS_NODE: nus-redis
     volumes:
       - *redis-entrypoint
       - *redis-template

@@ -5,11 +5,11 @@ wait-live:
 	@printf "  fleet: it waits for cache-updater, builds the road point pools, reads\n"
 	@printf "  the roster, then computes one pgRouting path per online driver.\n\n"
 	@deadline=$$(( $$(date +%s) + $(WAIT_LIVE_TIMEOUT) )); \
-	while ! docker logs driver-service 2>&1 | grep -q '"message": "tick"'; do \
+	while ! docker logs nus-driver 2>&1 | grep -q '"message": "tick"'; do \
 		if [ $$(date +%s) -ge $$deadline ]; then \
 			printf "  $(R)FAIL$(X)    driver-service never reached its first tick in $(WAIT_LIVE_TIMEOUT)s\n"; \
 			printf "  It is not necessarily broken - look at where it stopped:\n"; \
-			printf "    $(C)docker logs driver-service 2>&1 | grep -v 'no street path' | tail -20$(X)\n"; \
+			printf "    $(C)docker logs nus-driver 2>&1 | grep -v 'no street path' | tail -20$(X)\n"; \
 			printf "  The last INFO line names the phase. Raise WAIT_LIVE_TIMEOUT if it\n"; \
 			printf "  is simply still working.\n"; \
 			exit 1; \

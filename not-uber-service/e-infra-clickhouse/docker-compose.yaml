@@ -1,6 +1,6 @@
 # e-infra-clickhouse — the analytics database.
 #
-# One ClickHouse, ch-s1r1. Clients (clickhouse-sink, Grafana, Superset)
+# One ClickHouse, nus-clickhouse. Clients (clickhouse-sink, Grafana, Superset)
 # come in through lb-a on 8123 (HTTP) and 9000 (native).
 #
 # Standalone test:
@@ -54,14 +54,14 @@ x-ch-config-memory: &ch-config-memory ./config/clickhouse/config.d/memory.xml:/e
 x-ch-users: &ch-users ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-server/users.d/profiles.xml:ro
 
 services:
-  # The only server. The name is the one clients and make targets already use.
-  ch-s1r1:
+  # The only server.
+  nus-clickhouse:
     <<: *ch-node
-    container_name: nus-ch-s1r1
-    hostname: nus-ch-s1r1
+    container_name: nus-clickhouse
+    hostname: nus-clickhouse
     environment:
       <<: *ch-env
-      CH_HOSTNAME: nus-ch-s1r1
+      CH_HOSTNAME: nus-clickhouse
     volumes:
       - *ch-config-memory
       - *ch-users
@@ -79,7 +79,7 @@ services:
     entrypoint: ["/bin/sh", "/apply-ddl.sh"]
     environment:
       TZ: ${TZ:-UTC}
-      CH_HOST: nus-ch-s1r1
+      CH_HOST: nus-clickhouse
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
     volumes:

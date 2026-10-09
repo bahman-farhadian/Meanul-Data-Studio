@@ -45,7 +45,7 @@ services:
     memswap_limit: ${DEBEZIUM_MEM:-2g}
     environment:
       TZ: ${TZ:-UTC}
-      BOOTSTRAP_SERVERS: nus-kafka-1:9092
+      BOOTSTRAP_SERVERS: nus-kafka:9092
       GROUP_ID: nus-connect
       # Connect keeps its own state in Kafka: which connectors exist, how far
       # each one has read, and whether they are running. The image

@@ -128,20 +128,20 @@ the services are still waiting on purpose.
 
 ```bash
 # the marker that releases the services
-docker compose exec redis-1 redis-cli get system:bootstrap:done
+docker compose exec nus-redis redis-cli get system:bootstrap:done
 
 # the people and the week
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "SELECT (SELECT count(*) FROM drivers)    AS drivers,
           (SELECT count(*) FROM passengers) AS passengers,
           (SELECT count(*) FROM city_zones) AS zones,
           (SELECT count(*) FROM trips)      AS trips;"
 
 # the street graph
-docker compose exec pg-1 psql -U postgres -c "SELECT count(*) FROM ways;"
+docker compose exec nus-postgres psql -U postgres -c "SELECT count(*) FROM ways;"
 
 # the same week in the warehouse
-docker compose exec ch-s1r1 clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT count() FROM nus.trip_events"
 ```
 

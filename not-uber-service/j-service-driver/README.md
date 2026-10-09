@@ -80,19 +80,19 @@ containers.
 ```bash
 # positions arriving, decoded from Avro
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server kafka-1:9092 \
+  --bootstrap-server nus-kafka:9092 \
   --property schema.registry.url=http://schema-registry:8081 \
   --topic driver_location --max-messages 3
 
 # how many drivers are free right now
-docker compose exec redis-1 redis-cli zcard geo:drivers:available
+docker compose exec nus-redis redis-cli zcard geo:drivers:available
 
 # the nearest free drivers to a point in the middle of the city
-docker compose exec redis-1 redis-cli \
+docker compose exec nus-redis redis-cli \
   geosearch geo:drivers:available fromlonlat -73.98 40.75 byradius 3 km asc count 5
 
 # the database keeps the last known state, not the stream
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "SELECT status, count(*) FROM drivers GROUP BY status ORDER BY 2 DESC;"
 ```
 

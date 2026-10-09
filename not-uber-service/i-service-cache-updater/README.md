@@ -70,7 +70,7 @@ removed.
 | `SCHEMA_REGISTRY_URL` | `http://schema-registry:8081` | Where the message schemas are explained. |
 | `CACHE_UPDATER_GROUP_ID` | `cache-updater` | The consumer group; changing it re-reads from the start. Each service has its own variable so a single master `.env` cannot give two of them the same group. |
 | `CDC_TOPIC_PATTERN` | `^cdc\..*` | Which topics to follow. |
-| `REDIS_HOST` / `REDIS_PASSWORD` | `nus-redis-1` | The one Redis. The password must match `b-infra-redis/.env`. |
+| `REDIS_HOST` / `REDIS_PASSWORD` | `nus-redis` | The one Redis. The password must match `b-infra-redis/.env`. |
 | `CACHE_BATCH_SIZE` / `CACHE_FLUSH_SECONDS` | `500` / `2.0` | How much is collected before writing and saving position. |
 | `LOG_LEVEL` | `INFO` | `DEBUG` shows every message. |
 
@@ -81,17 +81,17 @@ The important question is not "is it running" but "is it keeping up".
 ```bash
 # consumer lag: how many messages are waiting. A number that stays small,
 # or returns to small after a burst, is healthy. One that only grows is not.
-docker compose exec kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka-1:9092 --describe --group cache-updater
+docker compose exec nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server nus-kafka:9092 --describe --group cache-updater
 
 # a change in the database should appear in Redis within a second or two
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "UPDATE drivers SET rating = 4.9 WHERE driver_id = 'drv-000001';"
 
-docker compose exec redis-1 redis-cli get driver:drv-000001
+docker compose exec nus-redis redis-cli get driver:drv-000001
 
 # how many keys of each kind the cache holds
-docker compose exec redis-1 redis-cli --scan --pattern 'driver:*' | wc -l
+docker compose exec nus-redis redis-cli --scan --pattern 'driver:*' | wc -l
 ```
 
 If the value in Redis does not change, check the connector first — this
@@ -110,8 +110,8 @@ database at all:
 ```bash
 # stop the service, forget its position, start it again
 docker compose stop cache-updater
-docker compose exec kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka-1:9092 --group cache-updater --reset-offsets \
+docker compose exec nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server nus-kafka:9092 --group cache-updater --reset-offsets \
   --to-earliest --all-topics --execute
 docker compose start cache-updater
 ```

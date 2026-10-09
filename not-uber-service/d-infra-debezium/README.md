@@ -132,15 +132,15 @@ gate nothing that isn't already open one layer down.
 docker compose exec debezium-connect curl -s http://localhost:8083/connectors/nus-pg/status
 
 # the cdc.* topics Debezium created
-docker compose exec kafka-1 /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server nus-kafka-1:9092 --list | grep '^cdc\.'
+docker compose exec nus-kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server nus-kafka:9092 --list | grep '^cdc\.'
 
 # watch a change arrive: update a row, then read the topic
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "update drivers set status = 'idle' where driver_id = (select driver_id from drivers limit 1);"
 
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server nus-kafka-1:9092 \
+  --bootstrap-server nus-kafka:9092 \
   --property schema.registry.url=http://nus-schema-registry:8081 \
   --topic cdc.drivers --max-messages 1
 ```
@@ -149,7 +149,7 @@ Slot health, from the database side:
 
 ```bash
 # active should be true, and the lag should stay small and steady
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "select slot_name, active, pg_size_pretty(
      pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) as behind
    from pg_replication_slots;"
@@ -173,6 +173,6 @@ keep journal files for a reader that never returns:
 docker compose exec debezium-connect curl -X DELETE http://localhost:8083/connectors/nus-pg
 
 # 2. drop the slot and the publication in PostgreSQL
-docker compose exec pg-1 psql -U postgres -c "select pg_drop_replication_slot('nus_debezium');"
-docker compose exec pg-1 psql -U postgres -c "drop publication if exists nus_pub;"
+docker compose exec nus-postgres psql -U postgres -c "select pg_drop_replication_slot('nus_debezium');"
+docker compose exec nus-postgres psql -U postgres -c "drop publication if exists nus_pub;"
 ```

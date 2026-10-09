@@ -90,13 +90,13 @@ database. That one is the record; this one is the live state.
 
 ```bash
 # trips moving through their statuses in the last ten minutes
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "SELECT status, count(*) FROM trips
     WHERE requested_at > now() - interval '10 minutes'
     GROUP BY status ORDER BY 2 DESC;"
 
 # routes and prices are actually being stored
-docker compose exec pg-1 psql -U postgres -c \
+docker compose exec nus-postgres psql -U postgres -c \
   "SELECT trip_id, round(route_km::numeric, 2) AS km, predicted_duration_s,
           surge_multiplier, fare_estimate, fare_final
      FROM trips WHERE driver_id IS NOT NULL
@@ -104,13 +104,13 @@ docker compose exec pg-1 psql -U postgres -c \
 
 # the lifecycle stream
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server kafka-1:9092 \
+  --bootstrap-server nus-kafka:9092 \
   --property schema.registry.url=http://schema-registry:8081 \
   --topic trip_lifecycle --max-messages 5
 
 # is it keeping up with the requests?
-docker compose exec kafka-1 /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server kafka-1:9092 --describe --group dispatch-service
+docker compose exec nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server nus-kafka:9092 --describe --group dispatch-service
 ```
 
 Healthy looks like: a completed share somewhere near 70 percent, a small
