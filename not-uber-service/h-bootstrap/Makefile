@@ -98,7 +98,7 @@ lion-prepare:
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	dir="$$root/nus-lion-data"; dump="$$dir/routable-graph.dump"; \
 	lion_pg_image=$$(grep -E '^LION_PG_IMAGE=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
-	lion_pg_image=$${lion_pg_image:-postgis/postgis:17-3.5}; \
+	lion_pg_image=$${lion_pg_image:-pgrouting/pgrouting:18-3.6-3.8.0}; \
 	NUS_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	dump_has_zones=false; \
 	if [ -s "$$dump" ] && docker run --rm -v "$$dump:/data/dump:ro" "$$lion_pg_image" \

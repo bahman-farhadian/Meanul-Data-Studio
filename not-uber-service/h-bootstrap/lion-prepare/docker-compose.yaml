@@ -11,17 +11,9 @@ name: nus-lion-prepare
 
 services:
   lion-pg:
-    build:
-      # Builds install packages, which needs egress from the build container.
-      # Defaults to the host's own network: a tunnel between here and this
-      # host usually cannot see a build's forwarded container traffic, even
-      # while the host's own connections work fine. Set BUILD_NETWORK=default
-      # if this host has no such gap.
-      network: ${BUILD_NETWORK:-host}
-      context: .
-      dockerfile: lion-pg.Dockerfile
-      args:
-        POSTGIS_IMAGE: ${LION_PG_IMAGE:-postgis/postgis:17-3.5}
+    # Same image as the running database. postgis/postgis has no pgRouting,
+    # so this used to be a local build. The published image already has it.
+    image: ${LION_PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${LION_PG_PASSWORD:-throwaway-local-only}
@@ -82,7 +74,8 @@ services:
 
   lion-prepare:
     build:
-      # See lion-pg's build.network comment above.
+      # Package installs need the host network. A tunnel does not carry
+      # traffic forwarded from the build container.
       network: ${BUILD_NETWORK:-host}
       context: ../..
       dockerfile: h-bootstrap/lion-prepare/Dockerfile

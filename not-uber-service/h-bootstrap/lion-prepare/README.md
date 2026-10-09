@@ -20,7 +20,7 @@ than repeated on every `make destroy && make up` cycle. `h-bootstrap`'s own
 
 | Service | What it does |
 | --- | --- |
-| `lion-pg` | A throwaway PostGIS+pgRouting database (`postgis/postgis` image). Exists for the duration of this run only. |
+| `lion-pg` | A throwaway Postgres with PostGIS and pgRouting (`pgrouting/pgrouting`, the same image as the running database). Exists for the duration of this run only. |
 | `lion-prepare` | Unzips the LION download, `ogr2ogr`s it into `lion-pg` with the CRS transform, runs `build-graph.sql`, then `pg_dump`s the finished `ways`/`ways_vertices_pgr` tables out to the host volume. |
 
 `build-graph.sql` is the one file worth reading closely: it filters to real,
