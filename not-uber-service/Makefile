@@ -7,11 +7,8 @@
 # something else has happened, and `make up` puts them in that order. Those
 # steps stay as targets so a failed run can resume at the step that failed.
 #
-# ONE MAKEFILE PER COMPONENT, included below, exactly like the root
-# docker-compose.yaml includes each component's own compose file. This file
-# keeps only what is genuinely stack-wide: setup, the ordered bring-up,
-# teardown, and diagnostics that cross more than one component. A piece's
-# own check or shell lives in that piece's Makefile.
+# Pieces a-h each have a Makefile because they have a check or a one-shot.
+# The services do not: make lag, make errors, and make profile cover them.
 #
 # Full explanation of each piece: README.md. Architecture: ../README.md
 #
@@ -34,8 +31,8 @@ ENV_FILE := .env
 EXAMPLE  := .env.example
 ETCD_ENV := a-infra-postgres/etcd.env
 
-# Every component's own Makefile. Order follows the build order (README
-# section 2.8.1) purely for readability — `include` does not care.
+# Pieces that have their own checks or one-shots. Order follows the build
+# order. The services (i-o) have no Makefile of their own.
 include a-infra-postgres/Makefile
 include b-infra-redis/Makefile
 include c-infra-kafka/Makefile
@@ -44,13 +41,6 @@ include e-infra-clickhouse/Makefile
 include f-infra-grafana/Makefile
 include g-infra-superset/Makefile
 include h-bootstrap/Makefile
-include i-service-cache-updater/Makefile
-include j-service-driver/Makefile
-include k-service-passenger/Makefile
-include l-service-dispatch/Makefile
-include m-service-city/Makefile
-include n-service-clickhouse-sink/Makefile
-include o-service-archiver/Makefile
 
 # How long to wait for a group of containers to report healthy. ClickHouse and
 # Superset have a 40-60s start_period of their own, so this is generous.
