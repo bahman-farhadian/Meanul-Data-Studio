@@ -34,7 +34,7 @@ FETCHES = re.compile(r"\b(curl|wget)\b")
 
 def _makefiles() -> list[Path]:
     assert NUS.name == "not-uber-service", NUS
-    found = [NUS / "Makefile"] + sorted(NUS.glob("*/Makefile"))
+    found = [NUS / "Makefile"] + sorted(NUS.glob("*/Makefile")) + sorted((NUS / "mk").glob("*.mk"))
     assert len(found) > 5, f"expected the component Makefiles under {NUS}"
     return [p for p in found if p.is_file()]
 
@@ -141,7 +141,9 @@ def test_capacity_is_exactly_one_shell_command():
     perfectly - what changed was how many shells it would run, which is not
     something parsing can tell you.
     """
-    lines = (NUS / "Makefile").read_text().splitlines()
+    lines: list[str] = []
+    for path in _makefiles():
+        lines.extend(path.read_text().splitlines())
     start = next(i for i, line in enumerate(lines) if line.startswith("capacity:"))
     body: list[str] = []
     for line in lines[start + 1 :]:
