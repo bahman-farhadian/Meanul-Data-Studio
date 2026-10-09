@@ -1,7 +1,9 @@
 # =============================================================================
 # not-uber-service — stack control
 # =============================================================================
-# Everything runs from this directory. `make` on its own prints the help.
+# Everything runs from this directory. `make` on its own prints the short help.
+# `make help-all` prints every target, including the ones that belong to one
+# piece.
 #
 # This file is the runbook made executable: the same order, the same one-shots
 # at the same points. What it adds is that the order cannot be got wrong by
@@ -14,7 +16,7 @@
 # teardown, and diagnostics that cross more than one component. Everything
 # specific to one piece — its own verify-*, a shell into it, a failover demo —
 # lives in that piece's own Makefile and shows under its own heading in
-# `make help`.
+# `make help-all`.
 #
 # Full explanation of each piece: README.md. Architecture: ../README.md
 # =============================================================================
@@ -125,17 +127,39 @@ bad = @printf "  $(R)FAIL$(X)    %s\n" "$(1)"
 # instead of the port that is genuinely in use.
 getenv = $(or $(shell grep -E "^$(1)=" $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-),$(2))
 
-.PHONY: help
+.PHONY: help help-all
 help:
-	@printf "\n$(B)not-uber-service$(X) — a cab platform's whole data lifecycle, in containers\n\n"
-	@printf "  First deployment, in four commands:\n"
+	@printf "\n$(B)not-uber-service$(X) — the commands you actually run\n\n"
+	@printf "  First time:\n"
 	@printf "    $(C)make init$(X)        create .env and the shared network\n"
-	@printf "    $(C)\$$EDITOR .env$(X)     change every password in section 1\n"
-	@printf "    $(C)make prepare$(X)     pull, build, fetch the map — the only step needing the net\n"
-	@printf "    $(C)make up$(X)          the whole ordered bring-up (grafana + tiles included)\n\n"
-	@printf "  After a code change, without re-downloading LION or OSM tiles:\n"
+	@printf "    edit .env                set the passwords in section 1\n"
+	@printf "    $(C)make prepare$(X)     pull images, build, fetch the map. Needs the network\n"
+	@printf "    $(C)make up$(X)          start the stack, in order\n"
+	@printf "    $(C)make etcd-existing$(X)  local only. Do not commit etcd.env\n\n"
+	@printf "  Code change, keep the data:\n"
+	@printf "    $(C)make build && make reload SVC=driver-service$(X)\n\n"
+	@printf "  Code change, empty databases:\n"
 	@printf "    $(C)make build && make destroy && make up && make etcd-existing$(X)\n"
-	@printf "    $(C)make up$(X) does not rebuild images. Skip $(C)make prepare$(X) unless the graph or nyc.mbtiles is missing.\n\n"
+	@printf "    $(C)make up$(X) does not rebuild. Skip $(C)make prepare$(X) unless the map files are missing.\n\n"
+	@printf "  Look:\n"
+	@printf "    $(C)make ps$(X)          what is running\n"
+	@printf "    $(C)make health$(X)      health, restarts, OOM\n"
+	@printf "    $(C)make stats$(X)       CPU and memory against each limit\n"
+	@printf "    $(C)make logs SVC=driver-service$(X)\n"
+	@printf "    $(C)make tail SVC=driver-service N=80$(X)\n\n"
+	@printf "  Check the city:\n"
+	@printf "    $(C)make verify$(X)      the full check, in order\n"
+	@printf "    $(C)make lag$(X)         consumer lag\n"
+	@printf "    $(C)make verify-quality$(X)\n\n"
+	@printf "  Stop:\n"
+	@printf "    $(C)make stop$(X)        stop, keep data\n"
+	@printf "    $(C)make down$(X)        remove containers, keep data\n"
+	@printf "    $(C)make destroy$(X)     remove containers and data volumes. Keeps the map\n\n"
+	@printf "  Every other target, including one piece at a time: $(C)make help-all$(X)\n\n"
+
+help-all:
+	@printf "\n$(B)not-uber-service$(X) — every target\n"
+	@printf "  Day to day is $(C)make help$(X). This list is the whole catalog.\n"
 	@awk 'BEGIN {FS = ":.*##"} \
 		/^##@/ { printf "\n$(B)%s$(X)\n", substr($$0, 5) } \
 		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  $(C)%-16s$(X) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
