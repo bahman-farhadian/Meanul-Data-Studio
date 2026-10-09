@@ -151,7 +151,7 @@ help:
 # Setup
 # =============================================================================
 
-include mk/init.mk
+include z-mk/init.mk
 
 .PHONY: prepare
 prepare:
@@ -171,7 +171,7 @@ prepare:
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
 	@printf "  Images, the LION graph, and nyc.mbtiles are on disk. make destroy keeps the last two.\n\n"
 
-include mk/preflight.mk
+include z-mk/preflight.mk
 
 .PHONY: pull
 pull:
@@ -261,7 +261,7 @@ volume-perms:
 	$(call say,Data directory ownership)
 	@$(COMPOSE) run --rm volume-perms
 
-include mk/volume-quotas.mk
+include z-mk/volume-quotas.mk
 
 .PHONY: lb-config
 lb-config:
@@ -309,7 +309,7 @@ verify-sample: _need-uv
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
 		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-config/tests
 
-include mk/wait-live.mk
+include z-mk/wait-live.mk
 
 .PHONY: verify-positions
 verify-positions:
@@ -339,7 +339,7 @@ health:
 		docker inspect -f '  {{printf "%-22s" (slice .Name 1)}} {{if .State.Health}}{{printf "%-12s" .State.Health.Status}}{{else}}{{printf "%-12s" .State.Status}}{{end}} {{printf "%-9d" .RestartCount}} {{.State.OOMKilled}}' "$$c" 2>/dev/null; \
 	done
 
-include mk/errors.mk
+include z-mk/errors.mk
 
 .PHONY: stats
 stats:
@@ -357,7 +357,7 @@ lag:
 	@printf "\n  Lag that stays small, or returns to small after a burst, is healthy.\n"
 	@printf "  Lag that only grows is not — turn the pacing down in $(ENV_FILE).\n"
 
-include mk/quality.mk
+include z-mk/quality.mk
 
 .PHONY: logs
 logs:
@@ -372,7 +372,7 @@ tail:
 	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs --tail=$(or $(N),200) $(SVC); \
 	else $(COMPOSE) logs --tail=$(or $(N),50); fi
 
-include mk/urls.mk
+include z-mk/urls.mk
 
 # =============================================================================
 # Teardown
@@ -405,4 +405,4 @@ nuke:
 	@docker network rm $(NETWORK) 2>/dev/null || true
 	@printf "  Network $(NETWORK) removed, and the street map with it.\n"
 
-include mk/clean.mk
+include z-mk/clean.mk

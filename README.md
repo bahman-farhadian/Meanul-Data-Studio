@@ -557,8 +557,8 @@ exactly the order each piece should be written and tested in. **All
 infrastructure directories (`infra-*`) come first, as a block, since they are
 the foundation every service is built on; `bootstrap` and the app services
 (`service-*`) follow.** Each component's own design notes live inside its
-own directory. Generated schema docs live in `z-docs/`, after the services,
-so they do not sit between Debezium and ClickHouse. See
+own directory. Generated schema docs live in `z-docs/`. Makefile fragments live in
+`z-mk/`. Both sit after the services, with `z-config/` and `z-lib/`. See
 [2.8.1](#281-build--test-order) for the dependency reasoning behind the
 sequence.
 
@@ -590,10 +590,13 @@ meanul-data-studio/
     ├── l-service-dispatch/           # matching, pgRouting, surge pricing, trip status
     ├── m-service-city/               # demand scores per zone, live traffic factors
     ├── n-service-clickhouse-sink/    # every event into ClickHouse, enriched from Redis
+    ├── o-service-archiver/           # prune ended trips from PostgreSQL
     ├── z-config/                     # stack-level config (sorts last on purpose)
     │   └── haproxy/                  # hailpath-proxy config
-    └── z-lib/                        # shared Python code (sorts last for the same reason)
-        └── nus-common/               # clients, logging, lifecycle used by h- and every service
+    ├── z-docs/                       # generated schema dictionary and ERD
+    ├── z-lib/                        # shared Python code
+    │   └── nus-common/               # clients, logging, lifecycle used by h- and every service
+    └── z-mk/                         # Makefile fragments included by the root Makefile
 ```
 
 **Toolchain:** every Python component (`h-bootstrap` and the six
@@ -606,8 +609,8 @@ common — reading settings, JSON logging, clean shutdown, and the clients for
 PostgreSQL, Redis, Kafka and ClickHouse — lives once in `z-lib/nus-common`
 and is pulled in as a path dependency; their build context is
 `meanul-hailpath/` so the image holds the same layout as the repository.
-The HAProxy pair is stack-wide, so its two services are defined in the root
-`docker-compose.yaml` with their config under `z-config/haproxy/`
+The proxy is stack-wide, so `hailpath-proxy` is defined in the root
+`docker-compose.yaml` with its config under `z-config/haproxy/`
 (`z-config/` sorts last and collects stack-level config files; the
 ClickHouse and UI routes are enabled there as those components land). The
 Schema Registry config lives in `c-infra-kafka/`.

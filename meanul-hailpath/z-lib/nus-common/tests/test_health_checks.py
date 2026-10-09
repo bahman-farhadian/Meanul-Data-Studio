@@ -34,7 +34,7 @@ FETCHES = re.compile(r"\b(curl|wget)\b")
 
 def _makefiles() -> list[Path]:
     assert NUS.name == "meanul-hailpath", NUS
-    found = [NUS / "Makefile"] + sorted(NUS.glob("*/Makefile")) + sorted((NUS / "mk").glob("*.mk"))
+    found = [NUS / "Makefile"] + sorted(NUS.glob("*/Makefile")) + sorted((NUS / "z-mk").glob("*.mk"))
     assert len(found) > 5, f"expected the component Makefiles under {NUS}"
     return [p for p in found if p.is_file()]
 

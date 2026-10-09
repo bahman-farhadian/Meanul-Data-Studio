@@ -24,7 +24,7 @@ verify-quality:
 # .env.example against whatever this run actually used, so a dev profile
 # that changes cannot leave a stale projection looking current.
 #
-# The quota is read out of mk/volume-quotas.mk, the only place a quota is
+# The quota is read out of z-mk/volume-quotas.mk, the only place a quota is
 # applied. It used to read CH_VOLUME_QUOTA_GB,
 # a second variable that was never set in .env - so the projection was
 # judged against a 96 GB default while 112 was actually in force.
@@ -37,7 +37,7 @@ capacity:
 	$(call say,Warehouse capacity)
 	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
 	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
-	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' mk/volume-quotas.mk | head -1 | sed 's/.*://; s/g$$//' || true); \
+	quota=$$(grep -oE 'nus-ch-data-s1r1:[0-9]+g' z-mk/volume-quotas.mk | head -1 | sed 's/.*://; s/g$$//' || true); \
 	quota=$${quota:-96}; \
 	if [ -z "$$full" ] || [ -z "$$now" ]; then \
 		printf "  $(R)FAIL$(X)    SEED_DRIVERS missing from .env or .env.example\n"; exit 1; \
