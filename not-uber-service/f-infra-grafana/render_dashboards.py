@@ -866,7 +866,7 @@ HISTORY = dashboard(
     panels=[
         panel(
             1,
-            "Completed trips (hourly, sum across shards)",
+            "Completed trips (hourly)",
             "timeseries",
             """
 SELECT
@@ -889,7 +889,7 @@ ORDER BY time
         ),
         panel(
             2,
-            "Revenue (hourly, sum across shards)",
+            "Revenue (hourly)",
             "timeseries",
             """
 SELECT
@@ -903,9 +903,9 @@ ORDER BY time
             12, 0, 12, 8,
             timeseries=True,
             description=(
-                "The same hours, measured in money. Summed from Decimal64(2) "
-                "across both shards, so it reconciles against Postgres rather "
-                "than carrying a float tail."
+                "The same hours, measured in money. Summed from Decimal64(2), "
+                "so it reconciles against Postgres rather than carrying a "
+                "float tail."
             ),
             extra=line("currencyUSD", decimals=2, legend=False),
         ),
@@ -1329,8 +1329,8 @@ ORDER BY trips DESC
                 "from 'the driver found something better': very different "
                 "problems that look identical without the reason. FINAL is "
                 "deliberate - trip_facts is a ReplacingMergeTree, so a count "
-                "without it is an upper bound, and every trip's rows land on "
-                "one shard, which is what makes a local FINAL correct here."
+                "without it is an upper bound until a background merge "
+                "collapses older versions of the same trip."
             ),
             extra={
                 "fieldConfig": {

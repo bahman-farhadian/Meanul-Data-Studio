@@ -3,7 +3,7 @@
 Superset is meant to be where questions are **explored**: write SQL in SQL
 Lab, turn the result into a chart, put charts on a dashboard. Grafana
 (piece `f`) is the live view; Superset is the slower, analytical one. Both
-read the same ClickHouse cluster. At this stage this piece only brings the
+read the same ClickHouse. At this stage this piece only brings the
 tool up and connects it — see below.
 
 Reached through the entry tier on **port 8088** (`lb-a`). Superset itself
@@ -16,8 +16,8 @@ its own. That is a different thing from the data it shows.
 
 This stack uses **SQLite on a named volume** for it. The reason is in the
 main README (section 2.9): the stack is documented for a single dashboard
-user, and a whole extra PostgreSQL cluster for Superset's bookkeeping would
-cost memory the analytics nodes need. The OLTP cluster is not an option
+user, and a second PostgreSQL for Superset's bookkeeping would
+cost memory the warehouse needs. The OLTP database is not an option
 either — dashboards must never touch it.
 
 SQLite has one rule: **one writer at a time**. That is why Superset runs
@@ -56,7 +56,7 @@ run so the credential stays current:
 | Connection | Points at | Why |
 | --- | --- | --- |
 | `ClickHouse (nus)` | `nus-lb-a:8123` | The warehouse every chart would read. |
-| `PostgreSQL (nus, read-only)` | `nus-lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the **replica pool**, never the leader, and DML is refused — an exploratory query from a browser has no business on the database the platform writes to. |
+| `PostgreSQL (nus, read-only)` | `nus-lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the same PostgreSQL as the write port. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
 
 **Dataset, chart and dashboard provisioning is not part of this piece.** A
 full bundle — 20 charts, 5 datasets, one 6-section analytics dashboard —

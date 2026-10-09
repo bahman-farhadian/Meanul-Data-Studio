@@ -4,7 +4,7 @@
 # existed while dispatch simply assigned a driver.
 # 'expired' and 'declined' are kept apart on purpose: a driver who
 # said no is a different supply signal from a phone left face-down.
-# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+# SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
 table_name: 'dispatch_funnel_hourly'
 schema: 'nus'
 uuid: '14a85160-f570-562c-84b0-0cf132d40c30'

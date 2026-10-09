@@ -18,8 +18,6 @@ Clients use `PG_HOST=nus-lb-a`. Port **5432** and port **5433** are both
 and a replication line for the `postgres` user. A replication connection
 does not match `all`, and the logical slot needs that line.
 
-`etcd.env` is still in this directory. The process does not read it.
-
 ## Files
 
 | File | Purpose |
@@ -27,7 +25,6 @@ does not match `all`, and the logical slot needs that line.
 | `docker-compose.yaml` | `pg-1`. Included by the root compose. |
 | `Dockerfile` | `postgres:18.6` plus PostGIS and pgRouting. |
 | `pg_hba.conf` | Local trust, network scram, replication for `postgres`. |
-| `etcd.env` | Unused by this process. Left in the tree. |
 | `.env.example` | Image pin, database name, superuser password. |
 
 ## Environment

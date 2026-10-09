@@ -1,7 +1,5 @@
-# A replica's WAL receiver can race the leader's own replication-slot
-# creation on first bootstrap - a known Patroni timing window, not a stuck
-# cluster, and it self-heals on Patroni's own retry. verify-pg (one Leader,
-# two Replicas, lag 0) is the real signal for whether it actually got stuck.
+# A client can log a connection refused in the first seconds, before the
+# port is open. verify-pg is pg_isready on the one Postgres.
 .PHONY: errors
 errors:
 	$(call say,Errors across the stack)

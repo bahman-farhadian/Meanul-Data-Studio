@@ -572,7 +572,7 @@
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "Support and analytics need 'the rider never came out' apart from 'the driver found something better': very different problems that look identical without the reason. FINAL is deliberate - trip_facts is a ReplacingMergeTree, so a count without it is an upper bound, and every trip's rows land on one shard, which is what makes a local FINAL correct here.",
+      "description": "Support and analytics need 'the rider never came out' apart from 'the driver found something better': very different problems that look identical without the reason. FINAL is deliberate - trip_facts is a ReplacingMergeTree, so a count without it is an upper bound until a background merge collapses older versions of the same trip.",
       "gridPos": {
         "h": 8,
         "w": 12,

@@ -146,5 +146,5 @@ def primary(db: int = DB_SYSTEM) -> Redis:
 
 
 def replica(db: int = DB_SYSTEM) -> Redis:
-    """Same node as primary(). There is no replica to read from."""
+    """Same connection as primary()."""
     return primary(db)

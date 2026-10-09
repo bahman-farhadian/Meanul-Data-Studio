@@ -88,8 +88,8 @@ services:
         own 1000:1000 nus-superset-home nus-tiles-data
         # h-bootstrap and the six services all run as the 'nus' user, 10001.
         own 10001:10001 nus-lion-data
-        # ClickHouse and Keeper start as root and drop privileges
-        # themselves, so their directories stay root-owned.
+        # ClickHouse starts as root and drops privileges itself, so its
+        # data directory stays root-owned.
         echo "done"
     volumes:
       - ${NUS_VOLUME_ROOT:?set it in .env}:/vol

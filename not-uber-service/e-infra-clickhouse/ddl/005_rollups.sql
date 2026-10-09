@@ -5,10 +5,9 @@
 -- the result to the summary table. Dashboards then read a small table
 -- instead of scanning every trip event.
 --
--- One thing to know when reading it: the summary is filled per node, and the
--- same hour and zone can therefore exist on both shards. ALWAYS aggregate
--- when querying it (sum(), and divide afterwards) - never read a single row
--- and treat it as the total.
+-- SummingMergeTree adds matching keys when it merges, not on every insert.
+-- ALWAYS aggregate when querying it (sum(), and divide afterwards) - never
+-- read a single row and treat it as the total.
 
 CREATE TABLE IF NOT EXISTS nus.trip_stats_hourly
 (

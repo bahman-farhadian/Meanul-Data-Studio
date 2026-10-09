@@ -36,7 +36,7 @@ The sink adds two things:
 Both come from Redis, never from the OLTP database. That is the rule the
 whole stack is built on, and the sink is the busiest reader in it — one
 lookup per message against PostgreSQL would be the fastest way to overload
-the leader.
+that one database.
 
 Even Redis is not asked per message: demand scores are read in one go and
 reused for half a minute, because that is how often they change.

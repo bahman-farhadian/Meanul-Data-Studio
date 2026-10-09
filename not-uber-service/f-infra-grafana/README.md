@@ -4,7 +4,7 @@ Grafana is meant to answer **"what is happening right now"** and to chart
 the ClickHouse rollups: trips finishing, position events arriving, where
 demand is, hourly/daily stats. Superset (piece `g`) is a separate SQL Lab
 tool; it is not used by these dashboards. Both *can* read the same
-ClickHouse cluster. This piece brings Grafana up, connects it, and
+ClickHouse. This piece brings Grafana up, connects it, and
 provisions the NUS dashboards from files.
 
 Reached through the entry tier on **port 3000** (`lb-a`). Grafana itself
@@ -22,7 +22,7 @@ in the data source file), so no password is written into any file in this
 repository.
 
 Queries go only to the `nus` ClickHouse database (datasource uid
-`nus-clickhouse`). They use Distributed table names, never Kafka, Redis,
+`nus-clickhouse`). They use the warehouse table names, never Kafka, Redis,
 or Postgres.
 
 | Dashboard | uid | What it shows |

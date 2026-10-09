@@ -37,8 +37,8 @@ log = get_logger(__name__)
 
 # LIMIT, not a single unbounded DELETE: a stack that ran a long time before
 # this service ever existed could have a large backlog, and one giant
-# transaction would hold a lock and generate a WAL burst neither
-# replication nor a live simulation should have to absorb in one go.
+# transaction would hold a lock and generate a WAL burst neither the
+# WAL reader nor a live simulation should have to absorb in one go.
 PRUNE_BATCH_SQL = """
     SELECT trip_id FROM trips
      WHERE ended_at IS NOT NULL

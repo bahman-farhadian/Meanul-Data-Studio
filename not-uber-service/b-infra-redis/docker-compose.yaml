@@ -1,5 +1,4 @@
-# b-infra-redis — one Redis. A second copy on this host is not a second
-# failure domain, so there is no replica. Clients use nus-redis-1.
+# b-infra-redis — one Redis. Clients use nus-redis-1.
 # HAProxy publishes that one address on the host ports.
 #
 # Standalone test:

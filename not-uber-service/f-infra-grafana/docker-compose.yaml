@@ -6,7 +6,7 @@
 #
 # The ClickHouse connection and the NUS dashboards are provisioned from
 # files in this directory, so a rebuilt container comes back exactly the
-# same. Dashboards query the warehouse (nus.* Distributed tables), not
+# same. Dashboards query the warehouse tables, not
 # Kafka, Redis, or Postgres.
 #
 # Standalone test:

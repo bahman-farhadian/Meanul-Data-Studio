@@ -40,11 +40,9 @@ _grid: CityGrid | None = None
 def grid() -> CityGrid:
     """The shared city grid, loaded once per process and reused.
 
-    from_leader=True: this load happens moments after seed()'s own
-    UPDATE marks some zones unservicable, in the same one-shot process -
-    a replica can still be a beat behind that write (confirmed live), and
-    bootstrap has no read-scaling reason to risk it the way a long-running
-    live service reading this much later would.
+    from_leader=True: this load follows seed()'s UPDATE in the same
+    process and uses the write connection that just marked zones
+    unservicable.
     """
     global _grid
     if _grid is None:

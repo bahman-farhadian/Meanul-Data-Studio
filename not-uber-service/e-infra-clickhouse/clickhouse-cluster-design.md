@@ -15,8 +15,7 @@ The numbers match the root [README](../../README.md) section 2.9.
 
 A second data copy on this host is not a second machine. It dies when
 the host dies, and it spends CPU and disk on a copy that does not
-survive the failure you would be buying it for. Keeper exists to
-coordinate replicas across machines. With one process there is nothing
+survive the failure you would be buying it for. With one process there is nothing
 for it to coordinate.
 
 The service name stays `ch-s1r1`. `make ch-client`, Compose
@@ -25,12 +24,10 @@ The service name stays `ch-s1r1`. `make ch-client`, Compose
 ## Tables
 
 The names services and dashboards query are the tables. `nus.trip_events`
-and `nus.driver_positions` store the rows. There is no `*_local` table
-and no `Distributed` wrapper in front of them.
+and `nus.driver_positions` store the rows. There is no `*_local` table.
 
 Raw streams use `MergeTree`. Rollups use `SummingMergeTree`,
-`AggregatingMergeTree`, or `ReplacingMergeTree(event_time)`, which is
-what those tables were doing when the engine name also said replicated.
+`AggregatingMergeTree`, or `ReplacingMergeTree(event_time)`.
 DDL is plain `CREATE TABLE` in `ddl/`. `ch-ddl-init` applies it once
 against `nus-ch-s1r1`.
 
@@ -41,6 +38,5 @@ the process.
 ## Loss
 
 There is one copy. Losing the process loses the warehouse until the
-volume is back and the server starts. That is the trade for not
-pretending two containers on one disk are a cluster. HAProxy does not
-hide a second member. It keeps the host ports stable.
+volume is back and the server starts. HAProxy keeps the host ports
+stable. It does not hide a second server.

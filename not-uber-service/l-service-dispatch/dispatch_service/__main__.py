@@ -229,9 +229,8 @@ def announce_offers(producer: AvroTopicProducer, trip_id: str, zone_id: str,
 def accept_already_stored(trip_id: str) -> bool:
     """True when this trip already has the one accepted offer the index allows.
 
-    Read on the primary. A replica can lag the commit that made the row,
-    and a false negative here is exactly the insert that then dies on
-    dispatch_offers_one_accepted_idx.
+    Read on the write connection, the same place this process inserts
+    offers, so the check sees the accepted row the unique index enforces.
     """
     with postgres.write_connection() as conn:
         row = postgres.fetch_one(

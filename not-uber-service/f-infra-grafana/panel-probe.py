@@ -83,19 +83,9 @@ def literal(text: str) -> str:
     return "'" + text.replace("'", "''") + "'"
 
 
-# A real panel filters on a literal - WHERE zone_id = '142' - and touches one
-# Distributed table. Substituting the template variable turns that into
-# `zone_id IN (SELECT ... FROM another Distributed table)`, and ClickHouse
-# refuses a Distributed table inside a subquery of a Distributed query:
-# DISTRIBUTED_IN_JOIN_SUBQUERY_DENIED, code 288, and only ever on two shards
-# or more. It is an artefact of the probe, not of the dashboard.
-#
-# 'global' rather than 'local': local is only correct when both tables shard
-# on the same key, and they do not here - rider_positions shards on rider_id
-# while the variable reads trip_events sharded on trip_id, so local would
-# quietly drop rows. global materializes the subquery once and broadcasts
-# it, which costs a pass and is right whatever the sharding.
-SUBQUERY_SETTINGS = " SETTINGS distributed_product_mode = 'global'"
+# The warehouse is one MergeTree server. An IN subquery does not need a
+# product mode.
+SUBQUERY_SETTINGS = ""
 
 
 def settings_for(expanded_sql: str) -> str:

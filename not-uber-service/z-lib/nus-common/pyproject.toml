@@ -10,7 +10,7 @@ requires-python = ">=3.13"
 dependencies = [
     # PostgreSQL. The binary build saves every image from compiling libpq.
     "psycopg[binary,pool]>=3.2",
-    # Redis, with Sentinel support built in.
+    # Redis client library. This stack opens one host.
     "redis>=5.2",
     # Kafka. The schema-registry extra is not optional for us: from 2.6 the
     # registry client moved off requests onto httpx, and confluent-kafka

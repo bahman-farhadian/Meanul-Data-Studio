@@ -32,9 +32,9 @@ CONNECTOR_FILE = os.environ.get("CONNECTOR_FILE", "/nus-pg.json")
 WAIT_ATTEMPTS = 30
 WAIT_SECONDS = 5
 
-# Slot creation can fail once on a Patroni/HAProxy flap just after
-# pg-cpus-normal recreates the members. Restart the failed task and wait
-# again rather than leaving the stack up with no CDC.
+# Slot creation can fail once just after pg-cpus-normal recreates Postgres.
+# Restart the failed task and wait again rather than leaving the stack
+# up with no CDC.
 TASK_WAIT_ATTEMPTS = 12
 TASK_WAIT_SECONDS = 5
 
@@ -95,10 +95,10 @@ def _task_states(payload: dict) -> list[str]:
 def wait_for_tasks(name: str) -> None:
     """Wait until the connector and every task are RUNNING, or fail.
 
-    Restart a FAILED task once. CREATE_REPLICATION_SLOT through HAProxy
-    can EOF on a single flap; a second attempt against a settled leader
-    usually succeeds. Leaving FAILED as "check later" is how a stack
-    comes up with no cdc.* topics and an empty cache.
+    Restart a FAILED task once. Slot creation can fail once just after
+    pg-cpus-normal recreates Postgres. A second attempt usually succeeds.
+    Leaving FAILED as "check later" is how a stack comes up with no
+    cdc.* topics and an empty cache.
     """
     restarted = False
     for attempt in range(1, TASK_WAIT_ATTEMPTS + 1):

@@ -2,9 +2,9 @@
 
 The seven Python components (`h-bootstrap` and the six services) all need
 the same things: read settings from the environment, log in a way a machine
-can read, connect to PostgreSQL through the proxy, find Redis through
-Sentinel, produce and consume Avro on Kafka, insert into ClickHouse, and
-shut down cleanly when Docker asks them to.
+can read, connect to PostgreSQL through the proxy, open the one Redis,
+produce and consume Avro on Kafka, insert into ClickHouse, and shut down
+cleanly when Docker asks them to.
 
 Writing that seven times would mean seven slightly different versions of it,
 and seven places to fix the same bug. It lives here once instead.
@@ -20,7 +20,7 @@ support, not a step in the build order.
 | `logging.py` | One JSON line per log record, so logs can be searched instead of read. |
 | `lifecycle.py` | Waits for the bootstrap marker, and turns Docker's stop signal into a clean shutdown. |
 | `postgres.py` | Connections through `nus-lb-a`: writes on 5432, reads on 5433. |
-| `redis_client.py` | Finds the current Redis primary through Sentinel, and builds the key names the stack agreed on. |
+| `redis_client.py` | Opens the one Redis and builds the key names the stack agreed on. |
 | `kafka.py` | Avro producer and consumer, with schemas loaded from the files in `c-infra-kafka/schemas/`. |
 | `clickhouse.py` | Batched inserts through the entry tier. |
 | `geo.py` | Small geography helpers: distance between two points, which part of the day a moment belongs to, and points spaced along a route line. |

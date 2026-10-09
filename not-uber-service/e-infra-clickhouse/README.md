@@ -66,11 +66,9 @@ HAProxy **8123** (HTTP) and **9000** (native) both go to
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `ch-s1r1`, plus `ch-secrets-init` and `ch-ddl-init`. |
+| `docker-compose.yaml` | `ch-s1r1`, plus `ch-ddl-init`. |
 | `config/clickhouse/config.d/memory.xml` | Server memory ceiling. Mounted. |
 | `config/clickhouse/users.d/profiles.xml` | Per-query limits. Mounted. |
-| `config/clickhouse/config.d/cluster.xml` | Not mounted. |
-| `config/keeper/keeper.xml` | Not mounted. |
 | `ddl/*.sql` | Tables, in name order. `IF NOT EXISTS`. |
 | `ddl/apply-ddl.sh` | Applies those files. Safe to re-run. |
 | `clickhouse-cluster-design.md` | Why this is one process. |
@@ -94,8 +92,8 @@ make verify-ch
 ```
 
 That lists `name, engine` from `system.tables` for the `nus` database
-where the engine is a MergeTree. The line under it is: one ClickHouse,
-MergeTree engines, no Distributed table.
+where the engine is a MergeTree. The line under it is: one ClickHouse.
+The engines are MergeTree.
 
 From this directory alone:
 

@@ -13,10 +13,10 @@ Two connections are registered:
   ClickHouse (nus)              the warehouse every chart reads
   PostgreSQL (nus, read-only)   the OLTP source, for exploration only
 
-The PostgreSQL one points at port 5433, the REPLICA pool, never the leader,
-and refuses DML. Dashboards read the warehouse; this is here so the road
-network, the zones and the traffic factors can be looked at in SQL Lab
-without a query from a browser reaching the database the platform writes to.
+The PostgreSQL one points at port 5433, the same process as the write
+port, and refuses DML. Dashboards read the warehouse; this is here so the
+road network, the zones and the traffic factors can be looked at in SQL
+Lab without a query from a browser changing the rows the platform writes.
 
 The UUIDs are derived from the names rather than invented, so they are the
 same on every deployment. The chart and dataset definitions under assets/
@@ -64,11 +64,11 @@ def clickhouse_uri() -> str:
 
 
 def postgres_uri() -> str:
-    """The OLTP source, through the READ port.
+    """The OLTP source, through the read port.
 
-    5433 is the replica pool on the entry tier. A dashboard tool has no
-    business on the leader, and pointing at the replicas means an expensive
-    exploratory query cannot slow down the trips being written.
+    5433 is the same PostgreSQL as the write port. SQL Lab uses it so an
+    exploratory query is a separate connection from the one the platform
+    writes on. allow_dml on this connection stays off.
     """
     user = os.environ.get("PG_USER", "postgres")
     password = os.environ["PG_PASSWORD"]

@@ -3,8 +3,8 @@
 
 Loads every JSON under provisioning/dashboards/json/, asserts each panel
 uses datasource uid nus-clickhouse, and that FROM/JOIN table names are
-Distributed tables declared in e-infra-clickhouse/ddl/ (never Kafka,
-Redis, Postgres, cdc.*, or *_local shard tables).
+Warehouse tables declared in e-infra-clickhouse/ddl/ (never Kafka,
+Redis, Postgres, or cdc.*).
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ HISTORICAL_ANY = {
 HISTORICAL_REQUIRED = {"trip_stats_hourly"}
 
 
-def distributed_tables() -> set[str]:
+def warehouse_tables() -> set[str]:
     names: set[str] = set()
     for path in DDL_DIR.glob("*.sql"):
         text = path.read_text()
@@ -243,7 +243,7 @@ def _check_layout(uid: str, panels: list[dict]) -> list[str]:
 
 def check() -> list[str]:
     errors: list[str] = []
-    allowed = distributed_tables()
+    allowed = warehouse_tables()
     if not allowed:
         errors.append(f"no warehouse tables found under {DDL_DIR}")
         return errors
@@ -388,7 +388,7 @@ def check() -> list[str]:
                 errors.append(f"nus-history.json missing {needle}")
 
     print(f"dashboards: {len(files)}")
-    print(f"distributed tables in ddl: {len(allowed)}")
+    print(f"warehouse tables in ddl: {len(allowed)}")
     print(f"tables referenced: {', '.join(sorted(seen_tables))}")
     for path in files:
         dash = json.loads(path.read_text())

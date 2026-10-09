@@ -101,7 +101,7 @@ gate nothing that isn't already open one layer down.
 | `decimal.handling.mode` | `double` | Fares arrive as plain numbers instead of encoded decimals, so consumers need no special decoding. |
 | `time.precision.mode` | `connect` | Timestamps arrive as ordinary millisecond values. |
 | `transforms.route` | `nus.nus.X` -> `cdc.X` | Debezium's default topic name carries the server and schema — both happen to be named "nus" here. The rename gives the short names used everywhere else in the stack. |
-| `topic.creation.*` | 3 partitions, 3 copies, compacted | Broker-side auto-creation is off, so Connect must create its own topics with the right settings. |
+| `topic.creation.*` | 3 partitions, replication factor 1, compacted | Broker-side auto-creation is off, so Connect must create its own topics with the right settings. |
 
 ## Files
 

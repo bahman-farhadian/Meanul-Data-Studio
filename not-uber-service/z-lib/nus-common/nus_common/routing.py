@@ -134,11 +134,10 @@ ROUTE_GEOMETRY_SQL = """
 # and hands out a fresh one on the very next checkout, so a retry against
 # that fresh connection frequently succeeds where the first attempt didn't.
 ROUTE_QUERY_ATTEMPTS = 3
-# A short pause before each retry, not zero: if a whole node just OOM-killed
+# A short pause before each retry, not zero: if the process just restarted
 # and is still "the database system is in recovery mode" (confirmed live to
-# last a few seconds), retrying instantly just hits the same still-recovering
-# node again. This gives HAProxy's own health check a real chance to have
-# already failed it over to the other replica by the next attempt.
+# last a few seconds), retrying instantly hits that recovery again. The
+# pause gives it a moment to finish.
 ROUTE_RETRY_DELAY_S = 0.5
 
 
@@ -369,7 +368,7 @@ def nearest_road_point(lat: float, lon: float, max_snap_km: float | None = None)
     """
     limit_km = max_snap_km if max_snap_km is not None else config.number("MAX_SNAP_KM", 0.5)
 
-    # route() snaps both ends before the pgr_ksp retry. A replica cancel
+    # route() snaps both ends before the pgr_ksp retry. A cancelled snap
     # here used to kill driver-service; the ksp retry never saw it.
     # Exhausting the retry is "no point" for this lookup, not a process exit.
     try:

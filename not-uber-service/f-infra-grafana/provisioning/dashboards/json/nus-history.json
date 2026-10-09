@@ -27,7 +27,7 @@
   "panels": [
     {
       "id": 1,
-      "title": "Completed trips (hourly, sum across shards)",
+      "title": "Completed trips (hourly)",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
@@ -78,13 +78,13 @@
     },
     {
       "id": 2,
-      "title": "Revenue (hourly, sum across shards)",
+      "title": "Revenue (hourly)",
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
         "uid": "nus-clickhouse"
       },
-      "description": "The same hours, measured in money. Summed from Decimal64(2) across both shards, so it reconciles against Postgres rather than carrying a float tail.",
+      "description": "The same hours, measured in money. Summed from Decimal64(2), so it reconciles against Postgres rather than carrying a float tail.",
       "gridPos": {
         "h": 8,
         "w": 12,

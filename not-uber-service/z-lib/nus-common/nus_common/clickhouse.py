@@ -20,8 +20,7 @@ _client: Client | None = None
 def client() -> Client:
     """The shared ClickHouse connection.
 
-    It points at nus-lb-a, not at a single node, so queries and inserts are
-    spread over whichever nodes are healthy.
+    It points at nus-lb-a, which publishes the one ClickHouse.
     """
     global _client
     if _client is None:

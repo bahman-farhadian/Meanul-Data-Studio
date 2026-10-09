@@ -65,9 +65,9 @@ CREATE TABLE IF NOT EXISTS nus.trip_events
     -- these columns inside background merges, in an order nobody controls,
     -- so the stored total depends on merge history. The drift is around
     -- 1e-9 relative, so it is not usually a wrong cent - what it is, is a
-    -- revenue figure that does not equal itself across two replicas, never
-    -- reconciles exactly against Postgres, and renders as 41.050000000004
-    -- on a dashboard. Decimal64(2) is exact and reconciles.
+    -- revenue figure that does not equal itself after two merge orders,
+    -- never reconciles exactly against Postgres, and renders as
+    -- 41.050000000004 on a dashboard. Decimal64(2) is exact and reconciles.
     fare_estimate              Nullable(Decimal64(2)),
     fare_final                 Nullable(Decimal64(2)),
     -- What the driver took home. fare_final minus this is the platform

@@ -22,10 +22,10 @@ drift, and a second import updates what the first one made rather than
 creating a parallel copy of it.
 
 METRICS LIVE ON THE DATASET, WHICH IS THE WHOLE POINT. The tables underneath
-are SummingMergeTree, filled per node: the same hour and zone exists on both
-shards as two partial rows. Anything that divides has to sum first. Defining
-those metrics here means a chart is built by choosing "Fulfilment rate" from
-a list, and there is no path through the UI that produces an average of
+are SummingMergeTree. A matching key can sit in more than one part until a
+background merge. Anything that divides has to sum first. Defining those
+metrics here means a chart is built by choosing "Fulfilment rate" from a
+list, and there is no path through the UI that produces an average of
 averages instead.
 """
 
@@ -297,8 +297,8 @@ MONEY = "$,.0f"
 SECONDS = ",.0f"
 
 ROLLUP_RULE = (
-    "SummingMergeTree, filled per node: the same key exists on both shards "
-    "as two partial rows. Every ratio below sums first and divides once."
+    "SummingMergeTree: a matching key can sit in more than one part until a "
+    "background merge. Every ratio below sums first and divides once."
 )
 
 # A metric may never be named after a column it reads. ClickHouse prefers a
@@ -832,8 +832,8 @@ MARKETPLACE = dashboard(
         "this answers 'what has been happening, and why'.\n"
         "\n"
         "Every chart reads a rollup - never trip_events, never a position\n"
-        "table, never PostgreSQL. The read-replica connection registered\n"
-        "alongside this one is for SQL Lab exploration only, per its own\n"
+        "table, never PostgreSQL. The SQL Lab connection registered\n"
+        "alongside this one is for exploration only, per its own\n"
         "docstring, and check-assets.py fails a chart that reaches for it.\n"
         "\n"
         "Editing a chart in the browser does NOT write back to these files.\n"
@@ -853,8 +853,8 @@ MARKETPLACE = dashboard(
     rows=[
         "## Is the marketplace working\n\n"
         "Six numbers that say whether riders got rides and whether the trips "
-        "paid for themselves. Every rate is summed across both ClickHouse "
-        "shards before any division.",
+        "paid for themselves. Every rate sums the parts first, then divides "
+        "once.",
         [("fulfilment-rate", 2, 38), ("cancellation-rate", 2, 38),
          ("acceptance-rate", 2, 38), ("take-rate", 2, 38),
          ("trips-total", 2, 38), ("revenue-total", 2, 38)],

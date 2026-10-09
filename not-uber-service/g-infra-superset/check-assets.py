@@ -4,8 +4,8 @@
 The Grafana tier has check-dashboards.py; this is its counterpart, and it
 holds the same three lines:
 
-  * only this stack's ClickHouse warehouse, never the read-replica
-    PostgreSQL connection (SQL Lab exploration only, per its own docstring)
+  * only this stack's ClickHouse warehouse, never the PostgreSQL SQL Lab
+    connection (exploration only, per its own docstring)
     and never a raw event or position table
   * every rate is sum(x) / sum(y), because the sources are SummingMergeTree
     and a row is a partial sum until a merge that may not have run
@@ -94,7 +94,7 @@ def load(path: Path) -> dict:
     return document
 
 
-def distributed_tables() -> set[str]:
+def warehouse_tables() -> set[str]:
     names: set[str] = set()
     for path in DDL_DIR.glob("*.sql"):
         for match in re.finditer(
@@ -167,8 +167,8 @@ def check() -> list[str]:
         if config.get("allow_dml") is not False:
             errors.append(f"{path.name}: allow_dml must be false - charts only read")
 
-    # ---- datasets point at real Distributed tables, and only allowed ones
-    allowed_in_ddl = distributed_tables()
+    # ---- datasets point at real warehouse tables, and only allowed ones
+    allowed_in_ddl = warehouse_tables()
     dataset_uuids: dict[str, str] = {}
     for path in datasets:
         config = load(path)

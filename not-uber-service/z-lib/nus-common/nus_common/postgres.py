@@ -55,7 +55,7 @@ def _pool(port: int, size: int) -> ConnectionPool:
         min_size=1,
         max_size=size,
         # Hand out a connection that has been checked, so a caller never gets
-        # one that died while the proxy moved to a new leader.
+        # one the server already dropped.
         check=ConnectionPool.check_connection,
         open=True,
         # pgr_ksp (nus_common.routing.route, called continuously by
@@ -64,7 +64,7 @@ def _pool(port: int, size: int) -> ConnectionPool:
         # manages its own memory outside Postgres's tracked allocator.
         # Confirmed live: pg_log_backend_memory_contexts() showed a few KB
         # of Postgres-tracked memory on a backend whose OS-level RSS had
-        # grown to hundreds of MB, and a real run OOM-killed a replica at
+        # grown to hundreds of MB, and a real run OOM-killed the process at
         # ~15GB for a single backend within about 40 minutes. The pool's
         # own 3600s default gave a connection a full hour before recycling
         # - far longer than that. Recycling every 5 minutes bounds the
@@ -76,7 +76,7 @@ def _pool(port: int, size: int) -> ConnectionPool:
 
 @contextmanager
 def write_connection():
-    """A connection that can change data. Goes to the current leader.
+    """A connection that can change data. Goes to the write port.
 
     Used as:
 
@@ -98,11 +98,10 @@ def write_connection():
 
 @contextmanager
 def read_connection():
-    """A read-only connection. Goes to the replica pool.
+    """A connection on the read port.
 
-    The replicas can be a moment behind the leader. That is fine for
-    reporting and lookups, and wrong for reading back something just written
-    - use write_connection for that.
+    Both ports are the same PostgreSQL. Use write_connection to read a
+    row inside the transaction that wrote it.
     """
     global _read_pool
     if _read_pool is None:

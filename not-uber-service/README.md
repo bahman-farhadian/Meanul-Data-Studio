@@ -27,7 +27,7 @@ make prepare               # pull every image, build the eleven, prepare LION + 
 
 # --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
-                           #   volume-perms -> lb-config -> ch-secrets -> ksqldb-secrets
+                           #   volume-perms -> lb-config -> ksqldb-secrets
                            #   -> infrastructure (a-g, including grafana+tiles)
                            #   -> topics -> schemas -> ksql-ddl -> ch-ddl
                            #   -> superset-init -> bootstrap -> cdc-register
@@ -184,16 +184,15 @@ happened, which is the whole reason this is a Makefile and not one
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
 | 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a` starts. |
-| 3 | `make ch-secrets` | Writes the ClickHouse login file the DDL one-shot and the server expect. |
-| 4 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
-| 5 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
-| 6 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `nus-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
-| 7 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
-| 8 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
-| 9 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
-| 10 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
-| 11 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `nus-pg-1` through the write port. |
-| 12 | `up` pieces i–o | The services, which were waiting on the marker. |
+| 3 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
+| 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
+| 5 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `nus-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
+| 6 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
+| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
+| 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
+| 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
+| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `nus-pg-1` through the write port. |
+| 11 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is
@@ -367,8 +366,8 @@ make clean         # LEAVE NO TRACE: all of the above, plus the network and .env
 removes every container, the whole data tree under `NUS_VOLUME_ROOT`, every
 image (including the base images the custom ones were built from), the
 `nus-backbone` network, and moves your `.env` aside to `.env.removed` so the
-passwords are not lost by surprise. It also puts `ETCD_INITIAL_CLUSTER_STATE`
-back to `new`, so the next `make up` can bootstrap from empty volumes.
+passwords are not lost by surprise. The next `make up` starts from empty
+volumes.
 
 Afterwards the host is as it was, with one exception it will not touch for
 you: Docker's shared build cache, which is not this project's alone. Clear

@@ -3,7 +3,7 @@
 # column is summed inside background merges in an order nobody
 # controls. Take rate below casts to float on the RATIO and never on
 # the money.
-# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+# SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
 table_name: 'trip_stats_daily'
 schema: 'nus'
 uuid: 'b5d7df7b-9c96-5857-ba76-39d135567da4'

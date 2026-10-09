@@ -4,7 +4,7 @@
 # all until this table existed. Bucketed on when the ride was ASKED
 # for, not when it ended - a fulfilment rate is about the demand that
 # arrived in an hour.
-# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+# SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
 table_name: 'fulfilment_hourly'
 schema: 'nus'
 uuid: 'da686763-4999-5db3-b61a-1f15ac41d69d'

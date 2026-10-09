@@ -454,7 +454,7 @@ Kafka topics above and writes the warehouse tables that back Grafana
 (`nus.trip_events`, `nus.driver_positions`, and the rest) are the tables.
 Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or
 `ReplacingMergeTree`. A second copy on this host would not be a second
-machine, so there is no Keeper. See
+machine. See
 `not-uber-service/e-infra-clickhouse/clickhouse-cluster-design.md`.
 
 **Relationship with Redis:** before inserting, the sink enriches events

@@ -58,8 +58,7 @@ services:
       REDIS_HOST: ${REDIS_HOST:-redis-1}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
-      # ClickHouse through the entry tier, so inserts are spread over
-      # whichever nodes are healthy.
+      # ClickHouse through the one proxy.
       CH_HOST: ${CH_HOST:-lb-a}
       CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
       CH_DATABASE: ${CH_DATABASE:-nus}

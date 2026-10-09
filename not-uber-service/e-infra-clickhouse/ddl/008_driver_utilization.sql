@@ -39,7 +39,7 @@ GROUP BY hour, driver_id;
 -- AS utilization FROM driver_utilization_hourly GROUP BY hour, driver_id
 -- HAVING sum(online_ticks) > 0 - the division belongs at query time, same
 -- rule as every other SummingMergeTree rollup here (never read a raw
--- ratio column, it would average wrong across shards).
+-- ratio column, it would average a ratio of ratios).
 --
 -- An entirely-offline driver-hour never appears here at all - confirmed
 -- live, not a bug: SummingMergeTree drops a row once every summable

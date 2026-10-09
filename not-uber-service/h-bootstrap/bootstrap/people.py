@@ -173,16 +173,10 @@ def seed(settings: Settings, seed_value: int = 20250824) -> tuple[int, int]:
     )
 
     # zones.all_zone_ids() (grid().all_zone_ids()), not
-    # routing.servicable_zone_ids(): the latter is a second, independent
-    # read-replica query against the same city_zones WHERE servicable
-    # condition - confirmed live to disagree with the grid actually used
-    # above under replication lag (a zone marked unservicable moments
-    # earlier by zones.seed()'s own UPDATE can still read as servicable
-    # from a replica that has not caught up yet), which is exactly what
-    # crashed a real run with KeyError on a zone id the pool never built
-    # a point for. Deriving zone_ids from the same already-loaded grid
-    # instead makes the two impossible to disagree - there is only one
-    # read of city_zones happening here, not two.
+    # routing.servicable_zone_ids(). The grid is what every point lookup
+    # below uses, so zone ids come from that same in-memory set. A second
+    # query here crashed a real run with KeyError on a zone id the pool
+    # never built a point for. There is one read of city_zones, not two.
     zone_ids = zones.all_zone_ids()
 
     workers = settings.people_generation_workers

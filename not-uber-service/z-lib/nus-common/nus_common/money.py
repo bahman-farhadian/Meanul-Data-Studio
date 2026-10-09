@@ -13,8 +13,8 @@ Why not float, when a fare fits in one easily:
   386991.2000000049 - measured, not assumed. The rollups sum these columns
   inside background merges, in an order nobody controls.
 - The drift is about 1e-9 relative, so this is not usually a wrong cent.
-  What it is: a revenue figure that does not equal itself across two
-  replicas, never reconciles exactly against PostgreSQL, and renders with a
+  What it is: a revenue figure that does not equal itself after two merge
+  orders, never reconciles exactly against PostgreSQL, and renders with a
   float tail on a dashboard.
 
 fastavro refuses a float where a decimal is declared, which is what makes

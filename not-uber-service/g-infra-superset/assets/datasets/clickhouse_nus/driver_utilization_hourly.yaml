@@ -2,7 +2,7 @@
 # than from trips - so a driver who was online and never matched is
 # in the denominator, which is the only way this number means
 # anything.
-# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+# SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
 table_name: 'driver_utilization_hourly'
 schema: 'nus'
 uuid: '462681bd-1e53-5cba-a7f0-6f6e48ff358c'

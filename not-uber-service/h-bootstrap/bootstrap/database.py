@@ -49,16 +49,11 @@ def ensure_ready() -> None:
     wait_for(_can_reach_postgres, "PostgreSQL through nus-lb-a (postgres database)")
 
     # A pg-* restart just before this (h-bootstrap's own PG_CPUS boost, or an
-    # operator-triggered one) means Patroni may still be electing a leader:
-    # a container reports healthy as soon as Patroni itself answers, which
-    # can be before HAProxy's write port has converged on the new leader.
-    # SELECT 1 above succeeds against a read-only replica too, so it is not
-    # proof the CREATE/ALTER calls below can actually run - wrap them in the
-    # same retry every other "wait for infrastructure" step uses instead of
-    # failing on that transient window.
+    # operator-triggered one) can run this step before the write port accepts
+    # CREATE DATABASE. SELECT 1 is not proof the statements below can run.
     wait_for(
         lambda: _create_database_and_schema(database, user),
-        "a writable PostgreSQL leader for nus-lb-a",
+        "a writable PostgreSQL on nus-lb-a",
         attempts=12,
         delay_seconds=5,
     )

@@ -188,13 +188,11 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
     # smaller amount of work, not worth parallelizing on its own.
     rng = random.Random(seed_value)
     # zones.all_zone_ids() (grid().all_zone_ids()), not
-    # routing.servicable_zone_ids() - see people.py's own seed() for why:
-    # two independent read-replica queries against the same "servicable"
-    # condition can disagree under replication lag, and grid() is what
-    # every point-picking call below actually uses, so deriving zone_ids
-    # from it instead of a second query makes the two impossible to
-    # disagree. By the time this runs, people.seed() has already loaded
-    # and cached the grid - this is not a new database call.
+    # routing.servicable_zone_ids() - see people.py's own seed() for why.
+    # grid() is what every point-picking call below uses, so zone ids
+    # come from that same in-memory set. By the time this runs,
+    # people.seed() has already loaded and cached the grid - this is not
+    # a new database call.
     zone_ids = zones.all_zone_ids()
     # Force-loaded here, before any process pool below is created: a
     # forked worker inherits whatever is already cached at fork time, not
@@ -819,8 +817,9 @@ def _event_row(trip_id, rider, driver, status, zone, dropoff_zone, route_km,
 def store_trips(rows: list[dict], batch_size: int = 1000) -> int:
     """Write the generated trips into PostgreSQL.
 
-    Written in batches so one long transaction does not hold the leader for
-    the whole run, and so a failure shows which batch it happened in.
+    Written in batches so one long transaction does not hold the one
+    PostgreSQL for the whole run, and so a failure shows which batch it
+    happened in.
     """
     inserted = 0
     sql = """

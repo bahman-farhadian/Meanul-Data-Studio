@@ -57,13 +57,10 @@ class CityGrid:
         (h-bootstrap, driver-service, passenger-service, dispatch-service,
         city-service all load exactly the same set).
 
-        from_leader=True reads through the write connection instead of a
-        replica - only h-bootstrap needs this, and only for the one load
-        that happens moments after its own zones.seed() UPDATE marks some
-        zones unservicable: a replica can still be a beat behind that
-        write (confirmed live - a zone just marked unservicable briefly
-        still turning up here), where every other caller starts up long
-        after bootstrap finished and has no such race to avoid.
+        from_leader=True reads through the write connection. Bootstrap
+        uses it for the one load that follows zones.seed(), so that load
+        uses the connection that just marked zones unservicable. Other
+        callers use the read port of the same PostgreSQL.
         """
         connect = postgres.write_connection if from_leader else postgres.read_connection
         with connect() as conn:

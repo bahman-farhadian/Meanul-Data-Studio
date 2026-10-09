@@ -157,10 +157,10 @@ SELECT count() AS rows, uniqExact(rider_id) AS riders, uniqExact(zone_id) AS zon
        round(quantile(0.5)(accuracy_m),1) AS accuracy_p50
 FROM nus.rider_positions;
 
-SELECT '=== 12. the rollup — confirm the per-node duplication factor ===' AS section FORMAT TSVRaw;
--- trip_stats_hourly is filled by a materialized view on each node, so the same
--- (hour, zone) exists once per shard. Every query must sum() first. If
--- rollup_trips and direct_trips match, the sum-then-divide rule is right.
+SELECT '=== 12. the rollup — sum() matches the raw completed count ===' AS section FORMAT TSVRaw;
+-- trip_stats_hourly is a SummingMergeTree. Matching keys merge in the
+-- background, so a query must sum() before it treats a row as the total.
+-- If rollup_trips and direct_trips match, that rule is right.
 SELECT
     (SELECT sum(completed_trips) FROM nus.trip_stats_hourly)                       AS rollup_trips,
     (SELECT count() FROM nus.trip_events WHERE status='completed')                 AS direct_trips,

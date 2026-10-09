@@ -65,9 +65,7 @@ def preload() -> None:
     history.generate()): a forked child inherits whatever is already
     cached at fork time, so calling this first means every worker shares
     the one real load instead of each independently querying on its own
-    first zone_weight()/od_share() call - and, more importantly, all from
-    the exact same snapshot rather than whichever replica each worker's
-    own first query happens to land on.
+    first zone_weight()/od_share() call, and all from the same snapshot.
     """
     _load_zone_weights()
     _load_od_shares()

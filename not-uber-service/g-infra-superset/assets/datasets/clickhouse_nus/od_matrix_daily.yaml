@@ -2,7 +2,7 @@
 # real TLC od_pair_calibration the demand generator is built from,
 # which makes this a standing check that the simulation still looks
 # like the month it was calibrated on.
-# SummingMergeTree, filled per node: the same key exists on both shards as two partial rows. Every ratio below sums first and divides once.
+# SummingMergeTree: a matching key can sit in more than one part until a background merge. Every ratio below sums first and divides once.
 table_name: 'od_matrix_daily'
 schema: 'nus'
 uuid: '49cdf60f-3bcd-5e5d-9265-38ebd4c54537'

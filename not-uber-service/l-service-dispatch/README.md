@@ -126,8 +126,8 @@ bottleneck, because it is the one heavy step. In order of preference:
    queries is the real fix;
 2. check that `segment_traffic` has rows, since a missing traffic table does
    not slow routing down but a missing `ways` table stops it entirely;
-3. look at PostgreSQL itself: `pgr_dijkstra` runs on the read replicas
-   through port 5433, so a lagging replica shows up here first.
+3. look at PostgreSQL itself: `pgr_dijkstra` runs on the one database,
+   through port 5433.
 
 Adding a second dispatch container would work — the topic has three
 partitions — but the main README's advice holds: turn the volume down in

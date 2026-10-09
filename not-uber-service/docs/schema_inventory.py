@@ -25,8 +25,8 @@ CREATE = re.compile(
     r"(?:\s+ON\s+CLUSTER\s+[a-z0-9_]+)?\s*\(",
     re.I,
 )
-# A Distributed table has no column list of its own. It is created
-# `AS` the local table, and that is the name services query.
+# A pasted statement may still say ON CLUSTER or CREATE TABLE ... AS.
+# Shipped DDL uses neither. The parser keeps the column list either way.
 AS_TABLE = re.compile(
     r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:nus\.)?([a-z_][a-z0-9_]*)"
     r"(?:\s+ON\s+CLUSTER\s+[a-z0-9_]+)?\s+AS\s+(?:nus\.)?([a-z_][a-z0-9_]*)",
