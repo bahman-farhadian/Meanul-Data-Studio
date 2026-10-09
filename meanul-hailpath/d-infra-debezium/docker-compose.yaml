@@ -24,7 +24,7 @@
 name: d-infra-debezium
 
 services:
-  debezium-connect:
+  hailpath-debezium:
     build:
       # Builds install packages, which needs egress from the build container.
       # Defaults to the host's own network: a tunnel between here and this
@@ -37,15 +37,15 @@ services:
         CONNECT_IMAGE: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.6.2.Final}
         AVRO_CONVERTER_VERSION: ${AVRO_CONVERTER_VERSION:-8.3.1}
     image: nus/debezium-connect:${NUS_VERSION:-0.1.0}
-    container_name: nus-debezium-connect
-    hostname: nus-debezium-connect
+    container_name: hailpath-debezium
+    hostname: hailpath-debezium
     restart: unless-stopped
     cpus: ${DEBEZIUM_CPUS:-0.4}
     mem_limit: ${DEBEZIUM_MEM:-2g}
     memswap_limit: ${DEBEZIUM_MEM:-2g}
     environment:
       TZ: ${TZ:-UTC}
-      BOOTSTRAP_SERVERS: nus-kafka:9092
+      BOOTSTRAP_SERVERS: hailpath-kafka:9092
       GROUP_ID: nus-connect
       # Connect keeps its own state in Kafka: which connectors exist, how far
       # each one has read, and whether they are running. The image
@@ -62,8 +62,8 @@ services:
       # the schema kept in the Schema Registry.
       KEY_CONVERTER: io.confluent.connect.avro.AvroConverter
       VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
+      CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
       KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null || exit 1"]
@@ -93,9 +93,9 @@ services:
     entrypoint: ["python", "/register.py"]
     environment:
       TZ: ${TZ:-UTC}
-      CONNECT_URL: http://nus-debezium-connect:8083
+      CONNECT_URL: http://hailpath-debezium:8083
       CONNECTOR_FILE: /nus-pg.json
-      PG_HOST: ${CDC_PG_HOST:-nus-lb-a}
+      PG_HOST: ${CDC_PG_HOST:-hailpath-proxy}
       PG_PORT: ${CDC_PG_PORT:-5432}
       PG_DATABASE: ${CDC_PG_DATABASE:-nus}
       PG_USER: ${CDC_PG_USER:-postgres}

@@ -79,7 +79,7 @@ Connect's REST API is proxied through the entry tier like everything else in
 this stack, so `/connectors/nus-pg/status` and friends are reachable without
 shelling into the container:
 
-| | via `lb-a` |
+| | via `hailpath-proxy` |
 | --- | --- |
 | Debezium Connect | `<host>:8083` |
 
@@ -121,7 +121,7 @@ gate nothing that isn't already open one layer down.
 | `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.2.Final` | Base image for the build. |
 | `AVRO_CONVERTER_VERSION` | `8.3.1` | Confluent Avro converter version; keep it in step with the Schema Registry. |
 | `PYTHON_IMAGE` | `python:3.13.15-slim` | Image used by the registration one-shot. |
-| `CDC_PG_HOST` / `CDC_PG_PORT` | `nus-lb-a` / `5432` | The one Postgres, on the write port. |
+| `CDC_PG_HOST` / `CDC_PG_PORT` | `hailpath-proxy` / `5432` | The one Postgres, on the write port. |
 | `CDC_PG_DATABASE` / `CDC_PG_USER` | `nus` / `postgres` | Database and login. The user must be allowed to read the WAL. |
 | `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
 
@@ -132,16 +132,16 @@ gate nothing that isn't already open one layer down.
 docker compose exec debezium-connect curl -s http://localhost:8083/connectors/nus-pg/status
 
 # the cdc.* topics Debezium created
-docker compose exec nus-kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server nus-kafka:9092 --list | grep '^cdc\.'
+docker compose exec hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
+  --bootstrap-server hailpath-kafka:9092 --list | grep '^cdc\.'
 
 # watch a change arrive: update a row, then read the topic
-docker compose exec nus-postgres psql -U postgres -c \
+docker compose exec hailpath-postgres psql -U postgres -c \
   "update drivers set status = 'idle' where driver_id = (select driver_id from drivers limit 1);"
 
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server nus-kafka:9092 \
-  --property schema.registry.url=http://nus-schema-registry:8081 \
+  --bootstrap-server hailpath-kafka:9092 \
+  --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic cdc.drivers --max-messages 1
 ```
 
@@ -149,7 +149,7 @@ Slot health, from the database side:
 
 ```bash
 # active should be true, and the lag should stay small and steady
-docker compose exec nus-postgres psql -U postgres -c \
+docker compose exec hailpath-postgres psql -U postgres -c \
   "select slot_name, active, pg_size_pretty(
      pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) as behind
    from pg_replication_slots;"
@@ -173,6 +173,6 @@ keep journal files for a reader that never returns:
 docker compose exec debezium-connect curl -X DELETE http://localhost:8083/connectors/nus-pg
 
 # 2. drop the slot and the publication in PostgreSQL
-docker compose exec nus-postgres psql -U postgres -c "select pg_drop_replication_slot('nus_debezium');"
-docker compose exec nus-postgres psql -U postgres -c "drop publication if exists nus_pub;"
+docker compose exec hailpath-postgres psql -U postgres -c "select pg_drop_replication_slot('nus_debezium');"
+docker compose exec hailpath-postgres psql -U postgres -c "drop publication if exists nus_pub;"
 ```

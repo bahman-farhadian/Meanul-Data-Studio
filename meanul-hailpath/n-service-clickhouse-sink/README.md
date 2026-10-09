@@ -80,14 +80,14 @@ here.
 | `SINK_FLUSH_SECONDS` | `5.0` | How long rows may wait, whatever the count. |
 | `SINK_HOTSPOT_REFRESH_SECONDS` | `30.0` | How often demand scores are re-read. |
 | `HOTSPOT_SCORE_THRESHOLD` | `0.6` | The score at which a trip counts as a hotspot trip. |
-| `CH_*` | `lb-a`, `nus` | ClickHouse through the entry tier; password must match piece e. |
+| `CH_*` | `hailpath-proxy`, `nus` | ClickHouse through the entry tier; password must match piece e. |
 | `KAFKA_*`, `REDIS_*` | see `.env.example` | Connections; passwords must match pieces b and c. |
 
 ## Verify
 
 ```bash
 # rows arriving in the last five minutes
-docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT 'positions' AS what, count() FROM nus.driver_positions
              WHERE event_time > now() - INTERVAL 5 MINUTE
            UNION ALL
@@ -95,15 +95,15 @@ docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_
              WHERE event_time > now() - INTERVAL 5 MINUTE"
 
 # the enrichment actually happened
-docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT status, count(), avg(duration_delta_s), avg(hotspot_score)
              FROM nus.trip_events
             WHERE event_time > now() - INTERVAL 1 HOUR
             GROUP BY status"
 
 # is it keeping up?
-docker compose exec nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server nus-kafka:9092 --describe --group clickhouse-sink
+docker compose exec hailpath-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+  --bootstrap-server hailpath-kafka:9092 --describe --group clickhouse-sink
 ```
 
 Healthy looks like: row counts rising steadily, `duration_delta_s` and

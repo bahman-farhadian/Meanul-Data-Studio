@@ -32,12 +32,12 @@ log = get_logger(__name__)
 
 
 def _bootstrap() -> str:
-    return config.optional("KAFKA_BOOTSTRAP", "nus-kafka:9092")
+    return config.optional("KAFKA_BOOTSTRAP", "hailpath-kafka:9092")
 
 
 def _registry() -> SchemaRegistryClient:
     return SchemaRegistryClient(
-        {"url": config.optional("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")}
+        {"url": config.optional("SCHEMA_REGISTRY_URL", "http://hailpath-schema-registry:8081")}
     )
 
 

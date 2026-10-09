@@ -37,7 +37,7 @@ import time
 import urllib.error
 import urllib.request
 
-REGISTRY_URL = os.environ.get("SCHEMA_REGISTRY_URL", "http://nus-schema-registry:8081")
+REGISTRY_URL = os.environ.get("SCHEMA_REGISTRY_URL", "http://hailpath-schema-registry:8081")
 SCHEMA_DIR = pathlib.Path(os.environ.get("SCHEMA_DIR", "/schemas"))
 CONTENT_TYPE = "application/vnd.schemaregistry.v1+json"
 

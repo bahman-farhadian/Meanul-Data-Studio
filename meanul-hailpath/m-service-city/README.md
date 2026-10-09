@@ -97,20 +97,20 @@ path itself moves with the traffic.
 
 ```bash
 # the scores as the drivers and dispatch see them
-docker compose exec nus-redis redis-cli --scan --pattern 'hotspot:*' | head
-docker compose exec nus-redis redis-cli get hotspot:z-03-03:morning
+docker compose exec hailpath-redis redis-cli --scan --pattern 'hotspot:*' | head
+docker compose exec hailpath-redis redis-cli get hotspot:z-03-03:morning
 
 # a score should have a lifetime, counting down
-docker compose exec nus-redis redis-cli ttl hotspot:z-03-03:morning
+docker compose exec hailpath-redis redis-cli ttl hotspot:z-03-03:morning
 
 # the same scores as history
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server nus-kafka:9092 \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --bootstrap-server hailpath-kafka:9092 \
+  --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic city_hotspots --max-messages 3
 
 # routing costs actually moving away from the seeded baseline
-docker compose exec nus-postgres psql -U postgres -c \
+docker compose exec hailpath-postgres psql -U postgres -c \
   "SELECT period, count(*) AS segments,
           round(avg(congestion_factor)::numeric, 3) AS avg_factor,
           max(updated_at) AS last_update

@@ -24,7 +24,7 @@ import time
 import urllib.error
 import urllib.request
 
-CONNECT_URL = os.environ.get("CONNECT_URL", "http://debezium-connect:8083")
+CONNECT_URL = os.environ.get("CONNECT_URL", "http://hailpath-debezium:8083")
 CONNECTOR_FILE = os.environ.get("CONNECTOR_FILE", "/nus-pg.json")
 
 # How long to wait for Connect to answer. Connect loads its plugins first,

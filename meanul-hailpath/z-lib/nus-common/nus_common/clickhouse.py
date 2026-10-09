@@ -20,11 +20,11 @@ _client: Client | None = None
 def client() -> Client:
     """The shared ClickHouse connection.
 
-    It points at nus-lb-a, which publishes the one ClickHouse.
+    It points at hailpath-proxy, which publishes the one ClickHouse.
     """
     global _client
     if _client is None:
-        host = config.optional("CH_HOST", "nus-lb-a")
+        host = config.optional("CH_HOST", "hailpath-proxy")
         port = config.integer("CH_HTTP_PORT", 8123)
         _client = clickhouse_connect.get_client(
             host=host,

@@ -5,13 +5,13 @@
 name: a-infra-postgres
 
 services:
-  nus-postgres:
+  hailpath-postgres:
     # Postgres 18, PostGIS 3.6, and pgRouting 3.8, published by the
     # pgRouting project. pg_hba.conf is mounted below, so this process
     # is that image and nothing is built here.
     image: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
-    container_name: nus-postgres
-    hostname: nus-postgres
+    container_name: hailpath-postgres
+    hostname: hailpath-postgres
     restart: unless-stopped
     cpus: ${PG_CPUS:-10}
     mem_limit: ${PG_MEM:-9g}

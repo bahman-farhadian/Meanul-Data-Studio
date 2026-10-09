@@ -34,7 +34,7 @@ import time
 import urllib.error
 import urllib.request
 
-KSQL_URL = os.environ.get("KSQL_URL", "http://nus-ksqldb-server:8088")
+KSQL_URL = os.environ.get("KSQL_URL", "http://hailpath-ksqldb:8088")
 KSQL_USER = os.environ.get("KSQLDB_ADMIN_USER", "admin")
 KSQL_PASSWORD = os.environ["KSQLDB_ADMIN_PASSWORD"]
 KSQL_DIR = pathlib.Path(os.environ.get("KSQL_DIR", "/ksql"))

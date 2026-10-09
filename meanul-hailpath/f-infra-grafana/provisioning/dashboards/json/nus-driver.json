@@ -27,7 +27,7 @@
         "type": "query",
         "datasource": {
           "type": "grafana-clickhouse-datasource",
-          "uid": "nus-clickhouse"
+          "uid": "hailpath-clickhouse"
         },
         "definition": "SELECT DISTINCT toString(driver_id) FROM nus.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
         "query": "SELECT DISTINCT toString(driver_id) FROM nus.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
@@ -53,7 +53,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -66,7 +66,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -88,7 +88,7 @@
       "type": "geomap",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -101,7 +101,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -175,7 +175,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -188,7 +188,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -210,7 +210,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Straight from the device, as reported.",
       "gridPos": {
@@ -223,7 +223,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -262,7 +262,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Ticks spent on a trip out of ticks spent online. A share, so it is drawn as one - 0.42 is 42% of this driver's shift. h-bootstrap writes driver positions only along trip paths and only as on_trip, so the history has no idle telemetry and this reads 100% across the seeded window, then drops to the live figure. The cliff is the seam between seeded and live, not a collapse in efficiency.",
       "gridPos": {
@@ -275,7 +275,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -338,7 +338,7 @@
     {
       "title": "Driver",
       "type": "link",
-      "url": "/d/nus-driver",
+      "url": "/d/hailpath-driver",
       "keepTime": true
     },
     {
@@ -350,7 +350,7 @@
     {
       "title": "City",
       "type": "link",
-      "url": "/d/nus-city",
+      "url": "/d/hailpath-city",
       "keepTime": true
     },
     {

@@ -12,11 +12,11 @@
 .PHONY: verify-redis
 verify-redis:
 	$(call say,Redis)
-	@$(COMPOSE) exec -T nus-redis redis-cli -a "$$(grep -E '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2-)" --no-auth-warning ping
+	@$(COMPOSE) exec -T hailpath-redis redis-cli -a "$$(grep -E '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2-)" --no-auth-warning ping
 	@printf "\n  One Redis. A PONG is the check.\n"
 
 .PHONY: redis-cli
 redis-cli:
-	@$(COMPOSE) exec nus-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning
+	@$(COMPOSE) exec hailpath-redis redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning
 
 

@@ -47,7 +47,7 @@ x-kafka-env: &kafka-env
   # then never changed - see .env.example.
   CLUSTER_ID: ${KAFKA_CLUSTER_ID:?set it in c-infra-kafka/.env}
   KAFKA_PROCESS_ROLES: broker,controller
-  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@nus-kafka:9093
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@hailpath-kafka:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXT_A:PLAINTEXT,EXT_B:PLAINTEXT
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
@@ -94,10 +94,10 @@ services:
     networks:
       - backbone
 
-  nus-kafka:
+  hailpath-kafka:
     <<: *kafka-broker
-    container_name: nus-kafka
-    hostname: nus-kafka
+    container_name: hailpath-kafka
+    hostname: hailpath-kafka
     environment:
       <<: *kafka-env
       KAFKA_NODE_ID: "1"
@@ -105,36 +105,36 @@ services:
       # INTERNAL: what other containers are told to connect to — the name
       # they resolve on nus-backbone, not localhost. EXT_A/EXT_B: what an
       # external client is told, one port per address this broker answers
-      # on through lb-a (see the header comment for why there are two).
+      # on through hailpath-proxy (see the header comment for why there are two).
       # The port numbers are not a separate .env knob: HAProxy cannot read
       # ${VAR} from its own environment (confirmed, not assumed — the same
       # finding that shaped how Redis's password reaches it), so these have
       # to match haproxy.cfg's literal bind ports exactly. A variable here
       # that silently drifts from a hardcoded number there is worse than
       # both being plainly fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://nus-kafka:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9094,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9097
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://hailpath-kafka:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9094,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9097
     volumes:
       - kafka-data-1:/var/lib/kafka/data
 
   # The Schema Registry keeps every topic's Avro schema and hands out the ids
   # that travel inside each message. It stores them in a Kafka topic, so it
   # holds no state of its own and can be restarted freely.
-  schema-registry:
+  hailpath-schema-registry:
     image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
-    container_name: nus-schema-registry
-    hostname: nus-schema-registry
+    container_name: hailpath-schema-registry
+    hostname: hailpath-schema-registry
     restart: unless-stopped
     cpus: ${SCHEMA_REGISTRY_CPUS:-0.2}
     mem_limit: ${SCHEMA_REGISTRY_MEM:-1g}
     memswap_limit: ${SCHEMA_REGISTRY_MEM:-1g}
     depends_on:
-      nus-kafka:
+      hailpath-kafka:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      SCHEMA_REGISTRY_HOST_NAME: nus-schema-registry
+      SCHEMA_REGISTRY_HOST_NAME: hailpath-schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://nus-kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://hailpath-kafka:9092
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "1"
       # BACKWARD: a new schema must still be readable by consumers written
       # against the previous one. Adding an optional field is fine; removing
@@ -172,7 +172,7 @@ services:
     entrypoint: ["/bin/sh", "/create-topics.sh"]
     environment:
       TZ: ${TZ:-UTC}
-      KAFKA_BOOTSTRAP: nus-kafka:9092
+      KAFKA_BOOTSTRAP: hailpath-kafka:9092
       KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
     volumes:
       - ./topics/create-topics.sh:/create-topics.sh:ro
@@ -197,7 +197,7 @@ services:
     entrypoint: ["python3", "/register-schemas.py"]
     environment:
       TZ: ${TZ:-UTC}
-      SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
+      SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
       SCHEMA_DIR: /schemas
     volumes:
       - ./schemas:/schemas:ro
@@ -235,7 +235,7 @@ services:
       - backbone
 
   # The SQL layer over the cluster. DBeaver's own Kafka support only speaks
-  # ksqlDB's REST API, not the raw broker protocol used by nus-kafka/2/3 above
+  # ksqlDB's REST API, not the raw broker protocol used by hailpath-kafka/2/3 above
   # — this is what makes a topic queryable from a SQL client at all.
   # Verified locally before this shipped: CREATE STREAM over a real topic,
   # then SELECT ... EMIT CHANGES returned a real row back.
@@ -246,25 +246,25 @@ services:
   # Jetty 12 from org.eclipse.jetty.jaas.spi to org.eclipse.jetty.security.jaas.spi
   # - Confluent's own docs still show the old one; confirmed by testing
   # against this exact pinned image, not assumed.
-  ksqldb-server:
+  hailpath-ksqldb:
     image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
-    container_name: nus-ksqldb-server
-    hostname: nus-ksqldb-server
+    container_name: hailpath-ksqldb
+    hostname: hailpath-ksqldb
     restart: unless-stopped
     cpus: ${KSQLDB_CPUS:-0.5}
     mem_limit: ${KSQLDB_MEM:-1.5g}
     memswap_limit: ${KSQLDB_MEM:-1.5g}
     depends_on:
-      nus-kafka:
+      hailpath-kafka:
         condition: service_healthy
-      schema-registry:
+      hailpath-schema-registry:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      KSQL_BOOTSTRAP_SERVERS: nus-kafka:9092
+      KSQL_BOOTSTRAP_SERVERS: hailpath-kafka:9092
       KSQL_LISTENERS: http://0.0.0.0:8088
       KSQL_KSQL_SERVICE_ID: nus_ksqldb_
-      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
+      KSQL_KSQL_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
       # One broker, so ksqlDB's own topics are one copy. A second copy on
       # this same host would not survive the host dying.
       KSQL_KSQL_INTERNAL_TOPIC_REPLICAS: "1"
@@ -352,7 +352,7 @@ services:
     entrypoint: ["python3", "/apply-ksql.py"]
     environment:
       TZ: ${TZ:-UTC}
-      KSQL_URL: http://nus-ksqldb-server:8088
+      KSQL_URL: http://hailpath-ksqldb:8088
       KSQL_DIR: /ksql
       KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
       KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}

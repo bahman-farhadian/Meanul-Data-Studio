@@ -6,7 +6,7 @@ Lab, turn the result into a chart, put charts on a dashboard. Grafana
 read the same ClickHouse. At this stage this piece only brings the
 tool up and connects it — see below.
 
-Reached through the entry tier on **port 8088** (`lb-a`). Superset itself
+Reached through the entry tier on **port 8088** (`hailpath-proxy`). Superset itself
 publishes no host port.
 
 ## Superset's own database
@@ -55,8 +55,8 @@ run so the credential stays current:
 
 | Connection | Points at | Why |
 | --- | --- | --- |
-| `ClickHouse (nus)` | `nus-lb-a:8123` | The warehouse every chart would read. |
-| `PostgreSQL (nus, read-only)` | `nus-lb-a:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the same PostgreSQL as the write port. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
+| `ClickHouse (nus)` | `hailpath-proxy:8123` | The warehouse every chart would read. |
+| `PostgreSQL (nus, read-only)` | `hailpath-proxy:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the same PostgreSQL as the write port. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
 
 **Dataset, chart and dashboard provisioning is not part of this piece.** A
 full bundle — 20 charts, 5 datasets, one 6-section analytics dashboard —
@@ -87,7 +87,7 @@ infrastructure.
 | `CLICKHOUSE_CONNECT_VERSION` | `1.7.2` | ClickHouse driver installed into the image. |
 | `SUPERSET_SECRET_KEY` | — (required) | Signs cookies, encrypts stored passwords. Set once. |
 | `SUPERSET_ADMIN_USER` / `SUPERSET_ADMIN_PASSWORD` / `SUPERSET_ADMIN_EMAIL` | `admin` / — (required) / placeholder | The Superset login. |
-| `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `nus-lb-a` / `8123` / `nus` | Where ClickHouse is, through the entry tier. |
+| `CH_HOST` / `CH_HTTP_PORT` / `CH_DATABASE` | `hailpath-proxy` / `8123` / `nus` | Where ClickHouse is, through the entry tier. |
 | `CH_USER` / `CH_PASSWORD` | `nus` / — (required) | Must match `e-infra-clickhouse/.env`. |
 
 ## Standalone quickstart

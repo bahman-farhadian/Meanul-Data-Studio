@@ -1,6 +1,6 @@
 # c-infra-kafka — one broker, Schema Registry, and ksqlDB
 
-One Kafka process, `nus-kafka` / `nus-kafka`, in KRaft mode. It is the
+One Kafka process, `hailpath-kafka` / `hailpath-kafka`, in KRaft mode. It is the
 broker and the controller. There is no ZooKeeper.
 
 Schema Registry holds the Avro schemas. ksqlDB is how a SQL client reads
@@ -13,7 +13,7 @@ dying, so declared topics use replication factor 1 and
 partition. `auto.create.topics.enable` is false. Default retention is
 48 hours. ClickHouse is where history lives.
 
-Containers on `nus-backbone` use `nus-kafka:9092`. From the host,
+Containers on `nus-backbone` use `hailpath-kafka:9092`. From the host,
 HAProxy publishes the one broker on two advertised addresses:
 
 | Address | Port |
@@ -22,14 +22,14 @@ HAProxy publishes the one broker on two advertised addresses:
 | `KAFKA_ADVERTISED_HOST_B` | `9097` |
 
 `make init` fills those hostnames from this machine's interfaces. A
-client bootstraps on either port. Both are `nus-kafka`.
+client bootstraps on either port. Both are `hailpath-kafka`.
 
 ## ksqlDB
 
 ksqlDB is the SQL reader. DBeaver speaks its REST API, not the raw
 broker protocol.
 
-| | lb-a |
+| | hailpath-proxy |
 | --- | --- |
 | ksqlDB | `<host>:8089` |
 
@@ -59,8 +59,8 @@ One `.avsc` per declared topic.
 
 ```bash
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server nus-kafka:9092 \
-  --property schema.registry.url=http://nus-schema-registry:8081 \
+  --bootstrap-server hailpath-kafka:9092 \
+  --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic driver_location --from-beginning --max-messages 5
 ```
 
@@ -85,7 +85,7 @@ them, also at replication factor 1.
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `nus-kafka`, `schema-registry`, `ksqldb-server`, and the init one-shots. |
+| `docker-compose.yaml` | `hailpath-kafka`, `schema-registry`, `ksqldb-server`, and the init one-shots. |
 | `topics/topics.tsv` | Name, partitions, retention, key. |
 | `topics/create-topics.sh` | Creates anything missing. Replication factor 1. |
 | `schemas/*.avsc` | Avro schema of each declared topic. |
@@ -116,7 +116,7 @@ make verify-kafka
 make verify-ksqldb
 ```
 
-`verify-kafka` describes topics on `nus-kafka:9092`. Every partition
+`verify-kafka` describes topics on `hailpath-kafka:9092`. Every partition
 has one replica, and that replica is in sync.
 
 ## Teardown

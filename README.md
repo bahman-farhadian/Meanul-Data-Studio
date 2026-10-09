@@ -128,7 +128,7 @@ of *n*ot-*u*ber-*s*ervice**: the `nus-backbone` Docker network and the
 `nus/` image namespace. The data processes are `nus-pg-1`, `nus-redis-1`,
 `nus-kafka-1`, and `nus-ch-s1r1`.
 
-#### Load-balancer tier (lb-a)
+#### Load-balancer tier (hailpath-proxy)
 
 One HAProxy publishes a stable host port for each store:
 
@@ -173,7 +173,7 @@ system:
 `docker-compose up` brings the stack up in a strict order, enforced through
 healthchecks and `depends_on: condition: service_healthy`:
 
-1. **Infrastructure** starts first: HAProxy (`lb-a`),
+1. **Infrastructure** starts first: HAProxy (`hailpath-proxy`),
    one PostgreSQL, one Redis, one Kafka broker with Schema Registry and
    ksqlDB, Debezium Connect, one ClickHouse, Grafana, Superset — each
    with a healthcheck.
@@ -289,10 +289,10 @@ PostgreSQL layer relies on three pillars:
   columns with GIN indexes where needed — PostgreSQL covers the
   document-store role, so no MongoDB is part of the stack.
 
-**Entry point:** services connect through HAProxy (`lb-a`, see
+**Entry point:** services connect through HAProxy (`hailpath-proxy`, see
 [2.1](#load-balancer-tier-lb-a)). Port **5432** and
 port **5433** are both `nus-pg-1`. Debezium uses the write port. `PG_HOST`
-is `nus-lb-a`.
+is `hailpath-proxy`.
 
 **Migrations** are plain, ordered SQL files
 (`h-bootstrap/migrations/001_*.sql`, `002_*.sql`, ...) applied exactly once
@@ -300,7 +300,7 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 
 ```mermaid
 graph TB
-    HAP["lb-a<br/>5432 and 5433"]
+    HAP["hailpath-proxy<br/>5432 and 5433"]
     PG[("nus-pg-1")]
 
     HAP --> PG
@@ -364,7 +364,7 @@ ports 6379 and 6380 are that process. `make verify-redis` is a PING.
 
 ```mermaid
 graph TB
-    HAP["lb-a<br/>6379 and 6380"]
+    HAP["hailpath-proxy<br/>6379 and 6380"]
     R[("nus-redis-1")]
 
     HAP --> R
@@ -409,7 +409,7 @@ queryable (the concrete recipes live in `c-infra-kafka/`'s docs):
   `kcat -s avro -r http://schema-registry:8081` or
   `kafka-avro-console-consumer` decode messages on the fly through the
   Schema Registry.
-- **SQL directly over a live topic**: ksqlDB (`lb-a` port 8089) answers
+- **SQL directly over a live topic**: ksqlDB (`hailpath-proxy` port 8089) answers
   `SELECT` against the streams in `c-infra-kafka/ksql/`. ClickHouse's
   Kafka table engine can also read topics with `format = 'AvroConfluent'`
   and `format_avro_schema_registry_url`.
@@ -466,7 +466,7 @@ This keeps those lookups off PostgreSQL, per the cache-first rule in
 Section 1.
 
 **Client entry point:** `clickhouse-sink`, Grafana, and Superset reach
-the server through HAProxy (`lb-a`) on 8123 (HTTP) and 9000
+the server through HAProxy (`hailpath-proxy`) on 8123 (HTTP) and 9000
 (native). Both ports are `nus-ch-s1r1`. `bootstrap` loads history here
 so dashboards have rows after init. Grafana uses the ClickHouse
 datasource plugin. Superset uses `clickhouse-connect` and keeps its own
@@ -548,8 +548,8 @@ be brought up and tested **in isolation** (`docker compose up` inside its
 directory) — exactly matching the build/test order below — while the root
 file still provides the single-command full-stack deployment.
 
-Every component lives directly under `meanul-hailpath/` (no `infra/` /
-`services/` / `docs/` grouping) and is named
+Every component lives directly under `meanul-hailpath/` (no `infra/` or
+`services/` grouping) and is named
 `<letter>-infra-<name>` or `<letter>-service-<name>`, where the letter
 encodes a single **alphabetic build/test-order** (`a-`, `b-`, `c-`, ...)
 across the whole stack — sorting the directory alphabetically shows
@@ -557,7 +557,8 @@ exactly the order each piece should be written and tested in. **All
 infrastructure directories (`infra-*`) come first, as a block, since they are
 the foundation every service is built on; `bootstrap` and the app services
 (`service-*`) follow.** Each component's own design notes live inside its
-own directory rather than in a shared `docs/`. See
+own directory. Generated schema docs live in `z-docs/`, after the services,
+so they do not sit between Debezium and ClickHouse. See
 [2.8.1](#281-build--test-order) for the dependency reasoning behind the
 sequence.
 
@@ -569,7 +570,7 @@ meanul-data-studio/
 └── meanul-hailpath/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── Makefile                      # the runbook, executable: make help / init / preflight / up / verify
-    ├── docker-compose.yaml           # root file: lb-a + include of every component compose
+    ├── docker-compose.yaml           # root file: hailpath-proxy + include of every component compose
     ├── .env.example                  # template for the untracked .env — the MASTER settings file
     │                                 #   for the whole stack (every include resolves from it)
     ├── a-infra-postgres/             # one PostgreSQL (PostGIS, pgRouting)
@@ -590,7 +591,7 @@ meanul-data-studio/
     ├── m-service-city/               # demand scores per zone, live traffic factors
     ├── n-service-clickhouse-sink/    # every event into ClickHouse, enriched from Redis
     ├── z-config/                     # stack-level config (sorts last on purpose)
-    │   └── haproxy/                  # lb-a config
+    │   └── haproxy/                  # hailpath-proxy config
     └── z-lib/                        # shared Python code (sorts last for the same reason)
         └── nus-common/               # clients, logging, lifecycle used by h- and every service
 ```
@@ -657,7 +658,7 @@ make up
 
 which runs the preflight and then every piece in dependency order, with the
 one-shots at the points where they belong. The root compose file defines the
-stack-level service (`lb-a`) and includes each component compose
+stack-level service (`hailpath-proxy`) and includes each component compose
 file. Each service sets `cpus`, `mem_limit`, and `memswap_limit`, with
 `memswap_limit` equal to `mem_limit` so no container can swap.
 
@@ -676,7 +677,7 @@ retention is bounded.
 | Component | Containers | CPU ceiling | Memory ceiling |
 | --- | --- | --- | --- |
 | PostgreSQL (`nus-pg-1`, `shared_buffers` 4 GB) | 1 | 10 | 16 GB |
-| HAProxy (`lb-a`) | 1 | 0.5 | 128 MB |
+| HAProxy (`hailpath-proxy`) | 1 | 0.5 | 128 MB |
 | Redis (`nus-redis-1`) | 1 | 0.5 | 4 GB |
 | Kafka (`nus-kafka-1`, heap 3.5 GB) | 1 | 1.2 | 5.5 GB |
 | Schema Registry | 1 | 0.2 | 1 GB |
@@ -684,7 +685,7 @@ retention is bounded.
 | Debezium Connect | 1 | 0.4 | 2 GB |
 | ClickHouse (`nus-ch-s1r1`) | 1 | 1.3 | 8 GB |
 | Grafana | 1 | 0.2 | 1 GB |
-| Tiles (`nus-tiles`) | 1 | 1.0 | 3 GB |
+| Tiles (`hailpath-tiles`) | 1 | 1.0 | 3 GB |
 | Superset | 1 | 0.6 | 3 GB |
 | `cache-updater` | 1 | 1.5 | 1536 MB |
 | `driver-service` | 1 | 2 | 2048 MB |

@@ -250,7 +250,7 @@ def render_dictionary() -> str:
         "Generated from the shipped migrations, ClickHouse DDL, and",
         "`c-infra-kafka/topics/topics.tsv`. A live database is not consulted.",
         "If a source and this file disagree, the source wins. Regenerate",
-        "with `python3 docs/schema_inventory.py` from `meanul-hailpath/`.",
+        "with `python3 z-docs/schema_inventory.py` from `meanul-hailpath/`.",
         "",
         "`ways` and `ways_vertices_pgr` are built by",
         "`h-bootstrap/lion-prepare/build-graph.sql`, not by a migration,",

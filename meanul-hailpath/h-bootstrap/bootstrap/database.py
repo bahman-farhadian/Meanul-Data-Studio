@@ -26,7 +26,7 @@ log = get_logger(__name__)
 
 
 def _admin_connection_string(dbname: str) -> str:
-    host = config.optional("PG_HOST", "nus-lb-a")
+    host = config.optional("PG_HOST", "hailpath-proxy")
     port = config.integer("PG_WRITE_PORT", 5432)
     user = config.optional("PG_USER", "postgres")
     password = config.required("PG_PASSWORD")
@@ -46,14 +46,14 @@ def ensure_ready() -> None:
     database = config.optional("PG_DATABASE", "postgres")
     user = config.optional("PG_USER", "postgres")
 
-    wait_for(_can_reach_postgres, "PostgreSQL through nus-lb-a (postgres database)")
+    wait_for(_can_reach_postgres, "PostgreSQL through hailpath-proxy (postgres database)")
 
     # A pg-* restart just before this (h-bootstrap's own PG_CPUS boost, or an
     # operator-triggered one) can run this step before the write port accepts
     # CREATE DATABASE. SELECT 1 is not proof the statements below can run.
     wait_for(
         lambda: _create_database_and_schema(database, user),
-        "a writable PostgreSQL on nus-lb-a",
+        "a writable PostgreSQL on hailpath-proxy",
         attempts=12,
         delay_seconds=5,
     )

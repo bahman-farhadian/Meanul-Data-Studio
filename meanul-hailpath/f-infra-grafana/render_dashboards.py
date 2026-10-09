@@ -11,10 +11,10 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-DS = {"type": "grafana-clickhouse-datasource", "uid": "nus-clickhouse"}
+DS = {"type": "grafana-clickhouse-datasource", "uid": "hailpath-clickhouse"}
 PLUGIN = "4.21.2"
 OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
-# Same-origin OSM raster from nus-tiles (HAProxy /tiles/ → tileserver-gl).
+# Same-origin OSM raster from hailpath-tiles (HAProxy /tiles/ → tileserver-gl).
 # No MapTiler, no API key, no third-party CDN.
 LOCAL_XYZ = {
     "type": "xyz",
@@ -269,9 +269,9 @@ def dashboard(
         "panels": panels,
         "links": [
             {"title": "Live ops", "type": "link", "url": "/d/nus-live-ops", "keepTime": True},
-            {"title": "Driver", "type": "link", "url": "/d/nus-driver", "keepTime": True},
+            {"title": "Driver", "type": "link", "url": "/d/hailpath-driver", "keepTime": True},
             {"title": "Trip", "type": "link", "url": "/d/nus-trip", "keepTime": True},
-            {"title": "City", "type": "link", "url": "/d/nus-city", "keepTime": True},
+            {"title": "City", "type": "link", "url": "/d/hailpath-city", "keepTime": True},
             {"title": "History", "type": "link", "url": "/d/nus-history", "keepTime": True},
             {"title": "Marketplace", "type": "link", "url": "/d/nus-marketplace", "keepTime": True},
         ],

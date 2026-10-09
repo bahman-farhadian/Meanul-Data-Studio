@@ -22,7 +22,7 @@
 name: h-bootstrap
 
 services:
-  bootstrap:
+  hailpath-bootstrap:
     build:
       # Builds install packages, which needs egress from the build container.
       # Defaults to the host's own network: a tunnel between here and this
@@ -39,7 +39,7 @@ services:
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
         PG_IMAGE: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
     image: nus/bootstrap:${NUS_VERSION:-0.1.0}
-    container_name: nus-bootstrap
+    container_name: hailpath-bootstrap
     # A one-shot must not come back after it finishes. Anything else would
     # mean re-running the whole preparation on every container restart.
     restart: "no"
@@ -52,15 +52,15 @@ services:
     memswap_limit: ${BOOTSTRAP_MEM:-24g}
     # Nothing may be prepared before the things being prepared are up.
     depends_on:
-      nus-postgres:
+      hailpath-postgres:
         condition: service_healthy
-      nus-redis:
+      hailpath-redis:
         condition: service_healthy
-      nus-kafka:
+      hailpath-kafka:
         condition: service_healthy
-      schema-registry:
+      hailpath-schema-registry:
         condition: service_healthy
-      nus-clickhouse:
+      hailpath-clickhouse:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
@@ -68,7 +68,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       # PostgreSQL, through the entry tier - never a pg-* container by name.
-      PG_HOST: ${PG_HOST:-nus-lb-a}
+      PG_HOST: ${PG_HOST:-hailpath-proxy}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
       PG_READ_PORT: ${PG_READ_PORT:-5433}
       PG_DATABASE: ${PG_DATABASE:-nus}
@@ -79,11 +79,11 @@ services:
       PG_POOL_SIZE: ${PG_POOL_SIZE:-24}
 
       # Redis.
-      REDIS_HOST: ${REDIS_HOST:-nus-redis}
+      REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       # ClickHouse, through the entry tier.
-      CH_HOST: ${CH_HOST:-nus-lb-a}
+      CH_HOST: ${CH_HOST:-hailpath-proxy}
       CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
       CH_DATABASE: ${CH_DATABASE:-nus}
       CH_USER: ${CH_USER:-nus}

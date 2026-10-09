@@ -78,7 +78,7 @@ def import_map(settings: Settings) -> None:
     _run(
         [
             "pg_restore",
-            "--host", _pg("PG_HOST", "nus-lb-a"),
+            "--host", _pg("PG_HOST", "hailpath-proxy"),
             "--port", _pg("PG_WRITE_PORT", "5432"),
             "--dbname", _pg("PG_DATABASE", "nus"),
             "--username", _pg("PG_USER", "postgres"),

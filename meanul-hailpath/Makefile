@@ -72,17 +72,17 @@ WAIT_LIVE_SETTLE  ?= 900
 ERRORS_WINDOW ?= 15m
 
 # --- the stack, in the pieces the runbook names -------------------------------
-ENTRY    := lb-a
-PIECE_A  := nus-postgres
-PIECE_B  := nus-redis
-PIECE_C  := nus-kafka schema-registry ksqldb-server
-PIECE_D  := debezium-connect
-PIECE_E  := nus-clickhouse
+ENTRY    := hailpath-proxy
+PIECE_A  := hailpath-postgres
+PIECE_B  := hailpath-redis
+PIECE_C  := hailpath-kafka hailpath-schema-registry hailpath-ksqldb
+PIECE_D  := hailpath-debezium
+PIECE_E  := hailpath-clickhouse
 # OSM raster lives here, not as a later sidecar. HAProxy /tiles/ 503s
 # ("no server available") if this list is only grafana.
-PIECE_F  := grafana tiles
-PIECE_G  := superset
-SERVICES := nus-cache-updater nus-driver nus-passenger nus-dispatch nus-city nus-clickhouse-sink nus-archiver
+PIECE_F  := hailpath-grafana hailpath-tiles
+PIECE_G  := hailpath-superset
+SERVICES := hailpath-cache-updater hailpath-driver hailpath-passenger hailpath-dispatch hailpath-city hailpath-clickhouse-sink hailpath-archiver
 INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F) $(PIECE_G)
 # Everything the bring-up waits on. Debezium Connect is started with the rest
 # but deliberately not waited for: it takes minutes to scan its plugins, and
@@ -124,7 +124,7 @@ help:
 	@printf "    $(C)make prepare$(X)     pull images, build, fetch the map. Needs the network\n"
 	@printf "    $(C)make up$(X)          start the stack, in order\n\n"
 	@printf "  Code change, keep the data:\n"
-	@printf "    $(C)make build && make reload SVC=nus-driver$(X)\n\n"
+	@printf "    $(C)make build && make reload SVC=hailpath-driver$(X)\n\n"
 	@printf "  Code change, empty databases:\n"
 	@printf "    $(C)make build && make destroy && make up$(X)\n"
 	@printf "    $(C)make up$(X) does not rebuild. Skip $(C)make prepare$(X) unless the map files are missing.\n\n"
@@ -133,8 +133,8 @@ help:
 	@printf "    $(C)make health$(X)      health, restarts, OOM\n"
 	@printf "    $(C)make errors$(X)      what actually failed\n"
 	@printf "    $(C)make stats$(X)       CPU and memory against each limit\n"
-	@printf "    $(C)make logs SVC=nus-driver$(X)\n"
-	@printf "    $(C)make tail SVC=nus-driver N=80$(X)\n\n"
+	@printf "    $(C)make logs SVC=hailpath-driver$(X)\n"
+	@printf "    $(C)make tail SVC=hailpath-driver N=80$(X)\n\n"
 	@printf "  Check:\n"
 	@printf "    $(C)make verify$(X)      each layer, in order\n"
 	@printf "    $(C)make lag$(X)         consumer lag\n"
@@ -212,7 +212,7 @@ up:
 	$(call say,Starting the services — pieces i to o)
 	@$(COMPOSE) up -d $(SERVICES)
 	@printf "\n$(G)$(B)The stack is up.$(X)\n\n"
-	@printf "  Grafana maps are same-origin OSM at /tiles/ (nus-tiles). No MapTiler key.\n"
+	@printf "  Grafana maps are same-origin OSM at /tiles/ (hailpath-tiles). No MapTiler key.\n"
 	@printf "  $(C)make up$(X) does not rebuild images — that was $(C)make build$(X).\n\n"
 	@printf "  Then: $(C)make verify$(X) (includes tiles through HAProxy), $(C)make urls$(X), $(C)make lag$(X)\n"
 	@printf "  After a few minutes of live trips: $(C)make verify-positions$(X)\n\n"
@@ -314,14 +314,14 @@ include mk/wait-live.mk
 .PHONY: verify-positions
 verify-positions:
 	$(call say,Positions)
-	@docker inspect nus-driver --format '  nus-driver    started {{.State.StartedAt}}' 2>/dev/null || printf '  nus-driver    not running\n'
-	@docker inspect nus-dispatch --format '  nus-dispatch  started {{.State.StartedAt}}' 2>/dev/null || printf '  nus-dispatch  not running\n'
-	@$(COMPOSE) exec -T nus-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
+	@docker inspect hailpath-driver --format '  hailpath-driver    started {{.State.StartedAt}}' 2>/dev/null || printf '  hailpath-driver    not running\n'
+	@docker inspect hailpath-dispatch --format '  hailpath-dispatch  started {{.State.StartedAt}}' 2>/dev/null || printf '  hailpath-dispatch  not running\n'
+	@$(COMPOSE) exec -T hailpath-clickhouse clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
 		--output-format PrettyCompactMonoBlock < z-config/check-positions.sql
-	@$(COMPOSE) exec -T nus-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -c \
+	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" -c \
 		"SELECT round((avg(ST_Length(route::geography))/1000)::numeric, 2) AS route_km, round((avg(ST_Distance(pickup_point::geography, dropoff_point::geography))/1000)::numeric, 2) AS chord_km, round(avg(ST_NPoints(route))) AS avg_vertices FROM trips WHERE route IS NOT NULL AND ended_at > now() - interval '1 hour';"
-	@$(COMPOSE) exec -T nus-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" \
+	@$(COMPOSE) exec -T hailpath-postgres psql -U postgres -d "$(call getenv,PG_DATABASE,nus)" \
 		-f - < z-config/check-on-network.sql
 
 # =============================================================================
@@ -350,8 +350,8 @@ lag:
 	$(call say,Consumer lag)
 	@for g in $(GROUPS); do \
 		printf "\n  $(B)%s$(X)\n" "$$g"; \
-		$(COMPOSE) exec -T nus-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
-			--bootstrap-server nus-kafka:9092 --describe --group "$$g" 2>/dev/null \
+		$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
+			--bootstrap-server hailpath-kafka:9092 --describe --group "$$g" 2>/dev/null \
 			| awk 'NR==1 || $$6 != "-"' | sed 's/^/    /' || printf "    (no such group yet)\n"; \
 	done
 	@printf "\n  Lag that stays small, or returns to small after a burst, is healthy.\n"

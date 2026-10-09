@@ -69,20 +69,20 @@ will make dispatch fall behind first.
 ```bash
 # requests arriving
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server nus-kafka:9092 \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --bootstrap-server hailpath-kafka:9092 \
+  --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic trip_requests --max-messages 3
 
 # rows appearing, and moving out of 'requested' as dispatch picks them up
-docker compose exec nus-postgres psql -U postgres -c \
+docker compose exec hailpath-postgres psql -U postgres -c \
   "SELECT status, count(*) FROM trips
     WHERE requested_at > now() - interval '10 minutes'
     GROUP BY status ORDER BY 2 DESC;"
 
 # rider positions, which only exist while trips are in progress
 docker compose exec schema-registry kafka-avro-console-consumer \
-  --bootstrap-server nus-kafka:9092 \
-  --property schema.registry.url=http://schema-registry:8081 \
+  --bootstrap-server hailpath-kafka:9092 \
+  --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic rider_location --max-messages 3
 ```
 

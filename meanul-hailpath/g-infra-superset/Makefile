@@ -23,7 +23,7 @@ superset-assets:
 .PHONY: superset-health
 superset-health:
 	$(call say,Superset)
-	@$(COMPOSE) exec -T superset curl -sS http://localhost:8088/health 2>/dev/null || true
+	@$(COMPOSE) exec -T hailpath-superset curl -sS http://localhost:8088/health 2>/dev/null || true
 	@printf "\n  Empty panels are fine before bootstrap; an error is not.\n"
 
 .PHONY: verify-superset

@@ -29,7 +29,7 @@ _read_pool: ConnectionPool | None = None
 
 
 def _connection_string(port: int) -> str:
-    host = config.optional("PG_HOST", "nus-lb-a")
+    host = config.optional("PG_HOST", "hailpath-proxy")
     database = config.optional("PG_DATABASE", "postgres")
     user = config.optional("PG_USER", "postgres")
     password = config.required("PG_PASSWORD")

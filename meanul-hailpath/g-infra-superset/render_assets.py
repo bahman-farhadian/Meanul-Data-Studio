@@ -920,7 +920,7 @@ DATABASE = {
     "_path": f"databases/{DATABASE_SLUG}.yaml",
     "_comment": None,
     "database_name": DATABASE_NAME,
-    "sqlalchemy_uri": "clickhousedb://nus@nus-lb-a:8123/nus",
+    "sqlalchemy_uri": "clickhousedb://nus@hailpath-proxy:8123/nus",
     "uuid": str(DATABASE_UUID),
     "version": VERSION,
     "expose_in_sqllab": True,

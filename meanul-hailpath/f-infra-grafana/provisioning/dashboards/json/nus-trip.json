@@ -27,7 +27,7 @@
         "type": "query",
         "datasource": {
           "type": "grafana-clickhouse-datasource",
-          "uid": "nus-clickhouse"
+          "uid": "hailpath-clickhouse"
         },
         "definition": "SELECT DISTINCT toString(trip_id) FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
         "query": "SELECT DISTINCT toString(trip_id) FROM nus.trip_events WHERE event_time >= now() - INTERVAL 2 HOUR ORDER BY 1 DESC LIMIT 500",
@@ -53,7 +53,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -66,7 +66,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -88,7 +88,7 @@
       "type": "geomap",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -101,7 +101,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -175,7 +175,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -188,7 +188,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -215,7 +215,7 @@
     {
       "title": "Driver",
       "type": "link",
-      "url": "/d/nus-driver",
+      "url": "/d/hailpath-driver",
       "keepTime": true
     },
     {
@@ -227,7 +227,7 @@
     {
       "title": "City",
       "type": "link",
-      "url": "/d/nus-city",
+      "url": "/d/hailpath-city",
       "keepTime": true
     },
     {

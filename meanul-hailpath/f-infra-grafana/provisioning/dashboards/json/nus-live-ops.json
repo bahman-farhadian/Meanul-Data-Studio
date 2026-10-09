@@ -31,7 +31,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -44,7 +44,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -79,7 +79,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -92,7 +92,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -133,7 +133,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -146,7 +146,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -187,7 +187,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Status changes reaching the warehouse, per bucket. A flat zero here with services up means the sink stopped, not that nobody is riding.",
       "gridPos": {
@@ -200,7 +200,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -238,7 +238,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "The heaviest stream in the stack, and the first place a stalled fleet or a stalled sink shows.",
       "gridPos": {
@@ -251,7 +251,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -289,7 +289,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Every ending, live. The same four outcomes the Marketplace dashboard charts hourly, in the same colours - this one is for watching a deploy, that one for judging a day.",
       "gridPos": {
@@ -302,7 +302,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -406,7 +406,7 @@
       "type": "geomap",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -419,7 +419,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -493,7 +493,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -506,7 +506,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -528,7 +528,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -541,7 +541,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -568,7 +568,7 @@
     {
       "title": "Driver",
       "type": "link",
-      "url": "/d/nus-driver",
+      "url": "/d/hailpath-driver",
       "keepTime": true
     },
     {
@@ -580,7 +580,7 @@
     {
       "title": "City",
       "type": "link",
-      "url": "/d/nus-city",
+      "url": "/d/hailpath-city",
       "keepTime": true
     },
     {

@@ -183,15 +183,15 @@ happened, which is the whole reason this is a Makefile and not one
 | Step | Command | Why here |
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
-| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a` starts. |
+| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `hailpath-proxy` starts. |
 | 3 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
 | 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
-| 5 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `nus-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
+| 5 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
 | 6 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
 | 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
 | 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
 | 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
-| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `nus-postgres` through the write port. |
+| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` through the write port. |
 | 11 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
@@ -221,8 +221,8 @@ expects one replica in sync. `verify-ch` lists MergeTree engines.
 Two results that look wrong and are not:
 
 - **A down server on an HAProxy backend means that one process failed the
-  check.** Ports 5432 and 5433 are both `nus-postgres`. Ports 6379 and 6380
-  are both `nus-redis`.
+  check.** Ports 5432 and 5433 are both `hailpath-postgres`. Ports 6379 and 6380
+  are both `hailpath-redis`.
 - **Empty dashboard panels before bootstrap finishes are fine.** An error is
   not.
 
@@ -250,7 +250,7 @@ because it runs one pgRouting query per trip, so fewer requests is the fix.
 A shell into any of the data stores, through the proxy where there is one:
 
 ```bash
-make psql          # port 5432, nus-postgres         make redis-cli
+make psql          # port 5432, hailpath-postgres         make redis-cli
 make psql-read     # port 5433, same process     make ch-client
 ```
 
@@ -293,14 +293,14 @@ $EDITOR .env        # Section 1 — all 8 passwords need real values, even
                      # before Docker will start anything at all
 
 # build/pull ONLY piece a's images — not `make prepare`, which does all 14
-docker compose build nus-postgres
-docker compose pull lb-a
+docker compose build hailpath-postgres
+docker compose pull hailpath-proxy
 
 # the one-shots piece a needs before its first start
 docker compose run --rm volume-perms          # whole tree, harmless to run unscoped
-docker compose run --rm haproxy-config-render # lb-a's config — piece a's entry tier needs this too
+docker compose run --rm haproxy-config-render # hailpath-proxy's config — piece a's entry tier needs this too
 
-# start it — lb-a, nus-postgres, nothing else
+# start it — hailpath-proxy, hailpath-postgres, nothing else
 make up-piece PIECE=a
 
 make ps
@@ -308,9 +308,9 @@ make errors
 make verify-pg
 ```
 
-Connect a SQL client through `lb-a`
+Connect a SQL client through `hailpath-proxy`
 (see [Connecting](a-infra-postgres/README.md#connecting)):
-host = this server, port `5432` or `5433` (both are `nus-postgres`), database
+host = this server, port `5432` or `5433` (both are `hailpath-postgres`), database
 `nus`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. The `nus`
 schema and its tables arrive with `h-bootstrap`, several pieces later.
 

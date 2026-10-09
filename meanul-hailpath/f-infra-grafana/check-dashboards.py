@@ -2,7 +2,7 @@
 """Prove provisioned Grafana dashboards only query this stack's ClickHouse.
 
 Loads every JSON under provisioning/dashboards/json/, asserts each panel
-uses datasource uid nus-clickhouse, and that FROM/JOIN table names are
+uses datasource uid hailpath-clickhouse, and that FROM/JOIN table names are
 Warehouse tables declared in e-infra-clickhouse/ddl/ (never Kafka,
 Redis, Postgres, or cdc.*).
 """
@@ -20,7 +20,7 @@ PROVIDER = HERE / "provisioning" / "dashboards" / "provider.yaml"
 DDL_DIR = HERE.parent / "e-infra-clickhouse" / "ddl"
 COMPOSE = HERE / "docker-compose.yaml"
 
-DS_UID = "nus-clickhouse"
+DS_UID = "hailpath-clickhouse"
 FORBIDDEN = re.compile(
     r"\b(kafka|redis|postgres|postgresql|cdc\.[a-z_]+|information_schema)\b",
     re.IGNORECASE,

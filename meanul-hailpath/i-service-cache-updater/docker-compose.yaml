@@ -14,7 +14,7 @@
 name: i-service-cache-updater
 
 services:
-  nus-cache-updater:
+  hailpath-cache-updater:
     build:
       # Builds install packages, which needs egress from the build container.
       # Defaults to the host's own network: a tunnel between here and this
@@ -29,29 +29,29 @@ services:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
     image: nus/cache-updater:${NUS_VERSION:-0.1.0}
-    container_name: nus-cache-updater
+    container_name: hailpath-cache-updater
     restart: unless-stopped
     cpus: ${CACHE_UPDATER_CPUS:-1.5}
     mem_limit: ${CACHE_UPDATER_MEM:-1536m}
     memswap_limit: ${CACHE_UPDATER_MEM:-1536m}
     depends_on:
-      nus-kafka:
+      hailpath-kafka:
         condition: service_healthy
-      schema-registry:
+      hailpath-schema-registry:
         condition: service_healthy
-      nus-redis:
+      hailpath-redis:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
-      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-nus-kafka:9092}
-      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
+      KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}
+      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://hailpath-schema-registry:8081}
       KAFKA_GROUP_ID: ${CACHE_UPDATER_GROUP_ID:-cache-updater}
       # A pattern, so a table added to CDC later needs no change here.
       CDC_TOPIC_PATTERN: ${CDC_TOPIC_PATTERN:-^cdc\..*}
 
-      REDIS_HOST: ${REDIS_HOST:-nus-redis}
+      REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       # How often the collected changes are written and the position saved.

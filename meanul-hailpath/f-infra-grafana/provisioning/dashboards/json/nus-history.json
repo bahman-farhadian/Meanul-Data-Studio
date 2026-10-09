@@ -31,7 +31,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Volume, on its own axis. This chart used to carry revenue beside it - a count and an amount of money, one in the thousands and one in the tens of thousands, sharing a scale that made the smaller one a flat line along the bottom.",
       "gridPos": {
@@ -44,7 +44,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -82,7 +82,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "The same hours, measured in money. Summed from Decimal64(2), so it reconciles against Postgres rather than carrying a float tail.",
       "gridPos": {
@@ -95,7 +95,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -134,7 +134,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "The same measure a day at a time, for the weekly shape.",
       "gridPos": {
@@ -147,7 +147,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -185,7 +185,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Rolled up from the hourly table, not recomputed from raw events.",
       "gridPos": {
@@ -198,7 +198,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -237,7 +237,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Both percentiles are seconds, which is the only reason they share an axis. quantileMerge, never quantile: the stored column is an aggregate state, not a number.",
       "gridPos": {
@@ -250,7 +250,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -288,7 +288,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Fleet-wide share of online time spent on a trip. Summed first and divided once, because the source is a SummingMergeTree and a row is a partial sum. h-bootstrap writes driver positions only along trip paths and only as on_trip, so the history has no idle telemetry and this reads 100% across the seeded window, then drops to the live figure. The cliff is the seam between seeded and live, not a collapse in efficiency.",
       "gridPos": {
@@ -301,7 +301,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -359,7 +359,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Two counts of people, so one axis. uniqMerge, because the stored column is a sketch: adding two hours' counts would double anyone who rode in both.",
       "gridPos": {
@@ -372,7 +372,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -410,7 +410,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Trips that took longer than the route promised, as a share of trips completed. How often the promise was wrong; the Marketplace dashboard charts by how much.",
       "gridPos": {
@@ -423,7 +423,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -481,7 +481,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -494,7 +494,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -516,7 +516,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "",
       "gridPos": {
@@ -529,7 +529,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -556,7 +556,7 @@
     {
       "title": "Driver",
       "type": "link",
-      "url": "/d/nus-driver",
+      "url": "/d/hailpath-driver",
       "keepTime": true
     },
     {
@@ -568,7 +568,7 @@
     {
       "title": "City",
       "type": "link",
-      "url": "/d/nus-city",
+      "url": "/d/hailpath-city",
       "keepTime": true
     },
     {

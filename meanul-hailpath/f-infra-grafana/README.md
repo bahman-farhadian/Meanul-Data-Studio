@@ -7,7 +7,7 @@ tool; it is not used by these dashboards. Both *can* read the same
 ClickHouse. This piece brings Grafana up, connects it, and
 provisions the NUS dashboards from files.
 
-Reached through the entry tier on **port 3000** (`lb-a`). Grafana itself
+Reached through the entry tier on **port 3000** (`hailpath-proxy`). Grafana itself
 publishes no host port.
 
 ## What this piece does
@@ -22,15 +22,15 @@ in the data source file), so no password is written into any file in this
 repository.
 
 Queries go only to the `nus` ClickHouse database (datasource uid
-`nus-clickhouse`). They use the warehouse table names, never Kafka, Redis,
+`hailpath-clickhouse`). They use the warehouse table names, never Kafka, Redis,
 or Postgres.
 
 | Dashboard | uid | What it shows |
 | --- | --- | --- |
 | Live operations | `nus-live-ops` | Open trips, ingest, last driver map, freshness |
-| Driver inspector | `nus-driver` | One `driver_id`: trail, status, utilization |
+| Driver inspector | `hailpath-driver` | One `driver_id`: trail, status, utilization |
 | Trip inspector | `nus-trip` | One `trip_id`: status walk, rider trail, fares |
-| City now | `nus-city` | Zone demand, surge, congestion |
+| City now | `hailpath-city` | Zone demand, surge, congestion |
 | ClickHouse history | `nus-history` | Hourly/daily rollups, percentiles, utilization |
 
 `python3 f-infra-grafana/check-dashboards.py` (or `make grafana-check`)
@@ -56,7 +56,7 @@ newer copy in the rebuilt image.
 | `docker-compose.yaml` | The `grafana` and `tiles` services. |
 | `tiles/` | Self-hosted OSM raster (Planetiler MBTiles + tileserver-gl). |
 | `Dockerfile` | Grafana with the ClickHouse plugin baked in. |
-| `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `nus-lb-a`. |
+| `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `hailpath-proxy`. |
 | `provisioning/dashboards/provider.yaml` | File provider; Grafana watches the JSON directory. |
 | `provisioning/dashboards/json/*.json` | The five NUS dashboards. |
 | `check-dashboards.py` | Static check: datasource uid and ClickHouse table names. |
@@ -86,7 +86,7 @@ docker compose up -d --build
 ```
 
 Standalone, Grafana has no proxy in front of it, so reach it by exec'ing
-into the container or by running the full stack, where `lb-a` publishes it
+into the container or by running the full stack, where `hailpath-proxy` publishes it
 on port 3000.
 
 ## Verify
@@ -115,7 +115,7 @@ Planetiler runs with `--download=false` (MapTiler's CDN does not resolve in
 the JRE container).
 
 `make up` starts **grafana and tiles together** (piece f). `make verify`
-runs `tiles-health`: `nus-tiles` healthy, then GET `/tiles/styles.json` and a
+runs `tiles-health`: `hailpath-tiles` healthy, then GET `/tiles/styles.json` and a
 real PNG through HAProxy `:3000`. A 503 HTML page means the tiles container
 is not running — not a Grafana bug.
 

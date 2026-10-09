@@ -118,7 +118,7 @@ cannot connect and the stack stays waiting.
 docker compose logs -f bootstrap
 
 # it exited - did it succeed?
-docker inspect --format '{{.State.ExitCode}}' nus-bootstrap
+docker inspect --format '{{.State.ExitCode}}' hailpath-bootstrap
 ```
 
 Exit code 0 means the stack is prepared. Anything else means it is not, and
@@ -128,20 +128,20 @@ the services are still waiting on purpose.
 
 ```bash
 # the marker that releases the services
-docker compose exec nus-redis redis-cli get system:bootstrap:done
+docker compose exec hailpath-redis redis-cli get system:bootstrap:done
 
 # the people and the week
-docker compose exec nus-postgres psql -U postgres -c \
+docker compose exec hailpath-postgres psql -U postgres -c \
   "SELECT (SELECT count(*) FROM drivers)    AS drivers,
           (SELECT count(*) FROM passengers) AS passengers,
           (SELECT count(*) FROM city_zones) AS zones,
           (SELECT count(*) FROM trips)      AS trips;"
 
 # the street graph
-docker compose exec nus-postgres psql -U postgres -c "SELECT count(*) FROM ways;"
+docker compose exec hailpath-postgres psql -U postgres -c "SELECT count(*) FROM ways;"
 
 # the same week in the warehouse
-docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT count() FROM nus.trip_events"
 ```
 

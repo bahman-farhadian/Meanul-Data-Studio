@@ -11,15 +11,15 @@ apiVersion: 1
 
 datasources:
   - name: ClickHouse
-    uid: nus-clickhouse
+    uid: hailpath-clickhouse
     type: grafana-clickhouse-datasource
     access: proxy
     isDefault: true
     editable: false
     jsonData:
-      # Through the entry tier, not straight to a node: nus-lb-a spreads
+      # Through the entry tier, not straight to a node: hailpath-proxy spreads
       # queries over whichever ClickHouse nodes are healthy.
-      host: nus-lb-a
+      host: hailpath-proxy
       port: 9000
       protocol: native
       secure: false

@@ -1,6 +1,6 @@
 # e-infra-clickhouse — one ClickHouse
 
-One server, `nus-clickhouse` / `nus-clickhouse`. `clickhouse-sink` writes events
+One server, `hailpath-clickhouse` / `hailpath-clickhouse`. `clickhouse-sink` writes events
 here, `h-bootstrap` loads history here, and Grafana and Superset read
 here.
 
@@ -59,14 +59,14 @@ exceeded". An OOM kill does not.
 ## Ports
 
 HAProxy **8123** (HTTP) and **9000** (native) both go to
-`nus-clickhouse`. Clients use
-`CH_HOST=nus-lb-a`.
+`hailpath-clickhouse`. Clients use
+`CH_HOST=hailpath-proxy`.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `nus-clickhouse`, plus `ch-ddl-init`. |
+| `docker-compose.yaml` | `hailpath-clickhouse`, plus `ch-ddl-init`. |
 | `config/clickhouse/config.d/memory.xml` | Server memory ceiling. Mounted. |
 | `config/clickhouse/users.d/profiles.xml` | Per-query limits. Mounted. |
 | `ddl/*.sql` | Tables, in name order. `IF NOT EXISTS`. |
@@ -102,7 +102,7 @@ docker network create nus-backbone
 cp .env.example .env
 docker compose up -d
 docker compose run --rm ch-ddl-init
-docker compose exec nus-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
   --query "SELECT name, engine FROM system.tables WHERE database='nus' AND engine LIKE '%MergeTree' ORDER BY name"
 ```
 

@@ -15,12 +15,12 @@
 #   docker compose up -d --build
 #
 # In the full stack this file is include'd by the root docker-compose.yaml
-# and reached through lb-a on port 3000. Full-stack runbook: ../README.md
+# and reached through hailpath-proxy on port 3000. Full-stack runbook: ../README.md
 
 name: f-infra-grafana
 
 services:
-  grafana:
+  hailpath-grafana:
     build:
       # Builds install packages, which needs egress from the build container.
       # Defaults to the host's own network: a tunnel between here and this
@@ -33,8 +33,8 @@ services:
         GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:12.4.10}
         CLICKHOUSE_PLUGIN_VERSION: ${GRAFANA_CLICKHOUSE_PLUGIN_VERSION:-4.21.2}
     image: nus/grafana:${NUS_VERSION:-0.1.0}
-    container_name: nus-grafana
-    hostname: nus-grafana
+    container_name: hailpath-grafana
+    hostname: hailpath-grafana
     restart: unless-stopped
     cpus: ${GRAFANA_CPUS:-0.2}
     mem_limit: ${GRAFANA_MEM:-1g}
@@ -55,7 +55,7 @@ services:
       CH_USER: ${CH_USER:-nus}
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/nus-live-ops.json
-      # Same-origin OSM raster from nus-tiles via HAProxy /tiles/. No key.
+      # Same-origin OSM raster from hailpath-tiles via HAProxy /tiles/. No key.
       GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"NUS OSM","config":{"url":"/tiles/styles/nus/{z}/{x}/{y}@2x.png","attribution":"© OpenStreetMap","minZoom":0,"maxZoom":14}}'
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
@@ -72,10 +72,10 @@ services:
   # Raster OSM for Grafana geomap. Browser hits the same origin as Grafana
   # (/tiles/... on port 3000); HAProxy strips the prefix. Data is the
   # Planetiler MBTiles from `make tiles-prepare`.
-  tiles:
+  hailpath-tiles:
     image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v5.6.0}
-    container_name: nus-tiles
-    hostname: nus-tiles
+    container_name: hailpath-tiles
+    hostname: hailpath-tiles
     restart: unless-stopped
     cpus: ${TILES_CPUS:-1.0}
     mem_limit: ${TILES_MEM:-3g}

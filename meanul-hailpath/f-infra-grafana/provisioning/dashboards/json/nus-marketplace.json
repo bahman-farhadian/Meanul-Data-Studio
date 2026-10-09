@@ -31,7 +31,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Completed trips as a share of every request that reached an ending, bucketed on when the ride was ASKED for. This is the one number that counts requests nobody served - every other rollup in this warehouse filters status = 'completed' and so cannot see them.",
       "gridPos": {
@@ -44,7 +44,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -99,7 +99,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Both sides together. A trip that ended because nobody could be found is NOT a cancellation - it is counted separately, because the fix for it is supply, not behaviour.",
       "gridPos": {
@@ -112,7 +112,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -167,7 +167,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Offers accepted out of offers made. Dispatch offers a ride to one candidate at a time with a deadline; this number did not exist while dispatch simply assigned.",
       "gridPos": {
@@ -180,7 +180,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -235,7 +235,7 @@
       "type": "stat",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "What the platform keeps of every fare. Both sums are Decimal64(2) and exact; the cast to Float64 happens on the RATIO, never on the money - Decimal divided by Decimal truncates to the left operand's scale, which would quietly round the answer to two places.",
       "gridPos": {
@@ -248,7 +248,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -303,7 +303,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "One series, so the title names it and no legend box is needed. The band behind it is the same one the stat above is judged against.",
       "gridPos": {
@@ -316,7 +316,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -371,7 +371,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Counts, stacked, so the height is demand and the colours are what happened to it. Each outcome keeps its colour whatever else is on the chart.",
       "gridPos": {
@@ -384,7 +384,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -488,7 +488,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Two series on one axis only because both are seconds. Wait at the kerb is the gap between the driver arriving and the rider getting in - the measure the 'arrived' state was added to make answerable, and what a real platform charges a per-minute wait fee against.",
       "gridPos": {
@@ -501,7 +501,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -570,7 +570,7 @@
       "type": "barchart",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Support and analytics need 'the rider never came out' apart from 'the driver found something better': very different problems that look identical without the reason. FINAL is deliberate - trip_facts is a ReplacingMergeTree, so a count without it is an upper bound until a background merge collapses older versions of the same trip.",
       "gridPos": {
@@ -583,7 +583,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -620,7 +620,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Offers accepted out of offers made, per hour.",
       "gridPos": {
@@ -633,7 +633,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -688,7 +688,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "How many drivers dispatch had to ask before one took the ride. Rising means the chain is working harder for the same trip, which is the earliest visible sign of thin supply - well before fulfilment falls.",
       "gridPos": {
@@ -701,7 +701,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -756,7 +756,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Both in seconds, so one axis is honest. Read the GAP, not the levels: dispatch offers nearest-first, so the driver who accepts is by construction among the furthest asked, and the accepted line sitting above the offered line is the chain working as designed rather than a fault.",
       "gridPos": {
@@ -769,7 +769,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -838,7 +838,7 @@
       "type": "barchart",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "The question surge exists to answer. Bucketed at the OFFER, using the multiplier that was in force when the driver was asked - not recomputed later. A flat line across the bands means surge is not buying supply, whatever the price says.",
       "gridPos": {
@@ -851,7 +851,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -890,7 +890,7 @@
       "type": "timeseries",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "pgRouting promises a duration before the trip starts; this is what it cost. Zero is a perfect promise and positive means the traffic model is behind the street. Cast to Int64 before subtracting: both columns are unsigned, and an unsigned difference wraps a small early arrival into four billion seconds. No FINAL here on purpose - a duplicate shifts a quantile by nothing, and FINAL over a raw table every hour is not free.",
       "gridPos": {
@@ -903,7 +903,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 0,
@@ -972,7 +972,7 @@
       "type": "table",
       "datasource": {
         "type": "grafana-clickhouse-datasource",
-        "uid": "nus-clickhouse"
+        "uid": "hailpath-clickhouse"
       },
       "description": "Worst zone first, because that is the one to act on. The HAVING floor keeps a zone with three requests and one failure off the top of the list - at 25 zones deep, small denominators are the only way to get noise up here.",
       "gridPos": {
@@ -985,7 +985,7 @@
         {
           "datasource": {
             "type": "grafana-clickhouse-datasource",
-            "uid": "nus-clickhouse"
+            "uid": "hailpath-clickhouse"
           },
           "editorType": "sql",
           "format": 1,
@@ -1095,7 +1095,7 @@
     {
       "title": "Driver",
       "type": "link",
-      "url": "/d/nus-driver",
+      "url": "/d/hailpath-driver",
       "keepTime": true
     },
     {
@@ -1107,7 +1107,7 @@
     {
       "title": "City",
       "type": "link",
-      "url": "/d/nus-city",
+      "url": "/d/hailpath-city",
       "keepTime": true
     },
     {

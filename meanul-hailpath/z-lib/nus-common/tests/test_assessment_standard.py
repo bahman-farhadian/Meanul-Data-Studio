@@ -529,7 +529,7 @@ def test_minted_id_widths_match_warehouse():
 def test_one_clickhouse_merge_tree():
     """The warehouse is one server. Query names are MergeTree tables."""
     compose = (NUS / "e-infra-clickhouse" / "docker-compose.yaml").read_text()
-    assert "container_name: nus-clickhouse" in compose
+    assert "container_name: hailpath-clickhouse" in compose
     assert "ch-s1r2" not in compose
     assert "ch-keeper" not in compose
     ddl = "\n".join(
@@ -544,7 +544,7 @@ def test_one_clickhouse_merge_tree():
     assert "nus_cluster" not in apply
     assert "system.clusters" not in apply
     root = (NUS / "Makefile").read_text()
-    assert "PIECE_E  := nus-clickhouse" in root
+    assert "PIECE_E  := hailpath-clickhouse" in root
     assert "ch-secrets" not in root
     assert "ch-secrets-init" not in compose
     assert not (NUS / "e-infra-clickhouse" / "config" / "keeper" / "keeper.xml").exists()
@@ -554,7 +554,7 @@ def test_one_clickhouse_merge_tree():
 def test_one_postgres_and_no_patroni():
     """The database is one process. Debezium tails that process."""
     compose = (NUS / "a-infra-postgres" / "docker-compose.yaml").read_text()
-    assert "container_name: nus-postgres" in compose
+    assert "container_name: hailpath-postgres" in compose
     assert "nus-pg-2" not in compose
     assert "nus-pg-3" not in compose
     assert "etcd" not in compose.lower()
@@ -566,7 +566,7 @@ def test_one_postgres_and_no_patroni():
     hba = (NUS / "a-infra-postgres" / "pg_hba.conf").read_text()
     assert "host replication postgres" in hba
     root = (NUS / "Makefile").read_text()
-    assert "PIECE_A  := nus-postgres" in root
+    assert "PIECE_A  := hailpath-postgres" in root
     assert "etcd" not in root.lower()
     assert not (NUS / "a-infra-postgres" / "etcd.env").exists()
     debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
@@ -594,27 +594,27 @@ def test_one_postgres_and_no_patroni():
 def test_one_redis_and_no_sentinel():
     """The cache is one process. Clients open that process, not Sentinel."""
     compose = (NUS / "b-infra-redis" / "docker-compose.yaml").read_text()
-    assert "container_name: nus-redis" in compose
+    assert "container_name: hailpath-redis" in compose
     assert "nus-redis-2" not in compose
     assert "nus-redis-3" not in compose
     assert "sentinel" not in compose.lower()
     client = (NUS / "z-lib" / "nus-common" / "nus_common" / "redis_client.py").read_text()
     assert "redis.sentinel" not in client
     assert "REDIS_SENTINELS" not in client
-    assert 'config.optional("REDIS_HOST", "nus-redis")' in client
+    assert 'config.optional("REDIS_HOST", "hailpath-redis")' in client
     root = (NUS / "Makefile").read_text()
-    assert "PIECE_B  := nus-redis" in root
+    assert "PIECE_B  := hailpath-redis" in root
     assert "sentinel-" not in root
 
 
 def test_one_haproxy():
     """One proxy publishes the stable ports. It does not have a failover twin."""
     compose = (NUS / "docker-compose.yaml").read_text()
-    assert "container_name: nus-lb-a" in compose
+    assert "container_name: hailpath-proxy" in compose
     assert "nus-lb-b" not in compose
     assert "\n  lb-b:" not in compose
     root = (NUS / "Makefile").read_text()
-    assert "ENTRY    := lb-a\n" in root
+    assert "ENTRY    := hailpath-proxy\n" in root
     assert "lb-b" not in root
 
 
@@ -1024,7 +1024,7 @@ def _inventory():
     """The schema generator. z-config and docs are not on PYTHONPATH."""
     import importlib.util
 
-    path = NUS / "docs" / "schema_inventory.py"
+    path = NUS / "z-docs" / "schema_inventory.py"
     spec = importlib.util.spec_from_file_location("schema_inventory", path)
     assert spec is not None and spec.loader is not None, path
     module = importlib.util.module_from_spec(spec)
@@ -1074,8 +1074,8 @@ def test_dictionary_and_erd_match_the_shipped_schema():
     fails here.
     """
     inv = _inventory()
-    dictionary = (NUS / "docs" / "DATA_DICTIONARY.md").read_text()
-    erd = (NUS / "docs" / "ERD.md").read_text()
+    dictionary = (NUS / "z-docs" / "DATA_DICTIONARY.md").read_text()
+    erd = (NUS / "z-docs" / "ERD.md").read_text()
     assert dictionary == inv.render_dictionary()
     assert erd == inv.render_erd()
     assert inv.F4 in dictionary

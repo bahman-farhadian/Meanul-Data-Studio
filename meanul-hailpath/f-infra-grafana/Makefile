@@ -12,7 +12,7 @@
 .PHONY: grafana-health
 grafana-health:
 	$(call say,Grafana)
-	@$(COMPOSE) exec -T grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
+	@$(COMPOSE) exec -T hailpath-grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
 	@printf "\n  Provisioned dashboards live under Dashboards → NUS.\n"
 	@printf "  Geomap tiles are same-origin /tiles/ — checked by $(C)make tiles-health$(X).\n"
 
@@ -37,13 +37,13 @@ tiles-health:
 		exit 1; \
 	fi; \
 	printf "  $(G)ok$(X)      nyc.mbtiles %s\n" "$$(du -h "$$mb" | cut -f1)"; \
-	hs=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' nus-tiles 2>/dev/null || true); \
+	hs=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' hailpath-tiles 2>/dev/null || true); \
 	if [ "$$hs" != healthy ]; then \
-		printf "  $(R)FAIL$(X)    nus-tiles is '%s' — Grafana maps 503 until: $(C)docker compose up -d tiles$(X)\n" "$${hs:-not running}"; \
+		printf "  $(R)FAIL$(X)    hailpath-tiles is '%s' — Grafana maps 503 until: $(C)docker compose up -d tiles$(X)\n" "$${hs:-not running}"; \
 		exit 1; \
 	fi; \
-	printf "  $(G)ok$(X)      nus-tiles healthy\n"; \
-	base="http://nus-lb-a:3000"; \
+	printf "  $(G)ok$(X)      hailpath-tiles healthy\n"; \
+	base="http://hailpath-proxy:3000"; \
 	json=$$($(COMPOSE) exec -T grafana wget -S -O /dev/null "$$base/tiles/styles.json" 2>&1 || true); \
 	if ! printf '%s' "$$json" | grep -q ' 200 OK'; then \
 		printf "  $(R)FAIL$(X)    GET /tiles/styles.json did not return 200. 503 means HAProxy has no tiles backend.\n"; \
@@ -78,7 +78,7 @@ grafana-check:
 verify-grafana:
 	$(call say,Grafana panels)
 	@out=$$(python3 f-infra-grafana/panel-probe.py \
-		| $(COMPOSE) exec -T nus-clickhouse clickhouse-client \
+		| $(COMPOSE) exec -T hailpath-clickhouse clickhouse-client \
 			--user "$(call getenv,CH_USER)" \
 			--password "$(call getenv,CH_PASSWORD)" \
 			--database nus --multiquery 2>&1 || true); \

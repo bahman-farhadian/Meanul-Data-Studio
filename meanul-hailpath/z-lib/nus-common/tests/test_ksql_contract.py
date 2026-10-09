@@ -272,7 +272,7 @@ def test_the_server_is_configured_for_a_sql_client() -> None:
     """
     compose = (KSQL_DIR.parent / "docker-compose.yaml").read_text()
     checker = (KSQL_DIR / "check-ksql.py").read_text()
-    for name in ("kafka-topics-init", "schema-init", "ksql-init", "ksqldb-server"):
+    for name in ("kafka-topics-init", "schema-init", "ksql-init", "hailpath-ksqldb"):
         assert compose.count(f"\n  {name}:\n") == 1, name
 
     required = {
