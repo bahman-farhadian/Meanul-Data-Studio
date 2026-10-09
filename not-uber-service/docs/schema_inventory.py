@@ -291,10 +291,9 @@ def render_dictionary() -> str:
         "",
         "## Warehouse",
         "",
-        "A name ending in `_local` is the table on each node. The name",
-        "without that suffix is the Distributed table services and",
-        "dashboards query. Both are listed. A materialized view is a",
-        "trigger, not a table, and is not listed.",
+        "These are the tables services and dashboards query. Each one is",
+        "stored on the one ClickHouse. A materialized view is a trigger,",
+        "not a table, and is not listed.",
         "",
     ]
     for table, cols in warehouse_tables().items():
@@ -303,8 +302,7 @@ def render_dictionary() -> str:
         source = aliases.get(table)
         if source:
             lines.append(
-                f"Distributed table. Same columns as `nus.{source}`. "
-                "This is the name a query uses."
+                f"Same columns as `nus.{source}`. This is the name a query uses."
             )
             lines.append("")
         lines.append("| Column | Type |")

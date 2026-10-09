@@ -7,30 +7,30 @@
 
 -- 1. What the real p95 trip time in a zone is right now, not just the
 -- average trip_stats_hourly's sums already answer.
-CREATE TABLE IF NOT EXISTS nus.trip_duration_percentiles_hourly_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.trip_duration_percentiles_hourly
 (
     hour           DateTime('UTC'),
     pickup_zone_id LowCardinality(String),
     -- Nullable(UInt32), not UInt32: actual_duration_s is itself Nullable
-    -- (trip_events_local) and quantileState() over a Nullable column
+    -- (trip_events) and quantileState() over a Nullable column
     -- produces a Nullable-typed state - confirmed directly, ClickHouse
     -- refuses to insert one into a plain UInt32 state column.
     p50_state      AggregateFunction(quantile(0.5), Nullable(UInt32)),
     p95_state      AggregateFunction(quantile(0.95), Nullable(UInt32))
 )
-ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_duration_percentiles_hourly_mv ON CLUSTER nus_cluster
-TO nus.trip_duration_percentiles_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_duration_percentiles_hourly_mv
+TO nus.trip_duration_percentiles_hourly
 AS
 SELECT
     toStartOfHour(event_time)          AS hour,
     pickup_zone_id,
     quantileState(0.5)(actual_duration_s)  AS p50_state,
     quantileState(0.95)(actual_duration_s) AS p95_state
-FROM nus.trip_events_local
+FROM nus.trip_events
 -- Only a completed trip has a real actual_duration_s - quantileState()
 -- over a Nullable column ignores NULLs on its own, but the same filter
 -- 005_rollups.sql already uses keeps this from aggregating rows that can
@@ -38,9 +38,6 @@ FROM nus.trip_events_local
 WHERE status = 'completed'
 GROUP BY hour, pickup_zone_id;
 
-CREATE TABLE IF NOT EXISTS nus.trip_duration_percentiles_hourly ON CLUSTER nus_cluster
-AS nus.trip_duration_percentiles_hourly_local
-ENGINE = Distributed(nus_cluster, nus, trip_duration_percentiles_hourly_local, cityHash64(pickup_zone_id));
 
 -- Query with: SELECT hour, quantileMerge(0.95)(p95_state) FROM
 -- trip_duration_percentiles_hourly GROUP BY hour - never read p95_state
@@ -57,37 +54,34 @@ ENGINE = Distributed(nus_cluster, nus, trip_duration_percentiles_hourly_local, c
 -- rows for the same hour combines their states correctly (a column a
 -- given MV never touched simply contributes nothing to that merge, not
 -- a wrong answer) - verified live before writing this to disk.
-CREATE TABLE IF NOT EXISTS nus.active_entities_hourly_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.active_entities_hourly
 (
     hour         DateTime('UTC'),
     driver_state AggregateFunction(uniq, FixedString(11)),
     rider_state  AggregateFunction(uniq, FixedString(11))
 )
-ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY hour;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.active_drivers_hourly_mv ON CLUSTER nus_cluster
-TO nus.active_entities_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.active_drivers_hourly_mv
+TO nus.active_entities_hourly
 AS
 SELECT
     toStartOfHour(event_time) AS hour,
     uniqState(driver_id)      AS driver_state
-FROM nus.driver_positions_local
+FROM nus.driver_positions
 GROUP BY hour;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.active_riders_hourly_mv ON CLUSTER nus_cluster
-TO nus.active_entities_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.active_riders_hourly_mv
+TO nus.active_entities_hourly
 AS
 SELECT
     toStartOfHour(event_time) AS hour,
     uniqState(rider_id)       AS rider_state
-FROM nus.rider_positions_local
+FROM nus.rider_positions
 GROUP BY hour;
 
-CREATE TABLE IF NOT EXISTS nus.active_entities_hourly ON CLUSTER nus_cluster
-AS nus.active_entities_hourly_local
-ENGINE = Distributed(nus_cluster, nus, active_entities_hourly_local, cityHash64(hour));
 
 -- Query with: SELECT hour, uniqMerge(driver_state) AS drivers,
 -- uniqMerge(rider_state) AS riders FROM active_entities_hourly GROUP BY hour.

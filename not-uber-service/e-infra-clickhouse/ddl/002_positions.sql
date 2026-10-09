@@ -1,12 +1,8 @@
 -- Where drivers and riders were, over time.
 --
--- Two tables per stream, which is the normal ClickHouse pattern:
---   *_local  is the real table, stored on the node and copied to its replica;
---   the plain name is a Distributed table - it stores nothing itself and
---   simply fans a query out to both shards and collects the answers.
--- Services and dashboards always use the plain name.
+-- One table per stream. Services and dashboards query these names.
 
-CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.driver_positions
 (
     -- Ids are FixedString, not String: every one of these is a fixed-width
     -- format by construction (see z-lib/nus-common/nus_common/ids.py, the
@@ -47,7 +43,7 @@ CREATE TABLE IF NOT EXISTS nus.driver_positions_local ON CLUSTER nus_cluster
     -- have to look at months of data.
     event_date    Date MATERIALIZED toDate(event_time)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = MergeTree
 -- Daily, not monthly, and this is the difference between a TTL that
 -- removes a directory and one that rewrites gigabytes. The TTL below is
 -- three days; under a monthly partition that expiry can never drop a
@@ -77,13 +73,8 @@ ORDER BY (driver_id, event_time)
 -- its disk does not have.
 TTL event_date + INTERVAL 2 DAY;
 
-CREATE TABLE IF NOT EXISTS nus.driver_positions ON CLUSTER nus_cluster
-AS nus.driver_positions_local
--- Split by driver, so everything about one driver sits on one shard and a
--- per-driver query touches half the cluster instead of all of it.
-ENGINE = Distributed(nus_cluster, nus, driver_positions_local, cityHash64(driver_id));
 
-CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.rider_positions
 (
     -- rider_id is a passenger id (psg-NNNNNN) - see driver_positions above
     -- for why FixedString, not String.
@@ -104,7 +95,7 @@ CREATE TABLE IF NOT EXISTS nus.rider_positions_local ON CLUSTER nus_cluster
     event_time    DateTime64(3, 'UTC'),
     event_date    Date MATERIALIZED toDate(event_time)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = MergeTree
 -- Daily for the same reason as driver_positions above: a seven-day TTL
 -- under a monthly partition never drops anything.
 PARTITION BY event_date
@@ -127,6 +118,3 @@ ORDER BY (rider_id, event_time)
 -- whatever the scale.
 TTL event_date + INTERVAL 2 DAY;
 
-CREATE TABLE IF NOT EXISTS nus.rider_positions ON CLUSTER nus_cluster
-AS nus.rider_positions_local
-ENGINE = Distributed(nus_cluster, nus, rider_positions_local, cityHash64(rider_id));

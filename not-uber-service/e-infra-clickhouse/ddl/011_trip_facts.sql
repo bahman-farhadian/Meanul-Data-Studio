@@ -14,7 +14,7 @@
 -- order - so these are the times the OLTP store recorded, and the lags
 -- below are computed once on write instead of in every query.
 
-CREATE TABLE IF NOT EXISTS nus.trip_facts_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.trip_facts
 (
     event_id                UUID,
     trip_id                 FixedString(21),
@@ -78,7 +78,7 @@ CREATE TABLE IF NOT EXISTS nus.trip_facts_local ON CLUSTER nus_cluster
 -- missed - and because a duplicate that survives both would otherwise
 -- double a trip in every chart. Read with FINAL when an exact count
 -- matters; the row count without it is an upper bound.
-ENGINE = ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}', event_time)
+ENGINE = ReplacingMergeTree(event_time)
 -- Daily, because the TTL is now shorter than a month. Under monthly
 -- partitions a 30-day expiry drops nothing until an entire month has
 -- aged out, so the table would hold up to sixty days to honour a
@@ -92,8 +92,8 @@ ORDER BY trip_id
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_facts_mv ON CLUSTER nus_cluster
-TO nus.trip_facts_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.trip_facts_mv
+TO nus.trip_facts
 AS
 SELECT
     event_id,
@@ -128,18 +128,15 @@ SELECT
     payment_method,
     cancellation_reason,
     event_time
-FROM nus.trip_events_local
+FROM nus.trip_events
 WHERE status IN ('completed', 'cancelled_by_passenger', 'cancelled_by_driver', 'no_driver_found');
 
-CREATE TABLE IF NOT EXISTS nus.trip_facts ON CLUSTER nus_cluster
-AS nus.trip_facts_local
-ENGINE = Distributed(nus_cluster, nus, trip_facts_local, cityHash64(trip_id));
 
--- The funnel, per zone per hour. Sourced from trip_facts_local, not
--- trip_events_local: one row per trip is already the right grain for
+-- The funnel, per zone per hour. Sourced from trip_facts, not
+-- trip_events: one row per trip is already the right grain for
 -- "how many requests ended how", and counting terminal events straight
 -- from the event stream would be the same numbers for more work.
-CREATE TABLE IF NOT EXISTS nus.fulfilment_hourly_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.fulfilment_hourly
 (
     hour                    DateTime('UTC'),
     pickup_zone_id          LowCardinality(String),
@@ -155,12 +152,12 @@ CREATE TABLE IF NOT EXISTS nus.fulfilment_hourly_local ON CLUSTER nus_cluster
     wait_s_sum              UInt64,
     waited_trips            UInt64
 )
-ENGINE = ReplicatedSummingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.fulfilment_hourly_mv ON CLUSTER nus_cluster
-TO nus.fulfilment_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.fulfilment_hourly_mv
+TO nus.fulfilment_hourly
 AS
 SELECT
     -- Bucketed on when the ride was ASKED for, not when it ended: a
@@ -178,12 +175,9 @@ SELECT
     countIf(match_s IS NOT NULL)                         AS matched_trips,
     sum(ifNull(toUInt64(greatest(wait_s, 0)), 0))        AS wait_s_sum,
     countIf(wait_s IS NOT NULL)                          AS waited_trips
-FROM nus.trip_facts_local
+FROM nus.trip_facts
 GROUP BY hour, pickup_zone_id;
 
-CREATE TABLE IF NOT EXISTS nus.fulfilment_hourly ON CLUSTER nus_cluster
-AS nus.fulfilment_hourly_local
-ENGINE = Distributed(nus_cluster, nus, fulfilment_hourly_local, cityHash64(pickup_zone_id));
 
 -- Fulfilment rate:   sum(completed) / sum(trips_ended)
 -- Cancellation rate: (sum(cancelled_by_passenger) + sum(cancelled_by_driver))

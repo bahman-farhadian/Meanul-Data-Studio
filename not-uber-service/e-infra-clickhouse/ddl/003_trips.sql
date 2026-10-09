@@ -5,7 +5,7 @@
 -- hotspot trip, and how far the real duration drifted from the predicted one.
 -- Those lookups come from Redis, never from the OLTP database.
 
-CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.trip_events
 (
     -- FixedString/Enum8 for the ids and status this codebase mints itself
     -- (nus_common/ids.py) and constrains itself (Avro's TripStatus, and
@@ -101,7 +101,7 @@ CREATE TABLE IF NOT EXISTS nus.trip_events_local ON CLUSTER nus_cluster
     event_time                 DateTime64(3, 'UTC'),
     event_date                 Date MATERIALIZED toDate(event_time)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = MergeTree
 -- Daily, because the TTL is now shorter than a month. Under monthly
 -- partitions a 30-day expiry drops nothing until an entire month has
 -- aged out, so the table would hold up to sixty days to honour a
@@ -116,7 +116,3 @@ ORDER BY (trip_id, event_time)
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
 
-CREATE TABLE IF NOT EXISTS nus.trip_events ON CLUSTER nus_cluster
-AS nus.trip_events_local
--- Split by trip, so the whole story of one trip lands on one shard.
-ENGINE = Distributed(nus_cluster, nus, trip_events_local, cityHash64(trip_id));

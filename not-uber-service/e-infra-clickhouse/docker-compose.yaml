@@ -1,15 +1,7 @@
 # e-infra-clickhouse — the analytics database.
 #
-# Four ClickHouse nodes arranged as 2 shards x 2 replicas, plus a group of
-# three ClickHouse Keeper nodes that let them agree with each other.
-#
-#   shard   = one half of the data
-#   replica = a second copy of that half, on another container
-#
-# So the data is split in two and each half is stored twice: any one node can
-# be lost without losing data or stopping queries. Why not more shards: see
-# clickhouse-cluster-design.md - at 20 CPU cores, four data nodes is what
-# fits with room left for everything that produces the data.
+# One ClickHouse. A second copy on this host is not a second machine,
+# so there is no shard, no replica, and no Keeper.
 #
 # Clients (clickhouse-sink, Grafana, Superset) come in through the lb-a/lb-b
 # HAProxy pair on 8123 (HTTP) and 9000 (native).
@@ -25,43 +17,12 @@
 
 name: e-infra-clickhouse
 
-x-keeper-node: &keeper-node
-  image: ${CH_KEEPER_IMAGE:-clickhouse/clickhouse-keeper:25.3}
-  restart: unless-stopped
-  cpus: ${CH_KEEPER_CPUS:-0.5}
-  mem_limit: ${CH_KEEPER_MEM:-1g}
-  memswap_limit: ${CH_KEEPER_MEM:-1g}
-  healthcheck:
-    # Keeper answers the four-letter word "ruok" with "imok". bash is used on
-    # purpose: /dev/tcp is a bash feature and there is no curl in the image.
-    test:
-      - CMD
-      - bash
-      - -c
-      # $$(hostname), not localhost: a Keeper listening only on the loopback
-      # answers a localhost probe perfectly well while every other container
-      # is refused, which is exactly how a misconfigured ensemble hides.
-      - exec 3<>/dev/tcp/$$(hostname)/9181 && echo ruok >&3 && head -c 4 <&3 | grep -q imok
-    interval: 15s
-    timeout: 5s
-    retries: 5
-    start_period: 20s
-  networks:
-    - backbone
-
 x-ch-node: &ch-node
   image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:25.3}
   restart: unless-stopped
   cpus: ${CH_CPUS:-1.3}
   mem_limit: ${CH_MEM:-8g}
   memswap_limit: ${CH_MEM:-8g}
-  depends_on:
-    ch-keeper-1:
-      condition: service_healthy
-    ch-keeper-2:
-      condition: service_healthy
-    ch-keeper-3:
-      condition: service_healthy
   # ClickHouse opens many files at once; the default container limit is far
   # too low for a merge-heavy table engine.
   ulimits:
@@ -98,42 +59,7 @@ x-ch-users: &ch-users ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-s
 x-ch-secrets: &ch-secrets ch-secrets:/secrets:ro
 
 services:
-  ch-keeper-1:
-    <<: *keeper-node
-    container_name: nus-ch-keeper-1
-    hostname: nus-ch-keeper-1
-    environment:
-      TZ: ${TZ:-UTC}
-      KEEPER_SERVER_ID: "1"
-    volumes:
-      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
-      - keeper-data-1:/var/lib/clickhouse-keeper
-
-  ch-keeper-2:
-    <<: *keeper-node
-    container_name: nus-ch-keeper-2
-    hostname: nus-ch-keeper-2
-    environment:
-      TZ: ${TZ:-UTC}
-      KEEPER_SERVER_ID: "2"
-    volumes:
-      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
-      - keeper-data-2:/var/lib/clickhouse-keeper
-
-  ch-keeper-3:
-    <<: *keeper-node
-    container_name: nus-ch-keeper-3
-    hostname: nus-ch-keeper-3
-    environment:
-      TZ: ${TZ:-UTC}
-      KEEPER_SERVER_ID: "3"
-    volumes:
-      - ./config/keeper/keeper.xml:/etc/clickhouse-keeper/keeper_config.xml:ro
-      - keeper-data-3:/var/lib/clickhouse-keeper
-
-  # Shard 1, both copies. CH_SHARD and CH_REPLICA fill in the {shard} and
-  # {replica} placeholders used by every table definition, which is what
-  # makes one DDL file work on all four nodes.
+  # The only server. The name is the one clients and make targets already use.
   ch-s1r1:
     <<: *ch-node
     container_name: nus-ch-s1r1
@@ -141,63 +67,11 @@ services:
     environment:
       <<: *ch-env
       CH_HOSTNAME: nus-ch-s1r1
-      CH_SHARD: "1"
-      CH_REPLICA: nus-ch-s1r1
     volumes:
-      - *ch-config-cluster
       - *ch-config-memory
       - *ch-users
       - *ch-secrets
       - ch-data-s1r1:/var/lib/clickhouse
-
-  ch-s1r2:
-    <<: *ch-node
-    container_name: nus-ch-s1r2
-    hostname: nus-ch-s1r2
-    environment:
-      <<: *ch-env
-      CH_HOSTNAME: nus-ch-s1r2
-      CH_SHARD: "1"
-      CH_REPLICA: nus-ch-s1r2
-    volumes:
-      - *ch-config-cluster
-      - *ch-config-memory
-      - *ch-users
-      - *ch-secrets
-      - ch-data-s1r2:/var/lib/clickhouse
-
-  # Shard 2, both copies.
-  ch-s2r1:
-    <<: *ch-node
-    container_name: nus-ch-s2r1
-    hostname: nus-ch-s2r1
-    environment:
-      <<: *ch-env
-      CH_HOSTNAME: nus-ch-s2r1
-      CH_SHARD: "2"
-      CH_REPLICA: nus-ch-s2r1
-    volumes:
-      - *ch-config-cluster
-      - *ch-config-memory
-      - *ch-users
-      - *ch-secrets
-      - ch-data-s2r1:/var/lib/clickhouse
-
-  ch-s2r2:
-    <<: *ch-node
-    container_name: nus-ch-s2r2
-    hostname: nus-ch-s2r2
-    environment:
-      <<: *ch-env
-      CH_HOSTNAME: nus-ch-s2r2
-      CH_SHARD: "2"
-      CH_REPLICA: nus-ch-s2r2
-    volumes:
-      - *ch-config-cluster
-      - *ch-config-memory
-      - *ch-users
-      - *ch-secrets
-      - ch-data-s2r2:/var/lib/clickhouse
 
   # One-shot: write the cluster login the nodes use to talk to each other.
   #
@@ -259,27 +133,6 @@ volumes:
       type: none
       o: bind
       device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-secrets
-  keeper-data-1:
-    name: nus-ch-keeper-1
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-keeper-1
-  keeper-data-2:
-    name: nus-ch-keeper-2
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-keeper-2
-  keeper-data-3:
-    name: nus-ch-keeper-3
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-keeper-3
   ch-data-s1r1:
     name: nus-ch-data-s1r1
     driver: local
@@ -287,27 +140,6 @@ volumes:
       type: none
       o: bind
       device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s1r1
-  ch-data-s1r2:
-    name: nus-ch-data-s1r2
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s1r2
-  ch-data-s2r1:
-    name: nus-ch-data-s2r1
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s2r1
-  ch-data-s2r2:
-    name: nus-ch-data-s2r2
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-ch-data-s2r2
 
 networks:
   backbone:

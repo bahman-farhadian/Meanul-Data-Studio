@@ -77,7 +77,7 @@ PIECE_A  := pg-1
 PIECE_B  := redis-1
 PIECE_C  := kafka-1 schema-registry ksqldb-server
 PIECE_D  := debezium-connect
-PIECE_E  := ch-keeper-1 ch-keeper-2 ch-keeper-3 ch-s1r1 ch-s1r2 ch-s2r1 ch-s2r2
+PIECE_E  := ch-s1r1
 # OSM raster lives here, not as a later sidecar. HAProxy /tiles/ 503s
 # ("no server available") if this list is only grafana.
 PIECE_F  := grafana tiles

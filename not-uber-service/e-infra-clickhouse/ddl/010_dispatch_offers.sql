@@ -13,7 +13,7 @@
 -- Postgres genuinely passes through it, and the three copies of a closed
 -- set are kept identical on principle - it simply never appears here.
 
-CREATE TABLE IF NOT EXISTS nus.dispatch_offers_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.dispatch_offers
 (
     -- Same envelope as every other table here: the sink refuses an
     -- event_id it has already written, because ClickHouse does not
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS nus.dispatch_offers_local ON CLUSTER nus_cluster
     event_time           DateTime64(3, 'UTC'),
     event_date           Date MATERIALIZED toDate(offered_at)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = MergeTree
 -- Daily, because the TTL is now shorter than a month. Under monthly
 -- partitions a 30-day expiry drops nothing until an entire month has
 -- aged out, so the table would hold up to sixty days to honour a
@@ -62,17 +62,11 @@ ORDER BY (trip_id, sequence)
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
 
-CREATE TABLE IF NOT EXISTS nus.dispatch_offers ON CLUSTER nus_cluster
-AS nus.dispatch_offers_local
--- Split by trip, so a whole offer chain lands on one shard - the same rule
--- trip_events follows, and what makes "how deep did this chain go" a
--- single-shard question.
-ENGINE = Distributed(nus_cluster, nus, dispatch_offers_local, cityHash64(trip_id));
 
 -- The funnel itself, per zone per hour. Every column is a plain count or
 -- sum, so SummingMergeTree merges it with no combinator functions - the
 -- same rule 005_rollups.sql sets out.
-CREATE TABLE IF NOT EXISTS nus.dispatch_funnel_hourly_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.dispatch_funnel_hourly
 (
     hour              DateTime('UTC'),
     pickup_zone_id    LowCardinality(String),
@@ -90,12 +84,12 @@ CREATE TABLE IF NOT EXISTS nus.dispatch_funnel_hourly_local ON CLUSTER nus_clust
     response_s_sum    UInt64,
     responses         UInt64
 )
-ENGINE = ReplicatedSummingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, pickup_zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.dispatch_funnel_hourly_mv ON CLUSTER nus_cluster
-TO nus.dispatch_funnel_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.dispatch_funnel_hourly_mv
+TO nus.dispatch_funnel_hourly
 AS
 SELECT
     toStartOfHour(offered_at)                          AS hour,
@@ -110,12 +104,9 @@ SELECT
     sumIf(ifNull(eta_seconds, 0), status = 'accepted') AS accepted_eta_sum,
     sum(ifNull(response_s, 0))                         AS response_s_sum,
     countIf(response_s IS NOT NULL)                    AS responses
-FROM nus.dispatch_offers_local
+FROM nus.dispatch_offers
 GROUP BY hour, pickup_zone_id;
 
-CREATE TABLE IF NOT EXISTS nus.dispatch_funnel_hourly ON CLUSTER nus_cluster
-AS nus.dispatch_funnel_hourly_local
-ENGINE = Distributed(nus_cluster, nus, dispatch_funnel_hourly_local, cityHash64(pickup_zone_id));
 
 -- Acceptance rate:  SELECT hour, sum(offers_accepted) / sum(offers_made)
 --   FROM dispatch_funnel_hourly GROUP BY hour

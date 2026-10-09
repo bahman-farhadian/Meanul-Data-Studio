@@ -131,33 +131,19 @@ listen debezium
     server nus-debezium-connect nus-debezium-connect:8083 check
 
 # ClickHouse (e-infra-clickhouse) ---------------------------------------------
-# All four nodes are equal here: any of them can answer any query, because a
-# Distributed table sends the work to the shard that owns the rows. So this is
-# a plain round-robin over whoever is healthy, unlike the PostgreSQL backends
-# above where the role decides who gets the traffic.
-#
-# The HTTP check asks for /ping, which ClickHouse answers with "Ok." without
-# needing a login. The native port has no such endpoint, so it is checked by
-# opening a connection.
+# One server. The HTTP check asks for /ping, which answers "Ok." without
+# a login. The native port is checked by opening a connection.
 
 listen ch_http
     bind :8123
-    balance roundrobin
     option httpchk
     http-check send meth GET uri /ping
     http-check expect status 200
     server nus-ch-s1r1 nus-ch-s1r1:8123 check
-    server nus-ch-s1r2 nus-ch-s1r2:8123 check
-    server nus-ch-s2r1 nus-ch-s2r1:8123 check
-    server nus-ch-s2r2 nus-ch-s2r2:8123 check
 
 listen ch_native
     bind :9000
-    balance roundrobin
     server nus-ch-s1r1 nus-ch-s1r1:9000 check
-    server nus-ch-s1r2 nus-ch-s1r2:9000 check
-    server nus-ch-s2r1 nus-ch-s2r1:9000 check
-    server nus-ch-s2r2 nus-ch-s2r2:9000 check
 
 # Grafana (f-infra-grafana) + self-hosted OSM tiles ---------------------------
 # Same origin as Grafana so the browser never talks to MapTiler. HTTP mode

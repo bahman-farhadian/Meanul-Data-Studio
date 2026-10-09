@@ -245,7 +245,7 @@ def check() -> list[str]:
     errors: list[str] = []
     allowed = distributed_tables()
     if not allowed:
-        errors.append(f"no Distributed tables found under {DDL_DIR}")
+        errors.append(f"no warehouse tables found under {DDL_DIR}")
         return errors
 
     if not PROVIDER.is_file():
@@ -295,7 +295,7 @@ def check() -> list[str]:
                 for name in tables:
                     seen_tables.add(name)
                     if name not in allowed:
-                        errors.append(f"{uid} unknown table {name!r} (not a Distributed name in ddl/)")
+                        errors.append(f"{uid} unknown table {name!r} (not a warehouse table in ddl/)")
                 if tables & ROLLUPS or "/" in sql:
                     errors.extend(_check_ratios(uid, panel.get("id"), sql))
 

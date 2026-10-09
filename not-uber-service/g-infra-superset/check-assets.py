@@ -179,7 +179,7 @@ def check() -> list[str]:
         if config.get("schema") != "nus":
             errors.append(f"{path.name}: schema must be nus")
         if name not in allowed_in_ddl:
-            errors.append(f"{path.name}: {name!r} is not a Distributed table in ddl/")
+            errors.append(f"{path.name}: {name!r} is not a warehouse table in ddl/")
         if name not in ALLOWED_TABLES:
             errors.append(
                 f"{path.name}: {name!r} is not a rollup - dashboards read "

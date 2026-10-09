@@ -2,7 +2,7 @@
 -- Redis holds only the current value (with a six-hour lifetime); this is the
 -- history behind it, which is what makes "when is this zone busy" answerable.
 
-CREATE TABLE IF NOT EXISTS nus.hotspot_history_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.hotspot_history
 (
     -- LowCardinality(String)/Enum8 - same reasoning as 002_positions.sql
     -- and 003_trips.sql: zone_id is TLC's own variable-width LocationID,
@@ -25,7 +25,7 @@ CREATE TABLE IF NOT EXISTS nus.hotspot_history_local ON CLUSTER nus_cluster
     computed_at        DateTime64(3, 'UTC'),
     event_date         Date MATERIALIZED toDate(computed_at)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = MergeTree
 -- Daily, because the TTL is now shorter than a month. Under monthly
 -- partitions a 30-day expiry drops nothing until an entire month has
 -- aged out, so the table would hold up to sixty days to honour a
@@ -39,6 +39,3 @@ ORDER BY (zone_id, computed_at)
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
 
-CREATE TABLE IF NOT EXISTS nus.hotspot_history ON CLUSTER nus_cluster
-AS nus.hotspot_history_local
-ENGINE = Distributed(nus_cluster, nus, hotspot_history_local, cityHash64(zone_id));

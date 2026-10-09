@@ -5,7 +5,7 @@
 -- and, once routing picks between multiple real routes (nus_common.routing),
 -- a real signal of how traffic actually shifted between them.
 
-CREATE TABLE IF NOT EXISTS nus.segment_traffic_history_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.segment_traffic_history
 (
     -- Same reasoning as 004_hotspots.sql: zone_id is TLC's own LocationID,
     -- period is the closed DayPeriod set shared with the Avro schema.
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS nus.segment_traffic_history_local ON CLUSTER nus_clus
     computed_at        DateTime64(3, 'UTC'),
     event_date         Date MATERIALIZED toDate(computed_at)
 )
-ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = MergeTree
 -- Daily, because the TTL is now shorter than a month. Under monthly
 -- partitions a 30-day expiry drops nothing until an entire month has
 -- aged out, so the table would hold up to sixty days to honour a
@@ -38,6 +38,3 @@ ORDER BY (zone_id, computed_at)
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
 
-CREATE TABLE IF NOT EXISTS nus.segment_traffic_history ON CLUSTER nus_cluster
-AS nus.segment_traffic_history_local
-ENGINE = Distributed(nus_cluster, nus, segment_traffic_history_local, cityHash64(zone_id));

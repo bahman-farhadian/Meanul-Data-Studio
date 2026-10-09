@@ -275,7 +275,8 @@ def _avro_field_names(path: Path) -> set[str]:
 
 
 def _ch_columns(sql: str, table: str) -> set[str]:
-    start = sql.index(f"{table} ON CLUSTER")
+    needle = table if table.startswith("nus.") else f"nus.{table}"
+    start = sql.index(f"CREATE TABLE IF NOT EXISTS {needle}")
     body = sql[start : sql.index("ENGINE =", start)]
     names: set[str] = set()
     for line in body.splitlines():
@@ -332,7 +333,7 @@ def test_closed_status_sets_align_across_stores():
         NUS / "c-infra-kafka" / "schemas" / "driver_location.avsc",
         "DriverStatus",
     )
-    driver_ch = _ch_enum8_symbols(positions, "driver_positions_local")
+    driver_ch = _ch_enum8_symbols(positions, "nus.driver_positions")
     assert driver_pg == driver_avro == driver_ch
 
     # The effective set, not 002's: 013 drops and re-adds this constraint
@@ -342,7 +343,7 @@ def test_closed_status_sets_align_across_stores():
         NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
         "TripStatus",
     )
-    trip_ch = _ch_enum8_symbols(trips, "trip_events_local")
+    trip_ch = _ch_enum8_symbols(trips, "nus.trip_events")
     assert trip_pg == trip_avro == trip_ch
     # 'arrived' must stay last in all three. An Enum8's numbers are what
     # ClickHouse stores, so moving a symbol into its lifecycle position
@@ -366,7 +367,7 @@ def test_closed_status_sets_align_across_stores():
     )
     offers_ch = _ch_enum8_symbols(
         (NUS / "e-infra-clickhouse" / "ddl" / "010_dispatch_offers.sql").read_text(),
-        "dispatch_offers_local",
+        "nus.dispatch_offers",
     )
     assert offers_pg == offers_avro == offers_ch
 
@@ -375,7 +376,7 @@ def test_closed_status_sets_align_across_stores():
         NUS / "c-infra-kafka" / "schemas" / "city_hotspots.avsc",
         "DayPeriod",
     )
-    period_ch = _ch_enum8_symbols(hotspots, "hotspot_history_local")
+    period_ch = _ch_enum8_symbols(hotspots, "nus.hotspot_history")
     periods = re.search(r"DAY_PERIODS\s*=\s*\(([^)]+)\)", geo)
     assert periods, geo
     period_py = re.findall(r'"([^"]+)"', periods.group(1))
@@ -402,7 +403,7 @@ def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
     pg = _pg_trips_columns()
     ch = _ch_columns(
         (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text(),
-        "nus.trip_events_local",
+        "nus.trip_events",
     )
 
     # The envelope describes the message, not the trip, so it has no trips
@@ -419,7 +420,7 @@ def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
 
     missing_in_ch = sorted((avro - {"event_version", "producer", "correlation_id"}) - ch)
     assert missing_in_ch == [], (
-        f"on trip_lifecycle but not in trip_events_local: {missing_in_ch}"
+        f"on trip_lifecycle but not in trip_events: {missing_in_ch}"
     )
 
     # And the reverse: a trips column that never reaches the wire is the
@@ -478,12 +479,12 @@ def test_every_warehouse_table_carries_an_event_id():
     ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
     missing = []
     for path in sorted(ddl_dir.glob("*.sql")):
-        for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (nus\.\w+_local)", path.read_text()):
+        for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (nus\.\w+)", path.read_text()):
             table = match.group(1)
             # A rollup holds aggregates of many events, not one event, so
             # it has no single id to carry - and it inherits the guarantee
             # from the table it is built on.
-            if table.endswith(("_hourly_local", "_daily_local")):
+            if table.endswith(("_hourly", "_daily")):
                 continue
             if "event_id" not in _ch_columns(path.read_text(), table):
                 missing.append(table)
@@ -511,6 +512,24 @@ def test_minted_id_widths_match_warehouse():
     text = _standard()
     assert "FixedString" in text
     assert driver_n in text and passenger_n in text and trip_n in text
+
+
+def test_one_clickhouse_merge_tree():
+    """The warehouse is one server. Query names are MergeTree tables."""
+    compose = (NUS / "e-infra-clickhouse" / "docker-compose.yaml").read_text()
+    assert "container_name: nus-ch-s1r1" in compose
+    assert "ch-s1r2" not in compose
+    assert "ch-keeper" not in compose
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+    assert "ENGINE = Distributed" not in ddl
+    assert "ReplicatedMergeTree" not in ddl
+    assert "ON CLUSTER" not in ddl
+    assert "ENGINE = MergeTree" in ddl
+    root = (NUS / "Makefile").read_text()
+    assert "PIECE_E  := ch-s1r1" in root
 
 
 def test_one_postgres_and_no_patroni():
@@ -763,7 +782,7 @@ def test_partition_granularity_follows_the_ttl():
         for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
     )
     for match in re.finditer(
-        r"CREATE TABLE IF NOT EXISTS (nus\.\w+_local)(.*?);", ddl, re.S
+        r"CREATE TABLE IF NOT EXISTS (nus\.\w+)(.*?);", ddl, re.S
     ):
         table, body = match.group(1), match.group(2)
         ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body)
@@ -814,22 +833,22 @@ def test_raw_telemetry_is_rolled_up_before_it_expires():
     for raw, rollup in (("driver_positions", "driver_activity_hourly"),
                         ("rider_positions", "rider_activity_hourly")):
         body = re.search(
-            rf"CREATE TABLE IF NOT EXISTS nus\.{raw}_local.*?;", ddl, re.S
+            rf"CREATE TABLE IF NOT EXISTS nus\.{raw}\b.*?;", ddl, re.S
         )
-        assert body, f"{raw}_local is not declared"
+        assert body, f"{raw} is not declared"
         ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body.group(0))
         assert ttl and int(ttl.group(1)) <= 2, (
             f"{raw} keeps {ttl.group(1) if ttl else 'no'} days of raw telemetry"
         )
 
-        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup}_local" in ddl, (
+        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup}" in ddl, (
             f"{raw} expires in two days and nothing rolls it up first"
         )
         assert f"CREATE MATERIALIZED VIEW IF NOT EXISTS nus.{rollup}_mv" in ddl
-        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup} ON CLUSTER" in ddl
+        assert "ENGINE = Distributed" not in ddl
 
         rolled = re.search(
-            rf"CREATE TABLE IF NOT EXISTS nus\.{rollup}_local(.*?);", ddl, re.S
+            rf"CREATE TABLE IF NOT EXISTS nus\.{rollup}\b(.*?);", ddl, re.S
         ).group(1)
         # Bounded by the city: keyed on the hour and the zone, nothing
         # per-driver or per-rider, or it would scale with the fleet again.

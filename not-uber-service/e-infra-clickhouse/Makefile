@@ -23,14 +23,8 @@ ch-ddl:
 verify-ch:
 	$(call say,ClickHouse)
 	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT host_name, shard_num, replica_num FROM system.clusters WHERE cluster='nus_cluster' FORMAT PrettyCompact" 2>/dev/null || true
-	@echo
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT database, name, engine FROM system.tables WHERE database='nus' ORDER BY name FORMAT PrettyCompact" 2>/dev/null || true
-	@echo
-	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
-		--query "SELECT table, absolute_delay FROM system.replicas FORMAT PrettyCompact" 2>/dev/null || true
-	@printf "\n  Four members, the tables present, and absolute_delay at or near 0.\n"
+		--query "SELECT name, engine FROM system.tables WHERE database='nus' AND engine LIKE '%MergeTree' ORDER BY name FORMAT PrettyCompact" 2>/dev/null || true
+	@printf "\n  One ClickHouse. The engines are MergeTree. No Distributed table.\n"
 
 .PHONY: ch-client
 ch-client:

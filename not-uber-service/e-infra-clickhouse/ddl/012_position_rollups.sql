@@ -35,7 +35,7 @@
 -- a day and roughly sixty bytes a row this is about 130 MB a year per
 -- node, which is not worth expiring and is worth keeping.
 
-CREATE TABLE IF NOT EXISTS nus.driver_activity_hourly_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.driver_activity_hourly
 (
     hour                DateTime('UTC'),
     zone_id             LowCardinality(String),
@@ -56,12 +56,12 @@ CREATE TABLE IF NOT EXISTS nus.driver_activity_hourly_local ON CLUSTER nus_clust
     speed_samples       SimpleAggregateFunction(sum, UInt64),
     max_speed_kmh       SimpleAggregateFunction(max, Float32)
 )
-ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.driver_activity_hourly_mv ON CLUSTER nus_cluster
-TO nus.driver_activity_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.driver_activity_hourly_mv
+TO nus.driver_activity_hourly
 AS
 SELECT
     toStartOfHour(event_time)                    AS hour,
@@ -74,14 +74,11 @@ SELECT
     sum(toFloat64(ifNull(speed_kmh, 0)))         AS speed_kmh_sum,
     countIf(speed_kmh IS NOT NULL)               AS speed_samples,
     max(ifNull(speed_kmh, toFloat32(0)))         AS max_speed_kmh
-FROM nus.driver_positions_local
+FROM nus.driver_positions
 GROUP BY hour, zone_id;
 
-CREATE TABLE IF NOT EXISTS nus.driver_activity_hourly ON CLUSTER nus_cluster
-AS nus.driver_activity_hourly_local
-ENGINE = Distributed(nus_cluster, nus, driver_activity_hourly_local, cityHash64(zone_id));
 
-CREATE TABLE IF NOT EXISTS nus.rider_activity_hourly_local ON CLUSTER nus_cluster
+CREATE TABLE IF NOT EXISTS nus.rider_activity_hourly
 (
     hour                DateTime('UTC'),
     zone_id             LowCardinality(String),
@@ -98,12 +95,12 @@ CREATE TABLE IF NOT EXISTS nus.rider_activity_hourly_local ON CLUSTER nus_cluste
     accuracy_m_sum      SimpleAggregateFunction(sum, Float64),
     accuracy_samples    SimpleAggregateFunction(sum, UInt64)
 )
-ENGINE = ReplicatedAggregatingMergeTree('/clickhouse/tables/{shard}/{database}/{table}', '{replica}')
+ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)
 ORDER BY (hour, zone_id);
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS nus.rider_activity_hourly_mv ON CLUSTER nus_cluster
-TO nus.rider_activity_hourly_local
+CREATE MATERIALIZED VIEW IF NOT EXISTS nus.rider_activity_hourly_mv
+TO nus.rider_activity_hourly
 AS
 SELECT
     toStartOfHour(event_time)                    AS hour,
@@ -113,12 +110,9 @@ SELECT
     uniqState(trip_id)                           AS trips,
     sum(toFloat64(ifNull(accuracy_m, 0)))        AS accuracy_m_sum,
     countIf(accuracy_m IS NOT NULL)              AS accuracy_samples
-FROM nus.rider_positions_local
+FROM nus.rider_positions
 GROUP BY hour, zone_id;
 
-CREATE TABLE IF NOT EXISTS nus.rider_activity_hourly ON CLUSTER nus_cluster
-AS nus.rider_activity_hourly_local
-ENGINE = Distributed(nus_cluster, nus, rider_activity_hourly_local, cityHash64(zone_id));
 
 -- Reading them:
 --

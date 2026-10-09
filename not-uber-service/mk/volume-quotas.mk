@@ -39,7 +39,7 @@ volume-quotas:
 	projid=100; \
 	for entry in \
 		"nus-kafka-data-1:96g" \
-		"nus-ch-data-s1r1:112g" "nus-ch-data-s1r2:112g" "nus-ch-data-s2r1:112g" "nus-ch-data-s2r2:112g" \
+		"nus-ch-data-s1r1:112g" \
 		"nus-pgdata-1:24g"; \
 	do \
 		dir=$${entry%%:*}; size=$${entry##*:}; path="$$root/$$dir"; \
