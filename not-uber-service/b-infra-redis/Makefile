@@ -6,11 +6,11 @@
 # to verify it: README.md.
 
 # =============================================================================
-##@ Redis
+# Redis
 # =============================================================================
 
 .PHONY: verify-redis
-verify-redis: ## Node roles, what Sentinel believes, and whether it could fail over
+verify-redis:
 	$(call say,Redis)
 	@for n in redis-1 redis-2 redis-3; do \
 		printf "  %-9s %s\n" "$$n" "$$($(COMPOSE) exec -T $$n redis-cli -a "$$(grep -E '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2-)" --no-auth-warning info replication 2>/dev/null | awk -F: '/^role:/{print $$2}' | tr -d '\r')"; \
@@ -20,7 +20,7 @@ verify-redis: ## Node roles, what Sentinel believes, and whether it could fail o
 	@printf "\n  Expect one master, two slaves, and a quorum that can be reached.\n"
 
 .PHONY: redis-cli
-redis-cli: ## A redis-cli shell on the current primary
+redis-cli:
 	@$(COMPOSE) exec redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning
 
 

@@ -2,13 +2,10 @@
 # not-uber-service — stack control
 # =============================================================================
 # Everything runs from this directory. `make` prints the commands you run.
-# `make help-all` prints the checks, the shells, and the step names inside
-# `make up` and `make prepare`.
 #
 # This file is the runbook made executable. Several steps only work once
 # something else has happened, and `make up` puts them in that order. Those
 # steps stay as targets so a failed run can resume at the step that failed.
-# They are not a second procedure.
 #
 # ONE MAKEFILE PER COMPONENT, included below, exactly like the root
 # docker-compose.yaml includes each component's own compose file. This file
@@ -125,9 +122,9 @@ bad = @printf "  $(R)FAIL$(X)    %s\n" "$(1)"
 # instead of the port that is genuinely in use.
 getenv = $(or $(shell grep -E "^$(1)=" $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-),$(2))
 
-.PHONY: help help-all
+.PHONY: help
 help:
-	@printf "\n$(B)not-uber-service$(X) — the commands you actually run\n\n"
+	@printf "\n$(B)not-uber-service$(X)\n\n"
 	@printf "  First time:\n"
 	@printf "    $(C)make init$(X)        create .env and the shared network\n"
 	@printf "    edit .env                set the passwords in section 1\n"
@@ -142,41 +139,28 @@ help:
 	@printf "  Look:\n"
 	@printf "    $(C)make ps$(X)          what is running\n"
 	@printf "    $(C)make health$(X)      health, restarts, OOM\n"
+	@printf "    $(C)make errors$(X)      what actually failed\n"
 	@printf "    $(C)make stats$(X)       CPU and memory against each limit\n"
 	@printf "    $(C)make logs SVC=driver-service$(X)\n"
 	@printf "    $(C)make tail SVC=driver-service N=80$(X)\n\n"
-	@printf "  Check the city:\n"
-	@printf "    $(C)make verify$(X)      the full check, in order\n"
+	@printf "  Check:\n"
+	@printf "    $(C)make verify$(X)      each layer, in order\n"
 	@printf "    $(C)make lag$(X)         consumer lag\n"
 	@printf "    $(C)make verify-quality$(X)\n\n"
+	@printf "  Shell:\n"
+	@printf "    $(C)make psql$(X)        the leader          $(C)make redis-cli$(X)\n"
+	@printf "    $(C)make psql-read$(X)   the replicas        $(C)make ch-client$(X)\n\n"
 	@printf "  Stop:\n"
 	@printf "    $(C)make stop$(X)        stop, keep data\n"
 	@printf "    $(C)make down$(X)        remove containers, keep data\n"
 	@printf "    $(C)make destroy$(X)     remove containers and data volumes. Keeps the map\n\n"
-	@printf "  Checks, shells, and the step names inside make up: $(C)make help-all$(X)\n\n"
-
-help-all:
-	@printf "\n$(B)not-uber-service$(X) — checks, shells, and step names\n"
-	@printf "  Day to day is $(C)make help$(X).\n\n"
-	@printf "  $(B)make up$(X) runs these. Type one only to resume a step that failed:\n"
-	@printf "    volume-perms  lb-config  certgen  ch-secrets  ksqldb-secrets\n"
-	@printf "    topics  schemas  ksql-ddl  ch-ddl  superset-init  bootstrap  cdc-register\n\n"
-	@printf "  $(B)make prepare$(X) runs these. Skip prepare when the map files are already on disk:\n"
-	@printf "    lion-fetch  tlc-zones-fetch  tlc-trips-fetch\n"
-	@printf "    lion-prepare  zone-demand-prepare  tiles-prepare\n\n"
-	@printf "  $(B)make volume-quotas$(X) is optional and once. It needs root and an XFS mount with pquota.\n"
-	@printf "  $(B)make up$(X) does not call it.\n"
-	@awk 'BEGIN {FS = ":.*##"} \
-		/^##@/ { printf "\n$(B)%s$(X)\n", substr($$0, 5) } \
-		/^[a-zA-Z0-9_-]+:.*?##/ { printf "  $(C)%-16s$(X) %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
-	@printf "\n"
 
 # =============================================================================
-##@ Setup
+# Setup
 # =============================================================================
 
 .PHONY: init
-init: ## Create .env from the template and the shared nus-backbone network
+init:
 	$(call say,Preparing the working copy)
 	@if [ -f $(ENV_FILE) ] && [ -z "$(FORCE)" ]; then \
 		printf "  $(Y)kept$(X)    $(ENV_FILE) already exists — not overwriting it\n"; \
@@ -275,7 +259,7 @@ init: ## Create .env from the template and the shared nus-backbone network
 # `make init` in between would be a trap — the error would arrive from
 # preflight, several steps away from the cause.
 .PHONY: prepare
-prepare: ## Pull, build and prepare the street map — the only step needing network access
+prepare:
 	$(call say,Fetching everything the stack needs)
 	@printf "  This is the only step that reaches outside this host. After it the\n"
 	@printf "  stack is self-contained: the containers talk to each other on %s,\n" "$(NETWORK)"
@@ -293,7 +277,7 @@ prepare: ## Pull, build and prepare the street map — the only step needing net
 	@printf "  Images, the LION graph, and nyc.mbtiles are on disk. make destroy keeps the last two.\n\n"
 
 .PHONY: preflight
-preflight: ## Check the host, Docker and the settings before anything is started
+preflight:
 	$(call say,Preflight)
 	@fail=0; \
 	command -v docker >/dev/null 2>&1 \
@@ -493,12 +477,12 @@ _mk-data-tree:
 	printf "  $(G)ok$(X)      %s data directories under %s (%s GB free)\n" "$$made" "$$root" "$$free"
 
 .PHONY: pull
-pull: ## Pull every pinned image (a moved or withdrawn tag surfaces here)
+pull:
 	$(call say,Pulling pinned images)
 	@$(COMPOSE) --profile init pull --ignore-buildable
 
 .PHONY: build
-build: ## Build the eleven images this repository defines
+build:
 	$(call say,Building images)
 	@printf "  Layer cache is the contract: lockfiles first, source after.\n"
 	@printf "  Never --no-cache, never --pull — $(C)make pull$(X) is the registry step.\n"
@@ -506,16 +490,12 @@ build: ## Build the eleven images this repository defines
 	@$(COMPOSE) build
 	$(call ok,images rebuilt — the next make up will run these, not the previous tags)
 
-.PHONY: config
-config: # Print the fully merged compose model (what Docker actually sees)
-	@$(COMPOSE) config
-
 # =============================================================================
-##@ Deploy
+# Deploy
 # =============================================================================
 
 .PHONY: up
-up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
+up:
 	@$(MAKE) --no-print-directory _mk-data-tree
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
@@ -546,7 +526,7 @@ up: ## THE FIRST DEPLOYMENT: every piece, in order, with the one-shots
 	@printf "  Do not commit $(ETCD_ENV).\n\n"
 
 .PHONY: up-piece
-up-piece: ## One piece only:  make up-piece PIECE=a  (a-g, or infra, or services)
+up-piece:
 	@case "$(PIECE)" in \
 		a) set -- $(ENTRY) $(PIECE_A) ;; \
 		b) set -- $(PIECE_B) ;; \
@@ -563,7 +543,7 @@ up-piece: ## One piece only:  make up-piece PIECE=a  (a-g, or infra, or services
 	$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) "$$@"
 
 .PHONY: restart
-restart: ## Bounce one service, SAME image:  make restart SVC=driver-service
+restart:
 	@test -n "$(SVC)" || { printf "$(R)set SVC=<service>$(X)\n"; exit 1; }
 	@$(COMPOSE) restart $(SVC)
 
@@ -575,7 +555,7 @@ restart: ## Bounce one service, SAME image:  make restart SVC=driver-service
 # data must survive: --force-recreate replaces the container from the image
 # that was just built, --no-deps leaves the healthy infrastructure alone.
 .PHONY: reload
-reload: ## Rebuild-aware restart, keeps data:  make build && make reload SVC=driver-service
+reload:
 	@test -n "$(SVC)" || { printf "$(R)set SVC=<service>$(X)\n"; exit 1; }
 	@$(COMPOSE) up -d --no-deps --force-recreate $(SVC)
 	@docker inspect $(SVC) --format '  {{.Name}} now running image {{.Image}} started {{.State.StartedAt}}' 2>/dev/null || true
@@ -648,14 +628,14 @@ lb-config:
 	@$(COMPOSE) run --rm haproxy-config-render
 
 # =============================================================================
-##@ Verify
+# Verify
 # =============================================================================
 
 .PHONY: verify
-verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch verify-dash verify-data ## Every check below, in order
+verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch verify-dash verify-data
 
 .PHONY: verify-dash
-verify-dash: grafana-health tiles-health verify-grafana superset-health verify-superset ## Grafana and Superset: health, tiles, and every panel and metric run
+verify-dash: grafana-health tiles-health verify-grafana superset-health verify-superset
 
 # verify-walk and verify-sample are the only WORKSTATION targets in this
 # file. Every other target drives Docker and runs anywhere; these two run
@@ -675,21 +655,21 @@ _need-uv:
 		exit 1; }
 
 .PHONY: verify-walk
-verify-walk: _need-uv ## Street-follow and chord/sea checks against the shipped walk/geo code
+verify-walk: _need-uv
 	$(call say,Walk checks)
 	@cd z-lib/nus-common && uv sync --extra test >/dev/null
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
 		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests l-service-dispatch/tests
 
 .PHONY: verify-sample
-verify-sample: _need-uv ## Tiny local PG/Redis/Kafka/CH sample: on-network routes, no sea hops
+verify-sample: _need-uv
 	$(call say,Sample stores)
 	@cd z-lib/nus-common && uv sync --extra test >/dev/null
 	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
 		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-config/tests
 
 .PHONY: wait-live
-wait-live: ## Block until the fleet is on the road AND live trips have ended
+wait-live:
 	$(call say,Waiting for the live marketplace)
 	@printf "  driver-service start-up is the critical path, and it grows with the\n"
 	@printf "  fleet: it waits for cache-updater, builds the road point pools, reads\n"
@@ -714,7 +694,7 @@ wait-live: ## Block until the fleet is on the road AND live trips have ended
 	$(call ok,live traffic has had time to complete trips)
 
 .PHONY: verify-positions
-verify-positions: ## Live positions follow streets, not the chord between two points
+verify-positions:
 	$(call say,Positions)
 	@docker inspect driver-service --format '  driver-service  started {{.State.StartedAt}}' 2>/dev/null || printf '  driver-service  not running\n'
 	@docker inspect dispatch-service --format '  dispatch-service started {{.State.StartedAt}}' 2>/dev/null || printf '  dispatch-service not running\n'
@@ -727,15 +707,15 @@ verify-positions: ## Live positions follow streets, not the chord between two po
 		-f - < z-config/check-on-network.sql
 
 # =============================================================================
-##@ Operate
+# Operate
 # =============================================================================
 
 .PHONY: ps
-ps: ## What is running, and what state it is in
+ps:
 	@$(COMPOSE) ps
 
 .PHONY: health
-health: ## One line per container: health, restarts, and whether it was OOM-killed
+health:
 	@printf "  %-22s %-12s %-9s %s\n" CONTAINER HEALTH RESTARTS OOMKILLED
 	@$(COMPOSE) ps -aq | while read -r c; do \
 		docker inspect -f '  {{printf "%-22s" (slice .Name 1)}} {{if .State.Health}}{{printf "%-12s" .State.Health.Status}}{{else}}{{printf "%-12s" .State.Status}}{{end}} {{printf "%-9d" .RestartCount}} {{.State.OOMKilled}}' "$$c" 2>/dev/null; \
@@ -746,7 +726,7 @@ health: ## One line per container: health, restarts, and whether it was OOM-kill
 # cluster, and it self-heals on Patroni's own retry. verify-pg (one Leader,
 # two Replicas, lag 0) is the real signal for whether it actually got stuck.
 .PHONY: errors
-errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck output, error logs
+errors:
 	$(call say,Errors across the stack)
 	@found=0; \
 	for c in $$($(COMPOSE) ps -aq); do \
@@ -788,7 +768,7 @@ errors: ## Collect what actually went wrong: exit codes, OOM kills, healthcheck 
 	@printf "\n"
 
 .PHONY: errors-ack
-errors-ack: ## Clear every container's log AFTER confirming the stack is healthy - errors reports fresh from here
+errors-ack:
 	$(call say,Clearing log history)
 	@for c in $$($(COMPOSE) ps -aq); do \
 		name=$$(docker inspect -f '{{slice .Name 1}}' "$$c" 2>/dev/null); \
@@ -806,11 +786,11 @@ errors-ack: ## Clear every container's log AFTER confirming the stack is healthy
 	@printf "  known-good startup noise on every future check.\n\n"
 
 .PHONY: stats
-stats: ## Live memory and CPU against each container's limit
+stats:
 	@docker stats --no-stream --format 'table {{.Name}}\t{{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}' $$($(COMPOSE) ps -q) 2>/dev/null || true
 
 .PHONY: lag
-lag: ## Consumer lag per group — the health signal for the whole pipeline
+lag:
 	$(call say,Consumer lag)
 	@for g in $(GROUPS); do \
 		printf "\n  $(B)%s$(X)\n" "$$g"; \
@@ -822,7 +802,7 @@ lag: ## Consumer lag per group — the health signal for the whole pipeline
 	@printf "  Lag that only grows is not — turn the pacing down in $(ENV_FILE).\n"
 
 .PHONY: verify-quality
-verify-quality: ## Data-quality bars - structural invariants, pass or fail
+verify-quality:
 	$(call say,Data-quality bars)
 	@out=$$($(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
@@ -856,7 +836,7 @@ verify-quality: ## Data-quality bars - structural invariants, pass or fail
 # matches nothing exits 1 and kills the target before a single line prints,
 # which is the least diagnosable shape a failure can take.
 .PHONY: capacity
-capacity: ## Measure bytes/row and project the full-scale footprint
+capacity:
 	$(call say,Warehouse capacity)
 	@full=$$(grep -E '^SEED_DRIVERS=' .env.example | tail -1 | cut -d= -f2- || true); \
 	now=$$(grep -E '^SEED_DRIVERS=' $(ENV_FILE) | tail -1 | cut -d= -f2- || true); \
@@ -874,7 +854,7 @@ capacity: ## Measure bytes/row and project the full-scale footprint
 		--output-format PrettyCompactMonoBlock < z-config/capacity.sql
 
 .PHONY: profile
-profile: ## Profile the generated data — every dimension, range and null rate
+profile:
 	$(call say,What the warehouse actually holds)
 	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" \
 		--password "$(call getenv,CH_PASSWORD)" --database nus --multiquery \
@@ -911,7 +891,7 @@ profile: ## Profile the generated data — every dimension, range and null rate
 	@printf "  cache-updater has not applied cdc.drivers and the fleet will not start.\n"
 
 .PHONY: logs
-logs: ## Follow logs:  make logs  |  make logs SVC=dispatch-service
+logs:
 	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs -f --tail=200 $(SVC); else $(COMPOSE) logs -f --tail=50; fi
 
 # logs follows, so piping it into grep|tail hangs for ever - tail cannot
@@ -919,12 +899,12 @@ logs: ## Follow logs:  make logs  |  make logs SVC=dispatch-service
 # obvious failure while watching it: the terminal simply sits there, and
 # it reads exactly like a stalled stack. This is the one to pipe.
 .PHONY: tail
-tail: ## Print the last N lines and STOP:  make tail SVC=passenger-service N=400
+tail:
 	@if [ -n "$(SVC)" ]; then $(COMPOSE) logs --tail=$(or $(N),200) $(SVC); \
 	else $(COMPOSE) logs --tail=$(or $(N),50); fi
 
 .PHONY: urls
-urls: ## Where to point a browser or a client, from here and from the network
+urls:
 	@def=$$(ip route get 1.1.1.1 2>/dev/null | grep -oE 'dev [a-z0-9.-]+' | awk '{print $$2}' | head -1 || true); \
 	ips=$$(ip -4 -o addr show scope global 2>/dev/null \
 		| awk '{gsub(/\/.*/,"",$$4); print $$2, $$4}' \
@@ -969,19 +949,19 @@ urls: ## Where to point a browser or a client, from here and from the network
 	printf "\n"
 
 # =============================================================================
-##@ Teardown
+# Teardown
 # =============================================================================
 
 .PHONY: stop
-stop: ## Stop every container, keep them and the data
+stop:
 	@$(COMPOSE) stop
 
 .PHONY: down
-down: ## Remove the containers, KEEP the data volumes
+down:
 	@$(COMPOSE) down
 
 .PHONY: destroy
-destroy: ## Remove the containers AND DESTROY every data volume
+destroy:
 	@printf "$(R)$(B)This deletes the databases, the cache, the topics and the warehouse.$(X)\n"
 	@printf "  LION and OSM tiles (nus-lion-data, nus-tiles-data) are kept.\n"
 	@printf "  $(C)make nuke$(X) is what removes those downloads.\n"
@@ -994,7 +974,7 @@ destroy: ## Remove the containers AND DESTROY every data volume
 	@printf "  Skip $(C)make prepare$(X) unless the graph or nyc.mbtiles is missing.\n"
 
 .PHONY: nuke
-nuke: ## destroy EVERYTHING including the street map, and the shared network
+nuke:
 	@$(MAKE) --no-print-directory destroy
 	@$(MAKE) --no-print-directory _rm-data-tree RM_MAP=1
 	@docker network rm $(NETWORK) 2>/dev/null || true
@@ -1039,7 +1019,7 @@ _rm-data-tree:
 	fi
 
 .PHONY: clean-images
-clean-images: ## Remove every image this stack builds, pulls, or builds FROM
+clean-images:
 	$(call say,Removing images)
 	@built=$$($(COMPOSE) config --images 2>/dev/null | grep '^nus/' | sort -u); \
 	pulled=$$($(COMPOSE) --profile init config --images 2>/dev/null | grep -v '^nus/' | sort -u); \
@@ -1054,7 +1034,7 @@ clean-images: ## Remove every image this stack builds, pulls, or builds FROM
 	@printf "  $(G)ok$(X)      build cache left alone; 'docker builder prune' clears that\n"
 
 .PHONY: clean
-clean: ## LEAVE NO TRACE: containers, volumes, images, network and local .env
+clean:
 	@printf "$(R)$(B)This removes everything this project put on the host:$(X)\n"
 	@printf "  - every container, and the whole data tree under NUS_VOLUME_ROOT\n"
 	@printf "    (databases, cache, topics, warehouse, and the downloaded street map)\n"

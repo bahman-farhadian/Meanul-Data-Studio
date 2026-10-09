@@ -6,7 +6,7 @@
 # is and how to verify it: README.md.
 
 # =============================================================================
-##@ ClickHouse
+# ClickHouse
 # =============================================================================
 
 .PHONY: ch-secrets
@@ -20,7 +20,7 @@ ch-ddl:
 	@$(COMPOSE) run --rm ch-ddl-init
 
 .PHONY: verify-ch
-verify-ch: ## Cluster members, Keeper, the tables, and replication delay
+verify-ch:
 	$(call say,ClickHouse)
 	@$(COMPOSE) exec -T ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" \
 		--query "SELECT host_name, shard_num, replica_num FROM system.clusters WHERE cluster='nus_cluster' FORMAT PrettyCompact" 2>/dev/null || true
@@ -33,5 +33,5 @@ verify-ch: ## Cluster members, Keeper, the tables, and replication delay
 	@printf "\n  Four members, the tables present, and absolute_delay at or near 0.\n"
 
 .PHONY: ch-client
-ch-client: ## A clickhouse-client shell
+ch-client:
 	@$(COMPOSE) exec ch-s1r1 clickhouse-client --user "$(call getenv,CH_USER)" --password "$(call getenv,CH_PASSWORD)" --database nus

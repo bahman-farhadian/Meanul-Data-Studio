@@ -6,11 +6,11 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ Grafana
+# Grafana
 # =============================================================================
 
 .PHONY: grafana-health
-grafana-health: ## Grafana answers on its health endpoint
+grafana-health:
 	$(call say,Grafana)
 	@$(COMPOSE) exec -T grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
 	@printf "\n  Provisioned dashboards live under Dashboards → NUS.\n"
@@ -28,7 +28,7 @@ grafana-health: ## Grafana answers on its health endpoint
 # container for this reason; make urls is where host addresses belong, and
 # it lists the real ones and never offers loopback.
 .PHONY: tiles-health
-tiles-health: ## OSM tiles answer through HAProxy (Grafana's map origin)
+tiles-health:
 	$(call say,Tiles)
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) | tail -1 | cut -d= -f2-); \
 	mb="$$root/nus-tiles-data/nyc.mbtiles"; \
@@ -62,7 +62,7 @@ tiles-health: ## OSM tiles answer through HAProxy (Grafana's map origin)
 	printf "  Grafana geomap is same-origin OSM, no MapTiler key.\n"
 
 .PHONY: grafana-check
-grafana-check: ## Dashboards query only ClickHouse Distributed tables
+grafana-check:
 	@python3 f-infra-grafana/check-dashboards.py
 
 # The counterpart of verify-superset, and for the same reason: grafana-check
@@ -75,7 +75,7 @@ grafana-check: ## Dashboards query only ClickHouse Distributed tables
 # `|| true` the recipe would die before printing anything, which is exactly
 # how `make capacity` once failed with Error 1 and no output at all.
 .PHONY: verify-grafana
-verify-grafana: ## Every provisioned panel's query, run against the live warehouse
+verify-grafana:
 	$(call say,Grafana panels)
 	@out=$$(python3 f-infra-grafana/panel-probe.py \
 		| $(COMPOSE) exec -T ch-s1r1 clickhouse-client \

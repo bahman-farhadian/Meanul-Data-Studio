@@ -6,7 +6,7 @@
 # to verify it: README.md.
 
 # =============================================================================
-##@ Kafka
+# Kafka
 # =============================================================================
 
 .PHONY: ksqldb-secrets
@@ -20,7 +20,7 @@ topics:
 	@$(COMPOSE) run --rm kafka-topics-init
 
 .PHONY: verify-kafka
-verify-kafka: ## Brokers, the controller quorum, and every topic's replication
+verify-kafka:
 	$(call say,Kafka)
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-broker-api-versions.sh \
 		--bootstrap-server nus-kafka-1:9092 2>/dev/null | grep -E '^nus-kafka-[0-9]' || true
@@ -43,6 +43,6 @@ ksql-ddl:
 # declared names out of ksql/*.sql, and ksql-init is the container that has
 # that directory mounted. The server holds the answer, not the question.
 .PHONY: verify-ksqldb
-verify-ksqldb: ## Every declared stream and table is registered, and every query is RUNNING
+verify-ksqldb:
 	$(call say,ksqlDB)
 	@$(COMPOSE) run --rm --entrypoint python3 ksql-init /ksql/check-ksql.py

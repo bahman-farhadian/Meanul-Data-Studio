@@ -138,11 +138,14 @@ def test_make_steps_exist_and_demos_are_gone():
                 called.add(name)
     missing = sorted(name for name in called if name not in targets and not name.startswith("."))
     assert missing == [], f"a recipe calls a target that does not exist: {missing}"
-    gone = ["failover-pg", "failover-redis", "patronictl", "kafka-dirs", "superset-import"]
+    gone = [
+        "failover-pg", "failover-redis", "patronictl", "kafka-dirs",
+        "superset-import", "help-all", "config",
+    ]
     still = sorted(name for name in gone if name in targets)
     assert still == [], f"removed make targets are still defined: {still}"
-    # The help-all resume list is the user-facing name of each step make up
-    # and make prepare call, except pull/build/preflight which have their own lines.
+    assert "help-all" not in root
+    # Steps make up and make prepare call. pull, build, and preflight too.
     resume = [
         "volume-perms", "lb-config", "certgen", "ch-secrets", "ksqldb-secrets",
         "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",

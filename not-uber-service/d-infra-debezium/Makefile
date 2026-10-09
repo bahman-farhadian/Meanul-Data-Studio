@@ -6,7 +6,7 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ Debezium
+# Debezium
 # =============================================================================
 
 .PHONY: cdc-register
@@ -15,7 +15,7 @@ cdc-register: pg-allow-cdc
 	@$(COMPOSE) run --rm connector-register
 
 .PHONY: verify-cdc
-verify-cdc: ## Connector state, the cdc.* topics, and the replication slot
+verify-cdc:
 	$(call say,Debezium)
 	@$(COMPOSE) exec -T debezium-connect curl -sS http://localhost:8083/connectors/nus-pg/status 2>/dev/null || true
 	@echo

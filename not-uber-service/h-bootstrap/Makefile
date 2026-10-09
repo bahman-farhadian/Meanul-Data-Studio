@@ -12,7 +12,7 @@
 # Nothing like that exists yet — add it here when it does.
 
 # =============================================================================
-##@ Data
+# Data
 # =============================================================================
 
 .PHONY: bootstrap
@@ -150,7 +150,7 @@ zone-demand-prepare:
 	$(MAKE) --no-print-directory volume-perms >/dev/null 2>&1 || true
 
 .PHONY: verify-data
-verify-data: ## The marker, the seeded rows, the street graph, and the warehouse
+verify-data:
 	$(call say,Data)
 	@printf "  bootstrap marker: "
 	@$(COMPOSE) exec -T redis-1 redis-cli -a "$(call getenv,REDIS_PASSWORD)" --no-auth-warning \

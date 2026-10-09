@@ -6,7 +6,7 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ Postgres
+# Postgres
 # =============================================================================
 
 .PHONY: certgen
@@ -15,7 +15,7 @@ certgen:
 	@$(COMPOSE) run --rm etcd-certgen
 
 .PHONY: etcd-existing
-etcd-existing: ## Post-bootstrap: flip etcd to 'existing' (LOCAL STATE — never commit)
+etcd-existing:
 	$(call say,Flipping the etcd cluster state to existing)
 	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=new$$/ETCD_INITIAL_CLUSTER_STATE=existing/' $(ETCD_ENV)
 	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
@@ -95,7 +95,7 @@ pg-allow-cdc:
 	$(call ok,pg_hba reloaded — postgres may open a logical replication slot)
 
 .PHONY: verify-pg
-verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
+verify-pg:
 	$(call say,PostgreSQL)
 	@$(COMPOSE) exec -T etcd-1 etcdctl \
 		--endpoints=https://nus-etcd-1:2379,https://nus-etcd-2:2379,https://nus-etcd-3:2379 \
@@ -110,7 +110,7 @@ verify-pg: ## etcd health, Patroni roles, and what the proxy routes where
 	@printf "  only real failure signal.\n"
 
 .PHONY: psql psql-read
-psql: ## A psql shell on the current leader, through the proxy
+psql:
 	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"
-psql-read: ## A psql shell on the replica pool, through the proxy
+psql-read:
 	@$(COMPOSE) exec pg-1 psql "host=nus-lb-a port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,nus)"

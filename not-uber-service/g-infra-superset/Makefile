@@ -6,7 +6,7 @@
 # and how to verify it: README.md.
 
 # =============================================================================
-##@ Superset
+# Superset
 # =============================================================================
 
 .PHONY: superset-init
@@ -15,18 +15,18 @@ superset-init:
 	@$(COMPOSE) run --rm superset-init
 
 .PHONY: superset-assets
-superset-assets: ## Rewrite assets/ from the renderer and check the files. No running stack
+superset-assets:
 	$(call say,Superset assets)
 	@python3 g-infra-superset/render_assets.py
 	@python3 g-infra-superset/check-assets.py
 
 .PHONY: superset-health
-superset-health: ## Superset answers on its health endpoint
+superset-health:
 	$(call say,Superset)
 	@$(COMPOSE) exec -T superset curl -sS http://localhost:8088/health 2>/dev/null || true
 	@printf "\n  Empty panels are fine before bootstrap; an error is not.\n"
 
 .PHONY: verify-superset
-verify-superset: ## Every declared asset is imported, and every metric runs on real data
+verify-superset:
 	$(call say,Superset assets)
 	@$(COMPOSE) run --rm superset-verify
