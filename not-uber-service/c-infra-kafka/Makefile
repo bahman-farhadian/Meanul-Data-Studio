@@ -27,7 +27,7 @@ verify-kafka:
 	@echo
 	@$(COMPOSE) exec -T kafka-1 /opt/kafka/bin/kafka-topics.sh \
 		--bootstrap-server nus-kafka-1:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
-	@printf "\n  Every partition should list three replicas and three in-sync.\n"
+	@printf "\n  Every partition has one replica. That replica is in sync.\n"
 
 .PHONY: schemas
 schemas:
@@ -39,9 +39,8 @@ ksql-ddl:
 	$(call say,ksqlDB streams and tables)
 	@$(COMPOSE) run --rm ksql-init
 
-# Runs through ksql-init rather than ksqldb-server: the check reads the
-# declared names out of ksql/*.sql, and ksql-init is the container that has
-# that directory mounted. The server holds the answer, not the question.
+# The check reads the declared names out of ksql/*.sql. ksql-init is the
+# container that has that directory mounted. The server holds the answer.
 .PHONY: verify-ksqldb
 verify-ksqldb:
 	$(call say,ksqlDB)

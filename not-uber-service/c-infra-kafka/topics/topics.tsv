@@ -11,7 +11,7 @@
 #                    all messages about one entity keep their order
 #   purpose          a short note for humans
 #
-# Replication is always 3 (one copy per broker) and is set by the script.
+# Replication is 1. One broker holds the only copy, and the script sets that.
 # Partition counts re-derived for NYC TLC real-scale fleet/demand (~106,000
 # licensed vehicles, ~655,000 trips/day full-scale - see h-bootstrap's own
 # scale settings): driver_location/rider_location carry by far the most
@@ -38,20 +38,13 @@
 # at full scale (~106,000 drivers, ~60% online, one report every
 # DRIVER_TICK_SECONDS) is on the order of 20,000 messages/second - the
 # 48-hour default this project used to apply everywhere would let it grow
-# toward several hundred GB per broker (every broker holds a full replica
-# at replication factor 3 with exactly 3 brokers), more than this host's
+# toward several hundred GB on the one broker, more than this host's
 # whole data disk. Cut down here to what real full-scale volume can
 # actually afford to keep; the low-volume topics keep the long default,
 # since nothing about their size demands otherwise.
 #
 # The cdc.* topics are NOT listed here: Debezium creates them itself, one
 # per PostgreSQL table (see d-infra-debezium).
-#
-# ksql_* and _confluent-ksql-* are not listed here either, for the same
-# reason: ksqlDB creates the sink topic of every table in ksql/*.sql, plus
-# its own command topic and each query's internal state, and owns their
-# settings. Adding one here would mean two things creating the same topic
-# with two ideas about its partitions.
 #
 # name	partitions	retention_hours	key	purpose
 driver_location	12	6	driver_id	where each driver is, every few seconds

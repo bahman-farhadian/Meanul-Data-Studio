@@ -534,8 +534,8 @@ def test_declared_topics_have_avro_schemas():
         assert name in text, name
     assert "topics.tsv" in text
     create = (NUS / "c-infra-kafka" / "topics" / "create-topics.sh").read_text()
-    assert "--replication-factor 3" in create
-    assert "min.insync.replicas=2" in create
+    assert "--replication-factor 1" in create
+    assert "min.insync.replicas=1" in create
     assert "replication-factor 3" in text
     assert "min.insync.replicas=2" in text
 
@@ -1028,3 +1028,4 @@ def test_closed_sets_are_written_in_the_contract():
     assert block, checker
     for key, value in re.findall(r'"([^"]+)":\s*"([^"]+)"', block.group(1)):
         assert f"`{key}` is `{value}`" in section, key
+

@@ -126,64 +126,24 @@ listen redis_read
     server nus-redis-3 nus-redis-3:6379 check
 
 # Kafka (c-infra-kafka) --------------------------------------------------------
-# Not a write/read pair like everything above: a Kafka client asks any broker
-# for cluster metadata, which hands back the exact address to dial for every
-# partition after that, baked into each broker's own advertised.listeners at
-# startup — nothing a proxy can redirect per-request. So this is one dedicated
-# TCP passthrough port per (broker, external address) pair; balance/role-
-# awareness would be meaningless here since every broker is a different,
-# specific destination, not an interchangeable one.
-#
-# Two addresses (A/B) per broker because this host has more than one real
-# network path to it and a broker can only advertise one address per listener
-# name — see c-infra-kafka/docker-compose.yaml for the mechanism, verified
-# against a real cluster before this shipped: producing through one broker's
-# port and consuming through a different broker's port, and separately,
-# producing through address A and consuming through address B, both worked.
-#
-# lb-a only, deliberately: lb-a/lb-b failover doesn't compose with an address
-# fixed at broker startup the way it does for a role-aware health check
-# elsewhere in this file. The cluster's own bootstrap-list fallback is
-# Kafka's actual redundancy story.
+# One broker. A client is told the address baked into advertised.listeners,
+# so HAProxy only publishes that address. Two ports because this host can
+# have two network paths, and a broker advertises one address per listener.
+# lb-b does not publish them: a second proxy cannot change an address that
+# was fixed when the broker started.
 
 listen kafka-1-a
     bind :9094
     server nus-kafka-1 nus-kafka-1:9094 check
 
-listen kafka-2-a
-    bind :9095
-    server nus-kafka-2 nus-kafka-2:9094 check
-
-listen kafka-3-a
-    bind :9096
-    server nus-kafka-3 nus-kafka-3:9094 check
-
 listen kafka-1-b
     bind :9097
     server nus-kafka-1 nus-kafka-1:9095 check
 
-listen kafka-2-b
-    bind :9098
-    server nus-kafka-2 nus-kafka-2:9095 check
-
-listen kafka-3-b
-    bind :9099
-    server nus-kafka-3 nus-kafka-3:9095 check
-
-# ksqlDB (c-infra-kafka) -------------------------------------------------------
-# The SQL layer over the cluster above: DBeaver's own Kafka support only
-# speaks ksqlDB's REST API, not the raw broker protocol the six ports above
-# use. One backend, so this is the same single-entry-point pattern as
-# Grafana/Superset below, not the per-broker passthrough above it — ksqlDB
-# is one stateless server, not something with a per-node advertised address.
-#
-# ksqlDB requires HTTP Basic auth (Kafka itself has none, and DBeaver's
-# ksqlDB driver requires a login regardless), so the healthcheck below must
-# authenticate too or every probe gets 401 and the backend never comes up.
-# __KSQLDB_BASIC_AUTH__ is base64(user:pass), filled in by the same render
-# step as __REDIS_PASSWORD__ above — see render-config.sh. A real client's
-# own Authorization header passes straight through this proxy unchanged;
-# this header is only for HAProxy's own probe.
+# ksqlDB reads the one broker as SQL. DBeaver's Kafka support speaks this
+# REST API, not the raw broker protocol. The healthcheck must send Basic
+# auth or every probe gets 401. __KSQLDB_BASIC_AUTH__ is base64(user:pass),
+# filled in by render-config.sh.
 
 listen ksqldb
     bind :8089

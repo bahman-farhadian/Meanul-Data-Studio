@@ -1,24 +1,14 @@
-# c-infra-kafka — the streaming backbone: three Kafka brokers in KRaft mode
-# (each node is broker AND controller, so there is no ZooKeeper), the Schema
-# Registry that holds the Avro schema of every topic, and ksqlDB — the SQL
-# layer a client like DBeaver actually talks to (its Kafka support does not
-# speak the raw broker protocol).
+# c-infra-kafka — one KRaft broker (broker and controller, no ZooKeeper),
+# the Schema Registry for every topic's Avro schema, and ksqlDB so a SQL
+# client can read that broker.
 #
 # Every event on this cluster is binary Avro. A message carries only the id
 # of its schema; the reader asks the Schema Registry what that id means. That
 # keeps messages small and lets a schema change without breaking old readers.
 #
-# Kafka is behind lb-a — but not the way Postgres/Redis are. A Kafka client
-# asks any broker for cluster metadata, which hands back the exact address
-# to dial for every partition after that; the address is baked into each
-# broker's own config, not something a proxy can redirect at request time.
-# So this is a dedicated TCP passthrough port per (broker, advertised
-# address) pair, not a shared write/read pair, and it stays on lb-a only —
-# lb-a/lb-b failover doesn't compose with an address fixed at broker
-# startup the way it does for a role-aware health check. The 3-broker
-# cluster's own bootstrap-list fallback is Kafka's actual redundancy story.
-# Verified locally before this shipped: a message produced through one
-# broker's proxy port was consumed back through a different broker's.
+# External clients still dial the address this broker advertises. HAProxy
+# only publishes that address (one port per host path). It does not hide
+# extra brokers, because there is only this one.
 #
 # Standalone test:
 #   docker network create nus-backbone     (once, shared by the whole stack)
@@ -57,19 +47,19 @@ x-kafka-env: &kafka-env
   # then never changed - see .env.example.
   CLUSTER_ID: ${KAFKA_CLUSTER_ID:?set it in c-infra-kafka/.env}
   KAFKA_PROCESS_ROLES: broker,controller
-  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@nus-kafka-1:9093,2@nus-kafka-2:9093,3@nus-kafka-3:9093
+  KAFKA_CONTROLLER_QUORUM_VOTERS: 1@nus-kafka-1:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
   KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXT_A:PLAINTEXT,EXT_B:PLAINTEXT
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
   KAFKA_LOG_DIRS: /var/lib/kafka/data
-  # Safety settings for a three-broker cluster: every topic is written to all
-  # three brokers, and a write is only accepted while at least two of them
-  # have it. One broker can die without losing data or blocking writers.
-  KAFKA_DEFAULT_REPLICATION_FACTOR: "3"
-  KAFKA_MIN_INSYNC_REPLICAS: "2"
-  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "3"
-  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "3"
-  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "2"
+  # One broker. A topic copy on the same host would not survive the host
+  # dying, so replication factor 1 is the honest setting. Partitions stay
+  # so a key still orders within its partition.
+  KAFKA_DEFAULT_REPLICATION_FACTOR: "1"
+  KAFKA_MIN_INSYNC_REPLICAS: "1"
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
   KAFKA_NUM_PARTITIONS: "3"
   # Topics are created on purpose by kafka-topics-init, never by accident:
   # a typo in a topic name should fail loudly, not silently make a new topic.
@@ -98,11 +88,9 @@ services:
     command:
       - sh
       - -c
-      - chown -R ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} /data-1 /data-2 /data-3 && echo "kafka data dirs ready"
+      - chown -R ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} /data-1 && echo "kafka data dir ready"
     volumes:
       - kafka-data-1:/data-1
-      - kafka-data-2:/data-2
-      - kafka-data-3:/data-3
     networks:
       - backbone
 
@@ -128,32 +116,6 @@ services:
     volumes:
       - kafka-data-1:/var/lib/kafka/data
 
-  kafka-2:
-    <<: *kafka-broker
-    container_name: nus-kafka-2
-    hostname: nus-kafka-2
-    environment:
-      <<: *kafka-env
-      KAFKA_NODE_ID: "2"
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
-      # See kafka-1 for what EXT_A/EXT_B are and why the ports are fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://nus-kafka-2:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9095,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9098
-    volumes:
-      - kafka-data-2:/var/lib/kafka/data
-
-  kafka-3:
-    <<: *kafka-broker
-    container_name: nus-kafka-3
-    hostname: nus-kafka-3
-    environment:
-      <<: *kafka-env
-      KAFKA_NODE_ID: "3"
-      KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXT_A://0.0.0.0:9094,EXT_B://0.0.0.0:9095
-      # See kafka-1 for what EXT_A/EXT_B are and why the ports are fixed.
-      KAFKA_ADVERTISED_LISTENERS: INTERNAL://nus-kafka-3:9092,EXT_A://${KAFKA_ADVERTISED_HOST_A:?set it in .env}:9096,EXT_B://${KAFKA_ADVERTISED_HOST_B:?set it in .env}:9099
-    volumes:
-      - kafka-data-3:/var/lib/kafka/data
-
   # The Schema Registry keeps every topic's Avro schema and hands out the ids
   # that travel inside each message. It stores them in a Kafka topic, so it
   # holds no state of its own and can be restarted freely.
@@ -168,16 +130,12 @@ services:
     depends_on:
       kafka-1:
         condition: service_healthy
-      kafka-2:
-        condition: service_healthy
-      kafka-3:
-        condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
       SCHEMA_REGISTRY_HOST_NAME: nus-schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://nus-kafka-1:9092,PLAINTEXT://nus-kafka-2:9092,PLAINTEXT://nus-kafka-3:9092
-      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "3"
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://nus-kafka-1:9092
+      SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "1"
       # BACKWARD: a new schema must still be readable by consumers written
       # against the previous one. Adding an optional field is fine; removing
       # a required field is refused at registration time.
@@ -199,6 +157,49 @@ services:
       # The registry runs its own preflight against every broker before it
       # listens, so give it room on a cold start.
       start_period: 60s
+    networks:
+      - backbone
+
+  # One-shot: create every topic from topics/topics.tsv. Run it AFTER `up`,
+  # once the brokers are healthy. Re-runs are safe - existing topics are
+  # skipped, so this is also how a newly added topic is rolled out.
+  kafka-topics-init:
+    image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
+    profiles: ["init"]
+    cpus: ${KAFKA_TOPICS_CPUS:-0.25}
+    mem_limit: ${KAFKA_TOPICS_MEM:-512m}
+    memswap_limit: ${KAFKA_TOPICS_MEM:-512m}
+    entrypoint: ["/bin/sh", "/create-topics.sh"]
+    environment:
+      TZ: ${TZ:-UTC}
+      KAFKA_BOOTSTRAP: nus-kafka-1:9092
+      KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
+    volumes:
+      - ./topics/create-topics.sh:/create-topics.sh:ro
+      - ./topics/topics.tsv:/topics.tsv:ro
+    networks:
+      - backbone
+
+  # One-shot: register every .avsc under schemas/ as <topic>-value. Run it
+  # AFTER kafka-topics-init. On a stack that has just been destroyed the
+  # Registry is empty until a producer runs, which happens later, at bootstrap.
+  #
+  # It is worth doing on its own account. Without this, the contract for a
+  # topic is whatever the first producer to connect happened to send.
+  schema-init:
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
+    profiles: ["init"]
+    cpus: ${SCHEMA_INIT_CPUS:-0.25}
+    mem_limit: ${SCHEMA_INIT_MEM:-512m}
+    memswap_limit: ${SCHEMA_INIT_MEM:-512m}
+    entrypoint: ["python3", "/register-schemas.py"]
+    environment:
+      TZ: ${TZ:-UTC}
+      SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
+      SCHEMA_DIR: /schemas
+    volumes:
+      - ./schemas:/schemas:ro
+      - ./schemas/register-schemas.py:/register-schemas.py:ro
     networks:
       - backbone
 
@@ -254,26 +255,20 @@ services:
     depends_on:
       kafka-1:
         condition: service_healthy
-      kafka-2:
-        condition: service_healthy
-      kafka-3:
-        condition: service_healthy
       schema-registry:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      KSQL_BOOTSTRAP_SERVERS: nus-kafka-1:9092,nus-kafka-2:9092,nus-kafka-3:9092
+      KSQL_BOOTSTRAP_SERVERS: nus-kafka-1:9092
       KSQL_LISTENERS: http://0.0.0.0:8088
       KSQL_KSQL_SERVICE_ID: nus_ksqldb_
       KSQL_KSQL_SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
-      # Same safety story as the rest of this cluster (see the "Safety
-      # settings" table in README.md): ksqlDB's own command topic and any
-      # persistent query's internal topics survive one broker dying, not
-      # just the topics it reads and writes.
-      KSQL_KSQL_INTERNAL_TOPIC_REPLICAS: "3"
-      KSQL_KSQL_INTERNAL_TOPIC_MIN_INSYNC_REPLICAS: "2"
-      KSQL_KSQL_STREAMS_REPLICATION_FACTOR: "3"
-      KSQL_KSQL_STREAMS_TOPIC_MIN_INSYNC_REPLICAS: "2"
+      # One broker, so ksqlDB's own topics are one copy. A second copy on
+      # this same host would not survive the host dying.
+      KSQL_KSQL_INTERNAL_TOPIC_REPLICAS: "1"
+      KSQL_KSQL_INTERNAL_TOPIC_MIN_INSYNC_REPLICAS: "1"
+      KSQL_KSQL_STREAMS_REPLICATION_FACTOR: "1"
+      KSQL_KSQL_STREAMS_TOPIC_MIN_INSYNC_REPLICAS: "1"
       # Where a brand-new query starts reading. ksqlDB ships 'latest', which
       # means a SELECT ... EMIT CHANGES on a stream returns nothing until the
       # next message arrives - so DBeaver opens a low-rate stream like
@@ -349,7 +344,7 @@ services:
     entrypoint: ["/bin/sh", "/create-topics.sh"]
     environment:
       TZ: ${TZ:-UTC}
-      KAFKA_BOOTSTRAP: nus-kafka-1:9092,nus-kafka-2:9092,nus-kafka-3:9092
+      KAFKA_BOOTSTRAP: nus-kafka-1:9092
       KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
     volumes:
       - ./topics/create-topics.sh:/create-topics.sh:ro
@@ -409,7 +404,6 @@ services:
       - ./ksql/apply-ksql.py:/apply-ksql.py:ro
     networks:
       - backbone
-
 volumes:
   kafka-data-1:
     name: nus-kafka-data-1
@@ -418,20 +412,7 @@ volumes:
       type: none
       o: bind
       device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-1
-  kafka-data-2:
-    name: nus-kafka-data-2
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-2
-  kafka-data-3:
-    name: nus-kafka-data-3
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-kafka-data-3
+
   ksqldb-secrets:
     name: nus-ksqldb-secrets
     driver: local

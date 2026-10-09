@@ -145,18 +145,17 @@ def test_every_stream_is_avro_and_timestamped_on_a_real_field() -> None:
 
 
 def test_derived_tables_state_their_replication() -> None:
-    """A one-replica sink topic inside a three-replica cluster is invisible.
+    """ksqlDB does not inherit the broker replication factor.
 
-    ksqlDB does not inherit the broker's default.replication.factor for a
-    sink topic - measured, not assumed - so every CREATE TABLE ... AS here
-    has to say the number.
+    Every CREATE TABLE ... AS has to say the number. There is one broker,
+    so the number is 1. An explicit 3 is refused.
     """
     text = (KSQL_DIR / "020_live_views.sql").read_text()
     creates = re.findall(r"(?is)CREATE\s+TABLE[^;]*?\)\s*AS", text)
     assert creates, "020_live_views.sql declares no table"
     for create in creates:
-        assert re.search(r"(?i)REPLICAS\s*=\s*3", create), (
-            "a CREATE TABLE ... AS does not set REPLICAS = 3"
+        assert re.search(r"(?i)REPLICAS\s*=\s*1", create), (
+            "a CREATE TABLE ... AS does not set REPLICAS = 1"
         )
 
 

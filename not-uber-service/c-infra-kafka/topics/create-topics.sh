@@ -66,8 +66,8 @@ while IFS="$TAB" read -r name partitions retention_hours key purpose; do
         --create --if-not-exists \
         --topic "$name" \
         --partitions "$partitions" \
-        --replication-factor 3 \
-        --config min.insync.replicas=2 \
+        --replication-factor 1 \
+        --config min.insync.replicas=1 \
         --config retention.ms="$topic_retention_ms" \
         >"$out" 2>&1; then
         grep -v "WARNING: Due to limitations in metric names" "$out" || true

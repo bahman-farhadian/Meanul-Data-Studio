@@ -27,15 +27,9 @@
 -- without being wrong. The counts are stored; the division happens in the
 -- question.
 --
--- REPLICAS = 3 is written out rather than left to a default, the same rule
--- create-topics.sh states for every other topic in this cluster. An earlier
--- draft omitted it on the theory that ksqlDB would fall back to the
--- broker's default.replication.factor; it does not, and the sink topic came
--- out with one replica. Checked both ways against cp-ksqldb-server:8.3.1 -
--- omitted gives whatever ksqlDB decides, and an explicit 3 is carried
--- through to the broker, which refuses it outright when three brokers are
--- not there. A one-replica topic inside a three-replica cluster is a
--- silent single point of failure, so the number is stated.
+-- REPLICAS = 1 is written out rather than left to a default. ksqlDB does
+-- not inherit the broker's default.replication.factor. There is one broker,
+-- so an explicit 3 is refused. The number has to match the broker.
 --
 -- COUNT_IF does not exist in cp-ksqldb-server:8.3.1 - confirmed, not
 -- assumed. SUM(CASE WHEN ...) is the portable spelling.
@@ -45,7 +39,7 @@ WITH (
     KAFKA_TOPIC  = 'ksql_offer_funnel_by_zone_1m',
     VALUE_FORMAT = 'AVRO',
     PARTITIONS   = 3,
-    REPLICAS     = 3
+    REPLICAS     = 1
 ) AS
 SELECT
     pickup_zone_id,

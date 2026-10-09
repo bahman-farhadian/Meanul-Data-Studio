@@ -1,6 +1,6 @@
 #!/bin/sh
 # Renders haproxy.cfg.template into the shared config volume, filling in
-# REDIS_PASSWORD and a Basic-auth header for ksqlDB's own healthcheck probe.
+# REDIS_PASSWORD and the Basic-auth header for ksqlDB's healthcheck.
 # Idempotent — safe to re-run any time either credential changes.
 #
 # Not sed: a plain `sed s/X/Y/` breaks the moment a value contains the

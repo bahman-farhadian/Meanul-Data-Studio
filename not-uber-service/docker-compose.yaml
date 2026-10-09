@@ -83,7 +83,7 @@ services:
                     nus-redis-data-1 nus-redis-data-2 nus-redis-data-3 \
                     nus-sentinel-data-1 nus-sentinel-data-2 nus-sentinel-data-3
         # Kafka's uid is configurable because the image has changed it before.
-        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1 nus-kafka-data-2 nus-kafka-data-3
+        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1
         # Grafana runs as 472 with group 0; Superset as 1000.
         own 472:0 nus-grafana-data
         own 1000:1000 nus-superset-home nus-tiles-data
@@ -155,11 +155,7 @@ services:
       # lb-a only, matching haproxy.cfg.template's own reasoning: lb-b
       # failover doesn't compose with an address fixed at broker startup.
       - "9094:9094"
-      - "9095:9095"
-      - "9096:9096"
       - "9097:9097"
-      - "9098:9098"
-      - "9099:9099"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s

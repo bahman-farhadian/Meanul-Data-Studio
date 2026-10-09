@@ -38,7 +38,7 @@ volume-quotas:
 	fi; \
 	projid=100; \
 	for entry in \
-		"nus-kafka-data-1:96g" "nus-kafka-data-2:96g" "nus-kafka-data-3:96g" \
+		"nus-kafka-data-1:96g" \
 		"nus-ch-data-s1r1:112g" "nus-ch-data-s1r2:112g" "nus-ch-data-s2r1:112g" "nus-ch-data-s2r2:112g" \
 		"nus-pgdata-1:24g" "nus-pgdata-2:24g" "nus-pgdata-3:24g"; \
 	do \
