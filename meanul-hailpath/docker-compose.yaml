@@ -1,0 +1,176 @@
+# Meanul Data Studio — Version 1 (Cab / Ride-Hailing Platform)
+#
+# Root compose file. Defines the stack-wide pieces (the lb-a HAProxy
+# entry tier) and stitches the components together via `include:` — every
+# component directory ships its own docker-compose.yaml and is testable in
+# isolation.
+#
+# ONE ENV FILE FOR THE WHOLE STACK. The include entries below deliberately
+# carry no `env_file:`, which makes every component resolve its ${...} from
+# this directory's .env — the master file. So there is exactly one file to
+# edit and one place a value can come from, instead of fifteen that have to
+# be kept in step by hand. Copy .env.example to .env and edit it.
+#
+# The per-component .env.example files remain the reference for what each
+# component consumes, and are what a STANDALONE single-component run uses
+# (`docker compose up` inside that directory). They take no part in the
+# full-stack path.
+#
+# Bring the stack up with the Makefile, which runs the one-shots at the
+# points in the sequence where they belong:
+#   make help          what everything does
+#   make init          .env + the shared nus-backbone network
+#   make preflight     check the host and the settings before touching Docker
+#   make up            the whole ordered first deployment
+#
+# Events on Kafka are binary Avro; schemas live in the Schema Registry.
+# Resource limits are declared directly in the component compose files,
+# targeting a 20-core / 120 GB Docker host with memswap_limit equal to the
+# memory limit (zero swap).
+
+name: meanul-hailpath
+
+include:
+  - path: a-infra-postgres/docker-compose.yaml
+  - path: b-infra-redis/docker-compose.yaml
+  - path: c-infra-kafka/docker-compose.yaml
+  - path: d-infra-debezium/docker-compose.yaml
+  - path: e-infra-clickhouse/docker-compose.yaml
+  - path: f-infra-grafana/docker-compose.yaml
+  - path: g-infra-superset/docker-compose.yaml
+  - path: h-bootstrap/docker-compose.yaml
+  - path: i-service-cache-updater/docker-compose.yaml
+  - path: j-service-driver/docker-compose.yaml
+  - path: k-service-passenger/docker-compose.yaml
+  - path: l-service-dispatch/docker-compose.yaml
+  - path: m-service-city/docker-compose.yaml
+  - path: n-service-clickhouse-sink/docker-compose.yaml
+  - path: o-service-archiver/docker-compose.yaml
+
+services:
+  # One-shot: give each data directory to the user that will write to it.
+  #
+  # The volumes are bind mounts under NUS_VOLUME_ROOT, so they take the HOST
+  # directory's ownership — unlike a named volume, which Docker seeds from the
+  # image. `make init` creates the tree as whoever runs it (root, normally),
+  # and a container running as an unprivileged user then cannot write to its
+  # own data directory.
+  #
+  # This runs as root inside the container and hands each directory over. The
+  # uids are the ones the images actually run as; check any of them with:
+  #   docker run --rm --entrypoint sh <image> -c 'id'
+  #
+  # Run it BEFORE the first start, and again after adding a volume. Re-running
+  # is harmless.
+  volume-perms:
+    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
+    profiles: ["init"]
+    cpus: ${VOLUME_PERMS_CPUS:-0.25}
+    mem_limit: ${VOLUME_PERMS_MEM:-64m}
+    memswap_limit: ${VOLUME_PERMS_MEM:-64m}
+    user: "0:0"
+    environment:
+      TZ: ${TZ:-UTC}
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        own() { u="$$1"; shift; for d in "$$@"; do [ -d "/vol/$$d" ] || continue; chown -R "$$u" "/vol/$$d"; done; echo "  $$u  $$*"; }
+        echo "handing the data directories to the users that write to them:"
+        # PostgreSQL and Redis run as uid 999 in their images.
+        own 999:999 nus-pgdata-1 \
+                    nus-redis-data-1
+        # Kafka's uid is configurable because the image has changed it before.
+        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1
+        # Grafana runs as 472 with group 0; Superset as 1000.
+        own 472:0 nus-grafana-data
+        own 1000:1000 nus-superset-home nus-tiles-data
+        # h-bootstrap and the six services all run as the 'nus' user, 10001.
+        own 10001:10001 nus-lion-data
+        # ClickHouse starts as root and drops privileges itself, so its
+        # data directory stays root-owned.
+        echo "done"
+    volumes:
+      - ${NUS_VOLUME_ROOT:?set it in .env}:/vol
+    networks:
+      - backbone
+
+  # One-shot: renders haproxy.cfg.template into the shared config volume,
+  # filling in REDIS_PASSWORD. HAProxy does not expand ${VAR} from its own
+  # environment inside a tcp-check string (confirmed, not assumed), so the
+  # password has to be baked into the file before lb-a reads it.
+  #
+  # Run it BEFORE lb-a starts, and again any time REDIS_PASSWORD changes.
+  haproxy-config-render:
+    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
+    profiles: ["init"]
+    cpus: ${HAPROXY_RENDER_CPUS:-0.25}
+    mem_limit: ${HAPROXY_RENDER_MEM:-64m}
+    memswap_limit: ${HAPROXY_RENDER_MEM:-64m}
+    environment:
+      TZ: ${TZ:-UTC}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in .env}
+      KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
+      KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
+    entrypoint: ["/bin/sh", "/render-config.sh"]
+    volumes:
+      - ./z-config/haproxy/haproxy.cfg.template:/template/haproxy.cfg.template:ro
+      - ./z-config/haproxy/render-config.sh:/render-config.sh:ro
+      - haproxy-config:/out
+    networks:
+      - backbone
+
+  lb-a:
+    image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
+    container_name: nus-lb-a
+    hostname: nus-lb-a
+    restart: unless-stopped
+    cpus: ${LB_CPUS:-0.5}
+    mem_limit: ${LB_MEM:-128m}
+    memswap_limit: ${LB_MEM:-128m}
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - haproxy-config:/usr/local/etc/haproxy:ro
+    ports:
+      - "${LB_A_PG_WRITE_PORT:-5432}:5432"
+      - "${LB_A_PG_READ_PORT:-5433}:5433"
+      - "${LB_A_REDIS_WRITE_PORT:-6379}:6379"
+      - "${LB_A_REDIS_READ_PORT:-6380}:6380"
+      - "${LB_A_STATS_PORT:-8404}:8404"
+      - "${LB_A_CH_HTTP_PORT:-8123}:8123"
+      - "${LB_A_CH_NATIVE_PORT:-9000}:9000"
+      - "${LB_A_GRAFANA_PORT:-3000}:3000"
+      - "${LB_A_SUPERSET_PORT:-8088}:8088"
+      - "${LB_A_KSQLDB_PORT:-8089}:8089"
+      - "${LB_A_DEBEZIUM_PORT:-8083}:8083"
+      # Fixed literals, not a `${VAR:-default}:CONTAINER` pair like every
+      # line above: a broker's advertised address is baked into its own
+      # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
+      # port a client is told to dial here has to be the exact port it can
+      # actually reach — remapping the host side would silently break that.
+      - "9094:9094"
+      - "9097:9097"
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - backbone
+
+volumes:
+  # Rendered by haproxy-config-render; never mounted read-write anywhere else.
+  haproxy-config:
+    name: nus-haproxy-config
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in .env}/nus-haproxy-config
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

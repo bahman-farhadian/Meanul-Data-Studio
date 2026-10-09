@@ -1,0 +1,72 @@
+# b-infra-redis — one Redis. Clients use nus-redis.
+# HAProxy publishes that one address on the host ports.
+#
+# Standalone test:
+#   docker network create nus-backbone   (once, shared by the whole stack)
+#   cp .env.example .env                 (edit REDIS_PASSWORD)
+#   docker compose up -d
+#
+# In the full stack this file is include'd by the root docker-compose.yaml.
+# Full-stack runbook: ../README.md
+
+name: b-infra-redis
+
+x-redis-node: &redis-node
+  image: ${REDIS_IMAGE:-redis:8.2}
+  restart: unless-stopped
+  # The official image drops to this user only through its own entrypoint,
+  # which we replace — so ask for it explicitly. A fresh named volume inherits
+  # /data's redis:redis ownership from the image, so the data dir is writable.
+  user: redis
+  cpus: ${REDIS_CPUS:-0.5}
+  mem_limit: ${REDIS_MEM:-4g}
+  memswap_limit: ${REDIS_MEM:-4g}
+  entrypoint: ["/bin/sh", "/entrypoint.sh"]
+  healthcheck:
+    # redis-cli picks the password up from REDISCLI_AUTH; grep makes the exit
+    # status depend on the actual reply rather than on redis-cli's own code.
+    test: ["CMD-SHELL", "redis-cli ping | grep -q PONG"]
+    interval: 10s
+    timeout: 5s
+    retries: 5
+    start_period: 15s
+  networks:
+    - backbone
+
+x-redis-env: &redis-env
+  TZ: ${TZ:-UTC}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in b-infra-redis/.env}
+  REDISCLI_AUTH: ${REDIS_PASSWORD:?set it in b-infra-redis/.env}
+  REDIS_MAXMEMORY: ${REDIS_MAXMEMORY:-2560mb}
+
+# Anchored per item: YAML merge keys work on mappings only, so a shared
+# volume LIST cannot be spliced into a service — each mount is its own anchor.
+x-redis-entrypoint: &redis-entrypoint ./redis/entrypoint.sh:/entrypoint.sh:ro
+x-redis-template: &redis-template ./redis/redis.conf:/templates/redis.conf:ro
+
+services:
+  nus-redis:
+    <<: *redis-node
+    container_name: nus-redis
+    hostname: nus-redis
+    environment:
+      <<: *redis-env
+      REDIS_NODE: nus-redis
+    volumes:
+      - *redis-entrypoint
+      - *redis-template
+      - redis-data-1:/data
+
+volumes:
+  redis-data-1:
+    name: nus-redis-data-1
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in meanul-hailpath/.env}/nus-redis-data-1
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

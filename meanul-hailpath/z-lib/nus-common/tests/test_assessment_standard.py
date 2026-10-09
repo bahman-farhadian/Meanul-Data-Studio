@@ -1,0 +1,1136 @@
+"""The root assessment contract must stay aligned with shipped checks.
+
+Reads ASSESSMENT.md and the SQL / Avro / DDL / geo / Makefile sources it
+cites. Numbers, closed-set symbols, id widths, topic names, and Makefile
+target names are taken from those files, not copied into this test as
+literals.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+
+TESTS = Path(__file__).resolve().parent
+# this file lives at meanul-hailpath/z-lib/nus-common/tests/
+NUS = TESTS.parents[2]
+ROOT = TESTS.parents[3]
+STANDARD = ROOT / "ASSESSMENT.md"
+
+
+def _standard() -> str:
+    assert NUS.name == "meanul-hailpath", NUS
+    assert STANDARD.is_file(), f"missing assessment contract: {STANDARD}"
+    return STANDARD.read_text()
+
+
+def _on_network_sql() -> str:
+    path = NUS / "z-config" / "check-on-network.sql"
+    return path.read_text()
+
+
+def _geo_source() -> str:
+    return (NUS / "z-lib" / "nus-common" / "nus_common" / "geo.py").read_text()
+
+
+def _makefile_targets() -> set[str]:
+    root_make = NUS / "Makefile"
+    texts = [root_make.read_text()]
+    for inc in re.finditer(r"^include\s+(\S+)", texts[0], re.M):
+        path = NUS / inc.group(1)
+        if path.is_file():
+            texts.append(path.read_text())
+    names: set[str] = set()
+    for text in texts:
+        for match in re.finditer(r"^\.PHONY:\s*(.+)$", text, re.M):
+            names.update(match.group(1).split())
+        for match in re.finditer(r"^([a-zA-Z][a-zA-Z0-9_-]*):", text, re.M):
+            names.add(match.group(1))
+    return names
+
+
+def test_standard_lists_every_lettered_component():
+    text = _standard()
+    dirs = sorted(
+        p.name
+        for p in NUS.iterdir()
+        if p.is_dir()
+        and not p.name.startswith(".")
+        and (re.match(r"^[a-o]-", p.name) or p.name in {"z-config", "z-lib"})
+    )
+    assert dirs, f"no lettered components under {NUS}"
+    missing = [name for name in dirs if name not in text]
+    assert missing == [], f"ASSESSMENT.md missing components: {missing}"
+
+
+def test_off_network_metres_match_shipped_sql():
+    sql = _on_network_sql()
+    pickup = re.search(r"pickup_m > (\d+)", sql)
+    dropoff = re.search(r"dropoff_m > (\d+)", sql)
+    assert pickup and dropoff, sql
+    metres = pickup.group(1)
+    assert metres == dropoff.group(1)
+    text = _standard()
+    assert f"{metres} m" in text or f"{metres}m" in text
+    assert metres in text
+
+
+def test_long_two_point_route_matches_shipped_sql():
+    sql = _on_network_sql()
+    npoints = re.search(r"ST_NPoints\(route\)\s*<=\s*(\d+)", sql)
+    length_m = re.search(r"ST_Length\(route::geography\)\s*>\s*(\d+)", sql)
+    assert npoints and length_m, sql
+    text = _standard()
+    assert npoints.group(1) in text
+    assert "ST_NPoints" in text or "NPoints" in text
+    metres = length_m.group(1)
+    assert metres in text
+    km = int(metres) / 1000
+    assert km == int(km)
+    assert f"{int(km)} km" in text
+
+
+def test_chord_min_km_matches_shipped_geo():
+    geo = _geo_source()
+    match = re.search(
+        r"def is_chord_path\([^)]*min_km:\s*float\s*=\s*([0-9.]+)",
+        geo,
+    )
+    assert match, geo
+    min_km = match.group(1)
+    text = _standard()
+    assert min_km in text
+    assert "is_chord_path" in text
+    assert f"{min_km} km" in text or f"min_km={min_km}" in text or f"min_km = {min_km}" in text
+
+
+def test_named_make_targets_exist():
+    text = _standard()
+    named = set(re.findall(r"make ([a-z][a-z0-9_-]*)", text))
+    assert named, "ASSESSMENT.md names no make targets"
+    targets = _makefile_targets()
+    missing = sorted(name for name in named if name not in targets)
+    assert missing == [], f"ASSESSMENT.md names make targets that do not exist: {missing}"
+
+
+def test_make_steps_exist_and_demos_are_gone():
+    """make up and make prepare call real targets. The old demo aliases do not."""
+    targets = _makefile_targets()
+    texts = []
+    root = (NUS / "Makefile").read_text()
+    texts.append(root)
+    for inc in re.finditer(r"^include\s+(\S+)", root, re.M):
+        path = NUS / inc.group(1)
+        if path.is_file():
+            texts.append(path.read_text())
+    called = set()
+    for text in texts:
+        called.update(
+            re.findall(r"\$\(MAKE\)[^\n]*--no-print-directory\s+([A-Za-z_][A-Za-z0-9_-]*)", text)
+        )
+    # Prerequisite lists: `cdc-register: pg-allow-cdc`
+    for text in texts:
+        for match in re.finditer(r"^[a-zA-Z0-9_-]+:\s+([a-zA-Z0-9_].*)$", text, re.M):
+            for name in match.group(1).split():
+                if name.startswith("#"):
+                    break
+                called.add(name)
+    missing = sorted(name for name in called if name not in targets and not name.startswith("."))
+    assert missing == [], f"a recipe calls a target that does not exist: {missing}"
+    gone = [
+        "failover-pg", "failover-redis", "patronictl", "kafka-dirs",
+        "superset-import", "help-all", "config", "ch-secrets",
+    ]
+    still = sorted(name for name in gone if name in targets)
+    assert still == [], f"removed make targets are still defined: {still}"
+    assert "help-all" not in root
+    # Steps make up and make prepare call. pull, build, and preflight too.
+    resume = [
+        "volume-perms", "lb-config", "ksqldb-secrets",
+        "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",
+        "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
+        "lion-prepare", "zone-demand-prepare", "tiles-prepare", "volume-quotas",
+    ]
+    absent = [name for name in resume if name not in root or name not in targets]
+    assert absent == [], f"help or the Makefiles dropped a step that make up still needs: {absent}"
+    preflight = (NUS / "mk" / "preflight.mk").read_text()
+    assert 'runnet="--network host"' in preflight
+    assert 'docker run --rm $$runnet "$$probe"' in preflight
+    trips = (NUS / "h-bootstrap" / "Makefile").read_text()
+    assert "fhvhv_tripdata_{month}" not in trips
+    assert "s/{month}/" in trips
+    lion = (NUS / "h-bootstrap" / "lion-prepare" / "Dockerfile").read_text()
+    assert "postgresql-client" not in lion
+    assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_dump" in lion
+    bootstrap = (NUS / "h-bootstrap" / "Dockerfile").read_text()
+    assert "        postgresql-client" not in bootstrap
+    assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_restore" in bootstrap
+
+
+def test_live_walk_and_tile_terms_are_in_the_sources():
+    text = _standard()
+    ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()
+    redis = (NUS / "z-lib" / "nus-common" / "nus_common" / "redis_client.py").read_text()
+    driver = (NUS / "j-service-driver" / "driver_service" / "__main__.py").read_text()
+    haproxy = (NUS / "z-config" / "haproxy" / "haproxy.cfg.template").read_text()
+    tiles_make = (NUS / "f-infra-grafana" / "Makefile").read_text()
+
+    assert "drv-" in ids and "drv-" in text
+    assert "psg-" in ids and "psg-" in text
+    assert "trp-" in ids and "trp-" in text
+    assert "SIM_TIMEZONE" in _geo_source() and "SIM_TIMEZONE" in text
+    assert "trip_active" in redis and "trip_active" in text
+    assert "path_chord" in driver and "path_p50" in driver
+    assert "path_chord" in text and "path_p50" in text
+    assert "/tiles/" in haproxy and "/tiles/" in text
+    assert "tiles-health" in tiles_make and "make tiles-health" in text
+    assert "image/png" in tiles_make and "image/png" in text
+
+
+def test_studio_contract_sections_and_roles():
+    text = _standard()
+    for heading in (
+        "## 4. Schema contract",
+        "## 5. Message-broker contract",
+        "## 6. Cache contract",
+        "## 7. Data-generation contract",
+        "## 8. Simulation-accuracy contract",
+        "## 9. Version 1",
+    ):
+        assert heading in text, heading
+    for role in (
+        "`oltp`",
+        "`cache`",
+        "`broker`",
+        "`cdc`",
+        "`warehouse`",
+        "`live-ui`",
+        "`analytic-ui`",
+        "`bootstrap`",
+        "`cache-updater`",
+        "`generator`",
+        "`coordinator`",
+        "`warehouse-sink`",
+        "`archiver`",
+        "`stack-config`",
+        "`shared-lib`",
+    ):
+        assert role in text, role
+
+
+def _migrations() -> list[Path]:
+    """Every migration, in the order the bootstrap applies them."""
+    found = sorted((NUS / "h-bootstrap" / "migrations").glob("*.sql"))
+    assert found, "no migrations found"
+    return found
+
+
+def _pg_check_symbols(sql: str, constraint: str) -> list[str]:
+    match = re.search(
+        rf"CONSTRAINT\s+{constraint}\s+CHECK\s*\(\s*\w+\s+IN\s*\(([^)]+)\)",
+        sql,
+        re.I | re.S,
+    )
+    assert match, f"no CHECK list for {constraint}"
+    return re.findall(r"'([^']+)'", match.group(1))
+
+
+def _pg_effective_check(constraint: str) -> list[str]:
+    """The CHECK list as it stands after every migration has run.
+
+    A later migration may drop a constraint and add it back with another
+    symbol - 013 does exactly that to trips_status_check when it appends
+    'arrived'. Reading only the file that first created the table would
+    compare the warehouse against a set that no longer exists.
+    """
+    symbols: list[str] | None = None
+    for path in _migrations():
+        text = path.read_text()
+        for match in re.finditer(
+            rf"CONSTRAINT\s+{constraint}\s+CHECK\s*\(.*?IN\s*\(([^)]+)\)",
+            text,
+            re.I | re.S,
+        ):
+            symbols = re.findall(r"'([^']+)'", match.group(1))
+    assert symbols, f"no CHECK list for {constraint} in any migration"
+    return symbols
+
+
+def _pg_trips_columns() -> set[str]:
+    """Every column trips has once all migrations have run."""
+    columns: set[str] = set()
+    for path in _migrations():
+        text = path.read_text()
+        create = re.search(
+            r"CREATE TABLE IF NOT EXISTS trips\s*\((.*?)\n\);", text, re.S
+        )
+        if create:
+            for line in create.group(1).splitlines():
+                name = re.match(r"\s{4}(\w+)\s+\S", line)
+                if name and name.group(1).upper() != "CONSTRAINT":
+                    columns.add(name.group(1))
+        for add in re.finditer(
+            r"ALTER TABLE trips ADD COLUMN IF NOT EXISTS (\w+)", text, re.I
+        ):
+            columns.add(add.group(1))
+        for drop in re.finditer(
+            r"ALTER TABLE trips DROP COLUMN IF EXISTS (\w+)", text, re.I
+        ):
+            columns.discard(drop.group(1))
+    assert "trip_id" in columns, columns
+    return columns
+
+
+def _avro_field_names(path: Path) -> set[str]:
+    return {field["name"] for field in json.loads(path.read_text())["fields"]}
+
+
+def _ch_columns(sql: str, table: str) -> set[str]:
+    needle = table if table.startswith("nus.") else f"nus.{table}"
+    start = sql.index(f"CREATE TABLE IF NOT EXISTS {needle}")
+    body = sql[start : sql.index("ENGINE =", start)]
+    names: set[str] = set()
+    for line in body.splitlines():
+        match = re.match(r"\s{4}(\w+)\s+\S", line)
+        if match:
+            names.add(match.group(1))
+    assert names, table
+    return names
+
+
+def _avro_enum_symbols(path: Path, enum_name: str) -> list[str]:
+    def walk(node: object) -> list[str] | None:
+        if isinstance(node, dict):
+            nested = node.get("type")
+            if nested == "enum" and node.get("name") == enum_name:
+                return list(node["symbols"])
+            if isinstance(nested, dict):
+                found = walk(nested)
+                if found is not None:
+                    return found
+            for value in node.values():
+                found = walk(value)
+                if found is not None:
+                    return found
+        elif isinstance(node, list):
+            for value in node:
+                found = walk(value)
+                if found is not None:
+                    return found
+        return None
+
+    found = walk(json.loads(path.read_text()))
+    assert found, f"no Avro enum {enum_name} in {path}"
+    return found
+
+
+def _ch_enum8_symbols(sql: str, after: str) -> list[str]:
+    idx = sql.index(after)
+    match = re.search(r"Enum8\s*\((.*?)\)", sql[idx:], re.S)
+    assert match, f"no Enum8 after {after}"
+    return re.findall(r"'([^']+)'", match.group(1))
+
+
+def test_closed_status_sets_align_across_stores():
+    core = (NUS / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
+    city = (NUS / "h-bootstrap" / "migrations" / "003_city.sql").read_text()
+    positions = (NUS / "e-infra-clickhouse" / "ddl" / "002_positions.sql").read_text()
+    trips = (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text()
+    hotspots = (NUS / "e-infra-clickhouse" / "ddl" / "004_hotspots.sql").read_text()
+    geo = _geo_source()
+
+    driver_pg = _pg_check_symbols(core, "drivers_status_check")
+    driver_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "driver_location.avsc",
+        "DriverStatus",
+    )
+    driver_ch = _ch_enum8_symbols(positions, "nus.driver_positions")
+    assert driver_pg == driver_avro == driver_ch
+
+    # The effective set, not 002's: 013 drops and re-adds this constraint
+    # to append 'arrived'.
+    trip_pg = _pg_effective_check("trips_status_check")
+    trip_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
+        "TripStatus",
+    )
+    trip_ch = _ch_enum8_symbols(trips, "nus.trip_events")
+    assert trip_pg == trip_avro == trip_ch
+    # 'arrived' must stay last in all three. An Enum8's numbers are what
+    # ClickHouse stores, so moving a symbol into its lifecycle position
+    # would renumber every symbol after it and reinterpret existing rows.
+    assert trip_pg[-1] == "arrived", trip_pg
+
+    lifecycle = NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc"
+    for constraint, enum_name, column in (
+        ("trips_payment_method_check", "PaymentMethod", "payment_method"),
+        ("trips_cancellation_reason_check", "CancellationReason", "cancellation_reason"),
+        ("trips_requested_vehicle_type_check", "VehicleType", "requested_vehicle_type"),
+    ):
+        pg = _pg_effective_check(constraint)
+        avro = _avro_enum_symbols(lifecycle, enum_name)
+        ch = _ch_enum8_symbols(trips, f"    {column} ")
+        assert pg == avro == ch, (constraint, pg, avro, ch)
+
+    offers_pg = _pg_effective_check("dispatch_offers_status_check")
+    offers_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "dispatch_offers.avsc", "OfferStatus"
+    )
+    offers_ch = _ch_enum8_symbols(
+        (NUS / "e-infra-clickhouse" / "ddl" / "010_dispatch_offers.sql").read_text(),
+        "nus.dispatch_offers",
+    )
+    assert offers_pg == offers_avro == offers_ch
+
+    period_pg = _pg_check_symbols(city, "segment_traffic_period_check")
+    period_avro = _avro_enum_symbols(
+        NUS / "c-infra-kafka" / "schemas" / "city_hotspots.avsc",
+        "DayPeriod",
+    )
+    period_ch = _ch_enum8_symbols(hotspots, "nus.hotspot_history")
+    periods = re.search(r"DAY_PERIODS\s*=\s*\(([^)]+)\)", geo)
+    assert periods, geo
+    period_py = re.findall(r'"([^"]+)"', periods.group(1))
+    assert period_pg == period_avro == period_ch == period_py
+
+    text = _standard()
+    assert "CHECK" in text
+    assert "Enum8" in text
+    assert "Avro" in text
+
+
+def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
+    """A column in one store and nowhere else is the failure this catches.
+
+    driver_payout, payment_method, cancellation_reason and
+    requested_vehicle_type sat in Postgres for months while being absent
+    from the Avro record and from ClickHouse, so the warehouse - the only
+    store dashboards may read - could not answer take rate, payment mix,
+    why trips cancel, or anything per tier. The closed-set test above did
+    not see it: it compares symbol lists for sets that exist in all three
+    places, not the existence of the field itself.
+    """
+    avro = _avro_field_names(NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc")
+    pg = _pg_trips_columns()
+    ch = _ch_columns(
+        (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text(),
+        "nus.trip_events",
+    )
+
+    # The envelope describes the message, not the trip, so it has no trips
+    # column - except event_id, which the warehouse stores to dedupe on.
+    envelope_only = {"event_version", "producer", "correlation_id", "event_id"}
+    # event_time is when the status change happened; the trip's own clock
+    # is the six milestone columns, which trips does have.
+    wire_only = {"event_time"}
+
+    missing_in_pg = sorted((avro - envelope_only - wire_only) - pg)
+    assert missing_in_pg == [], (
+        f"on trip_lifecycle but not in trips: {missing_in_pg}"
+    )
+
+    missing_in_ch = sorted((avro - {"event_version", "producer", "correlation_id"}) - ch)
+    assert missing_in_ch == [], (
+        f"on trip_lifecycle but not in trip_events: {missing_in_ch}"
+    )
+
+    # And the reverse: a trips column that never reaches the wire is the
+    # same defect pointing the other way. rider_id is named rider_id on
+    # both sides; route and the two points are geometry, which CDC
+    # deliberately excludes (see test_cdc_excludes_oltp_geometry).
+    not_shipped = {
+        "created_at", "updated_at", "attributes",
+        "pickup_point", "dropoff_point", "route",
+    }
+    stranded = sorted(pg - avro - not_shipped)
+    assert stranded == [], f"in trips but on no topic: {stranded}"
+
+
+def test_the_two_warehouse_writers_agree_on_every_column():
+    """h-bootstrap and clickhouse-sink write the same tables.
+
+    The seeded history and the live stream both insert into nus.trip_events
+    and friends, from two separate column lists in two separate packages. A
+    column added to one and not the other produces rows that disagree about
+    what they contain, which is the same class of drift that hid
+    driver_payout from the warehouse in the first place.
+    """
+    sink = (
+        NUS / "n-service-clickhouse-sink" / "clickhouse_sink" / "batches.py"
+    ).read_text()
+    bootstrap = (NUS / "h-bootstrap" / "bootstrap" / "warehouse.py").read_text()
+
+    def sink_columns(table: str) -> list[str]:
+        match = re.search(rf'"{re.escape(table)}":\s*\[(.*?)\]', sink, re.S)
+        assert match, table
+        return re.findall(r'"([^"]+)"', match.group(1))
+
+    def bootstrap_columns(name: str) -> list[str]:
+        match = re.search(rf"^{name}\s*=\s*\[(.*?)^\]", bootstrap, re.S | re.M)
+        assert match, name
+        return re.findall(r'"([^"]+)"', match.group(1))
+
+    for table, constant in (
+        ("nus.trip_events", "TRIP_EVENT_COLUMNS"),
+        ("nus.dispatch_offers", "DISPATCH_OFFER_COLUMNS"),
+        ("nus.driver_positions", "DRIVER_POSITION_COLUMNS"),
+        ("nus.rider_positions", "RIDER_POSITION_COLUMNS"),
+        ("nus.hotspot_history", "HOTSPOT_COLUMNS"),
+    ):
+        assert sink_columns(table) == bootstrap_columns(constant), table
+
+
+def test_every_warehouse_table_carries_an_event_id():
+    """Uniqueness has to hold before ClickHouse, so every table needs the id.
+
+    ClickHouse does not deduplicate on its own, which is the whole reason
+    the envelope exists. A table without event_id is a table whose counts
+    cannot be checked, and the quality bar in step 7 would silently pass it.
+    """
+    ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
+    missing = []
+    for path in sorted(ddl_dir.glob("*.sql")):
+        for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (nus\.\w+)", path.read_text()):
+            table = match.group(1)
+            # A rollup holds aggregates of many events, not one event, so
+            # it has no single id to carry - and it inherits the guarantee
+            # from the table it is built on.
+            if table.endswith(("_hourly", "_daily")):
+                continue
+            if "event_id" not in _ch_columns(path.read_text(), table):
+                missing.append(table)
+    assert missing == [], f"warehouse tables with no event_id: {missing}"
+
+
+def test_minted_id_widths_match_warehouse():
+    ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+
+    def _length(name: str) -> str:
+        match = re.search(rf"^{name}\s*=\s*(\d+)", ids, re.M)
+        assert match, name
+        return match.group(1)
+
+    driver_n = _length("DRIVER_ID_LENGTH")
+    passenger_n = _length("PASSENGER_ID_LENGTH")
+    trip_n = _length("TRIP_ID_LENGTH")
+    assert re.search(rf"driver_id\s+FixedString\({driver_n}\)", ddl)
+    assert re.search(rf"rider_id\s+FixedString\({passenger_n}\)", ddl)
+    assert re.search(rf"trip_id\s+FixedString\({trip_n}\)", ddl)
+    text = _standard()
+    assert "FixedString" in text
+    assert driver_n in text and passenger_n in text and trip_n in text
+
+
+def test_one_clickhouse_merge_tree():
+    """The warehouse is one server. Query names are MergeTree tables."""
+    compose = (NUS / "e-infra-clickhouse" / "docker-compose.yaml").read_text()
+    assert "container_name: nus-clickhouse" in compose
+    assert "ch-s1r2" not in compose
+    assert "ch-keeper" not in compose
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+    assert "ENGINE = Distributed" not in ddl
+    assert "ReplicatedMergeTree" not in ddl
+    assert "ON CLUSTER" not in ddl
+    assert "ENGINE = MergeTree" in ddl
+    apply = (NUS / "e-infra-clickhouse" / "ddl" / "apply-ddl.sh").read_text()
+    assert "nus_cluster" not in apply
+    assert "system.clusters" not in apply
+    root = (NUS / "Makefile").read_text()
+    assert "PIECE_E  := nus-clickhouse" in root
+    assert "ch-secrets" not in root
+    assert "ch-secrets-init" not in compose
+    assert not (NUS / "e-infra-clickhouse" / "config" / "keeper" / "keeper.xml").exists()
+    assert not (NUS / "e-infra-clickhouse" / "config" / "clickhouse" / "config.d" / "cluster.xml").exists()
+
+
+def test_one_postgres_and_no_patroni():
+    """The database is one process. Debezium tails that process."""
+    compose = (NUS / "a-infra-postgres" / "docker-compose.yaml").read_text()
+    assert "container_name: nus-postgres" in compose
+    assert "nus-pg-2" not in compose
+    assert "nus-pg-3" not in compose
+    assert "etcd" not in compose.lower()
+    assert "patroni" not in compose.lower()
+    assert "pgrouting/pgrouting:18-3.6-3.8.0" in compose
+    assert "\n    build:\n" not in compose
+    assert "./pg_hba.conf:/etc/pg_hba.conf:ro" in compose
+    assert not (NUS / "a-infra-postgres" / "Dockerfile").exists()
+    hba = (NUS / "a-infra-postgres" / "pg_hba.conf").read_text()
+    assert "host replication postgres" in hba
+    root = (NUS / "Makefile").read_text()
+    assert "PIECE_A  := nus-postgres" in root
+    assert "etcd" not in root.lower()
+    assert not (NUS / "a-infra-postgres" / "etcd.env").exists()
+    debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
+    assert "CDC_PG_HOST" in debezium or "PG_HOST" in debezium
+    # quay.io/debezium/connect:3.6 writes only CONNECT_* into
+    # connect-distributed.properties. The unprefixed names are ignored,
+    # and Connect then creates these topics with its default of 3.
+    for key in (
+        "CONNECT_CONFIG_STORAGE_REPLICATION_FACTOR",
+        "CONNECT_OFFSET_STORAGE_REPLICATION_FACTOR",
+        "CONNECT_STATUS_STORAGE_REPLICATION_FACTOR",
+    ):
+        assert f'\n      {key}: "1"\n' in debezium
+    for bare in (
+        "CONFIG_STORAGE_REPLICATION_FACTOR",
+        "OFFSET_STORAGE_REPLICATION_FACTOR",
+        "STATUS_STORAGE_REPLICATION_FACTOR",
+    ):
+        assert f"\n      {bare}:" not in debezium
+    connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text())
+    assert connector["config"]["topic.creation.default.replication.factor"] == "1"
+    assert connector["config"]["database.user"] == "filled in by register.py"
+
+
+def test_one_redis_and_no_sentinel():
+    """The cache is one process. Clients open that process, not Sentinel."""
+    compose = (NUS / "b-infra-redis" / "docker-compose.yaml").read_text()
+    assert "container_name: nus-redis" in compose
+    assert "nus-redis-2" not in compose
+    assert "nus-redis-3" not in compose
+    assert "sentinel" not in compose.lower()
+    client = (NUS / "z-lib" / "nus-common" / "nus_common" / "redis_client.py").read_text()
+    assert "redis.sentinel" not in client
+    assert "REDIS_SENTINELS" not in client
+    assert 'config.optional("REDIS_HOST", "nus-redis")' in client
+    root = (NUS / "Makefile").read_text()
+    assert "PIECE_B  := nus-redis" in root
+    assert "sentinel-" not in root
+
+
+def test_one_haproxy():
+    """One proxy publishes the stable ports. It does not have a failover twin."""
+    compose = (NUS / "docker-compose.yaml").read_text()
+    assert "container_name: nus-lb-a" in compose
+    assert "nus-lb-b" not in compose
+    assert "\n  lb-b:" not in compose
+    root = (NUS / "Makefile").read_text()
+    assert "ENTRY    := lb-a\n" in root
+    assert "lb-b" not in root
+
+
+def test_declared_topics_have_avro_schemas():
+    tsv = (NUS / "c-infra-kafka" / "topics" / "topics.tsv").read_text()
+    names: list[str] = []
+    for line in tsv.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
+            continue
+        name = line.split("\t")[0].strip()
+        if name:
+            names.append(name)
+    assert names, tsv
+    assert all(not name.startswith("cdc.") for name in names)
+    schemas = NUS / "c-infra-kafka" / "schemas"
+    missing = [name for name in names if not (schemas / f"{name}.avsc").is_file()]
+    assert missing == [], missing
+    extra = sorted(path.stem for path in schemas.glob("*.avsc") if path.stem not in names)
+    assert extra == [], extra
+    text = _standard()
+    for name in names:
+        assert name in text, name
+    assert "topics.tsv" in text
+    create = (NUS / "c-infra-kafka" / "topics" / "create-topics.sh").read_text()
+    assert "--replication-factor 1" in create
+    assert "min.insync.replicas=1" in create
+    assert "replication-factor 1" in text
+    assert "min.insync.replicas=1" in text
+
+
+def test_cdc_excludes_oltp_geometry():
+    connector = json.loads(
+        (NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text()
+    )
+    excluded = connector["config"]["column.exclude.list"]
+    assert "nus.trips.route" in excluded
+    text = _standard()
+    assert "nus.trips.route" in text
+    assert "column.exclude.list" in text
+
+
+def test_oltp_uses_jsonb_not_a_document_db():
+    core = (NUS / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
+    assert "jsonb" in core.lower()
+    compose = "\n".join(
+        path.read_text().lower() for path in NUS.rglob("docker-compose.yaml")
+    )
+    assert "mongo" not in compose
+    text = _standard()
+    assert "jsonb" in text.lower()
+
+
+def test_cache_updater_skips_bootstrap_wait():
+    updater = (NUS / "i-service-cache-updater" / "cache_updater" / "__main__.py").read_text()
+    assert "wait_for_bootstrap" not in updater
+    assert "does not wait" in updater.lower()
+    must_wait = (
+        NUS / "j-service-driver" / "driver_service" / "__main__.py",
+        NUS / "k-service-passenger" / "passenger_service" / "__main__.py",
+        NUS / "l-service-dispatch" / "dispatch_service" / "__main__.py",
+        NUS / "m-service-city" / "city_service" / "__main__.py",
+        NUS / "n-service-clickhouse-sink" / "clickhouse_sink" / "__main__.py",
+        NUS / "o-service-archiver" / "archiver_service" / "__main__.py",
+    )
+    for path in must_wait:
+        source = path.read_text()
+        assert "wait_for_bootstrap" in source, path
+    text = _standard()
+    assert "wait_for_bootstrap" in text
+    assert "does not wait" in text.lower()
+
+
+def test_store_live_state_before_announce_is_required():
+    dispatch = (NUS / "l-service-dispatch" / "dispatch_service" / "__main__.py").read_text()
+    store = dispatch.index("def store_live_state")
+    announce = dispatch.index("def announce")
+    # Both exist; call order on the match path is store then announce.
+    match_block = dispatch[dispatch.index("store_live_state(redis_trip, trip, now, active_ttl)") :]
+    first_store = match_block.index("store_live_state")
+    first_announce = match_block.index("announce(")
+    assert first_store < first_announce
+    text = _standard()
+    assert "store_live_state" in text
+    assert "announce" in text
+
+
+def test_archiver_prunes_every_child_of_trips():
+    """A table referencing trips must be pruned before trips itself.
+
+    None of these foreign keys cascade, on purpose: a cascade makes it
+    possible to delete a trip's whole history by accident. The cost of that
+    choice is that the archiver has to know about every child table, and
+    forgetting one does not fail until the archiver actually runs against
+    real data and the delete hits the foreign key.
+    """
+    children = set()
+    for path in _migrations():
+        text = path.read_text()
+        for match in re.finditer(
+            r"CREATE TABLE IF NOT EXISTS (\w+)\s*\((.*?)\n\);", text, re.S
+        ):
+            table, body = match.group(1), match.group(2)
+            if table != "trips" and "REFERENCES trips(trip_id)" in body:
+                children.add(table)
+    assert children, "expected at least trip_ratings to reference trips"
+
+    archiver = (
+        NUS / "o-service-archiver" / "archiver_service" / "__main__.py"
+    ).read_text()
+    missing = sorted(t for t in children if f"DELETE FROM {t} " not in archiver)
+    assert missing == [], (
+        f"these reference trips(trip_id) but the archiver never deletes them: {missing}"
+    )
+
+
+def test_calibration_insert_matches_the_rows_it_is_given():
+    """Every %(name)s the SQL needs must be a key the row builder produces.
+
+    Migration 016 added source_month and calibrated_at to both calibration
+    tables and its own comment promised zone-demand-prepare would fill
+    them. Nothing did, and the first Dionysus run loaded 42,837 rows with
+    source_month NULL - a provenance column recording no provenance. The
+    migration and the writer are in different directories and nothing tied
+    them together, so this is the tie.
+    """
+    import sys
+
+    sys.path.insert(0, str(NUS / "h-bootstrap"))
+    from bootstrap import demand_calibration as dc
+
+    zone_row = {
+        "zone_id": "161", "hour_of_day": "8", "day_of_week": "0",
+        "weight": "1.84", "source_month": "2025-01-01",
+    }
+    od_row = {
+        "pickup_zone_id": "161", "dropoff_zone_id": "237", "trip_share": "0.081",
+        "avg_fare": "24.80", "avg_duration_s": "918.0", "source_month": "2025-01-01",
+    }
+    for sql, builder, sample in (
+        (dc.INSERT_ZONE_DEMAND, dc._zone_row, zone_row),
+        (dc.INSERT_OD_PAIR, dc._od_row, od_row),
+    ):
+        needed = set(re.findall(r"%\((\w+)\)s", sql))
+        produced = set(builder(sample))
+        assert needed == produced, (
+            f"SQL needs {sorted(needed - produced)}, "
+            f"builder produces unused {sorted(produced - needed)}"
+        )
+
+    # A CSV written before prepare.py carried the column still has to load,
+    # with an honest None rather than an invented month.
+    older = {k: v for k, v in zone_row.items() if k != "source_month"}
+    assert dc._zone_row(older)["source_month"] is None
+
+
+def test_prepare_writes_the_provenance_the_loader_reads():
+    """The CSV is where source_month comes from, not the environment."""
+    prepare = (
+        NUS / "h-bootstrap" / "zone-demand-prepare" / "prepare.py"
+    ).read_text()
+    assert 'zone_demand["source_month"]' in prepare
+    assert 'od_counts["source_month"]' in prepare
+    # It must land in the written columns, not just be computed.
+    for block in re.findall(r"\[\[([^\]]+)\]\]\.to_csv", prepare):
+        assert "source_month" in block, block
+
+
+def test_a_timed_tick_sets_its_clock_before_doing_the_work():
+    """city-service's two halves must not be able to starve each other.
+
+    consumer.commit() raised _NO_OFFSET mid-tick, the surrounding except
+    swallowed it, and everything after it was skipped - for the whole life
+    of the stack, because last_score was also after it and so the interval
+    never advanced. segment_traffic_updates sat at zero messages while
+    city_hotspots got 36,608, and the only symptom was a log line saying a
+    tick had failed.
+
+    The rule this encodes: an interval timer is advanced before the work it
+    guards, so a failure costs one interval rather than every future one.
+    """
+    source = (NUS / "m-service-city" / "city_service" / "__main__.py").read_text()
+    for clock, call in (("last_score", "_publish_scores"), ("last_traffic", "_update_traffic")):
+        guard = re.search(
+            rf"if now_monotonic - {clock} >=.*?\n(.*?)\n\n", source, re.S
+        )
+        assert guard, clock
+        body = guard.group(1)
+        assert f"{clock} = now_monotonic" in body, f"{clock} is never set in its own branch"
+        set_at = body.index(f"{clock} = now_monotonic")
+        work_at = body.index(call)
+        assert set_at < work_at, (
+            f"{clock} is advanced after {call}, so anything that raises in "
+            f"between disables this branch permanently"
+        )
+
+
+def test_partition_granularity_follows_the_ttl():
+    """A short TTL under a monthly partition can never drop a partition.
+
+    driver_positions expires after three days and was partitioned by
+    month, so the expiry had to rewrite the whole month minus the expired
+    rows - on the heaviest table in the stack, for ever. Measured on a
+    real cluster before this was fixed: one partition per position table.
+
+    The rule: a table whose TTL is shorter than a month partitions by day,
+    and one whose TTL is a year partitions by month. Daily partitions on a
+    365-day table would give it 365 parts for no benefit.
+    """
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+    for match in re.finditer(
+        r"CREATE TABLE IF NOT EXISTS (nus\.\w+)(.*?);", ddl, re.S
+    ):
+        table, body = match.group(1), match.group(2)
+        ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body)
+        if not ttl:
+            continue
+        days = int(ttl.group(1))
+        monthly = "PARTITION BY toYYYYMM" in body
+        # The threshold is 90 days, not 31. A partition has to be
+        # substantially shorter than the TTL, not merely shorter: with a
+        # 30-day expiry and monthly partitions, nothing drops until an
+        # entire month has aged out, so the table holds up to sixty days to
+        # honour a thirty-day contract. Below 90 days, daily.
+        if days < 90:
+            assert not monthly, (
+                f"{table} expires after {days} days but partitions by month - "
+                "the expiry cannot drop a partition until a whole month has "
+                "aged out, so the table retains far more than it promises"
+            )
+        else:
+            assert monthly, (
+                f"{table} keeps {days} days; daily would give it {days} parts "
+                "for no benefit"
+            )
+
+
+def test_raw_telemetry_is_rolled_up_before_it_expires():
+    """A short retention must not be the only thing shrinking the disk.
+
+    Cutting a TTL does not reduce what is stored - it deletes what was
+    answered. Both position tables expire in two days, so each one needs a
+    rollup that survives them, and the rollup has to be bounded by the CITY
+    rather than by the fleet: 256 zones x 24 hours is 6,144 rows a day
+    whether there are 4,000 drivers or 106,000.
+    """
+    import re
+
+    ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
+    # Comment lines are dropped before matching: one of them contains
+    # "three days; under a monthly partition", and a semicolon inside a
+    # comment ends a statement as far as a regex is concerned.
+    ddl = "\n".join(
+        line
+        for path in sorted(ddl_dir.glob("*.sql"))
+        for line in path.read_text().splitlines()
+        if not line.lstrip().startswith("--")
+    )
+
+    for raw, rollup in (("driver_positions", "driver_activity_hourly"),
+                        ("rider_positions", "rider_activity_hourly")):
+        body = re.search(
+            rf"CREATE TABLE IF NOT EXISTS nus\.{raw}\b.*?;", ddl, re.S
+        )
+        assert body, f"{raw} is not declared"
+        ttl = re.search(r"TTL event_date \+ INTERVAL (\d+) DAY", body.group(0))
+        assert ttl and int(ttl.group(1)) <= 2, (
+            f"{raw} keeps {ttl.group(1) if ttl else 'no'} days of raw telemetry"
+        )
+
+        assert f"CREATE TABLE IF NOT EXISTS nus.{rollup}" in ddl, (
+            f"{raw} expires in two days and nothing rolls it up first"
+        )
+        assert f"CREATE MATERIALIZED VIEW IF NOT EXISTS nus.{rollup}_mv" in ddl
+        assert "ENGINE = Distributed" not in ddl
+
+        rolled = re.search(
+            rf"CREATE TABLE IF NOT EXISTS nus\.{rollup}\b(.*?);", ddl, re.S
+        ).group(1)
+        # Bounded by the city: keyed on the hour and the zone, nothing
+        # per-driver or per-rider, or it would scale with the fleet again.
+        assert "ORDER BY (hour, zone_id)" in rolled, (
+            f"{rollup} is not keyed by (hour, zone_id), so it grows with the fleet"
+        )
+        assert "TTL" not in rolled, (
+            f"{rollup} expires; it is the thing that is supposed to outlive the raw rows"
+        )
+
+
+def test_the_rollups_sum_and_never_store_an_average():
+    """Same rule as every other rollup: sums beside their counts."""
+    ddl = (NUS / "e-infra-clickhouse" / "ddl" / "012_position_rollups.sql").read_text()
+    for total, count in (("speed_kmh_sum", "speed_samples"),
+                         ("accuracy_m_sum", "accuracy_samples")):
+        assert total in ddl and count in ddl, (
+            f"{total} has no {count} beside it, so the mean cannot be taken"
+        )
+    assert "avg(" not in ddl, "a stored average cannot be re-aggregated"
+    # uniq is the one thing that cannot be a plain sum.
+    assert "uniqState(driver_id)" in ddl and "uniqState(rider_id)" in ddl
+
+
+# A bar that reads two tables on a live stream reads them at two different
+# moments, and the gap between those moments is not a defect. Two bars were
+# written without allowing for it and both reported one on a healthy stack:
+# Q14 counted trips that were mid-dispatch, Q13 counted trips whose fact had
+# not been read yet. Either a bar carries a settle window, or it is on this
+# list with the reason it does not need one.
+NO_SETTLE_NEEDED = {
+    # Only ever asks whether a table is empty; timing cannot change that.
+    "nothing_to_judge",
+    # Each table is counted inside its OWN single subquery, so every
+    # comparison is against a consistent snapshot of one table.
+    "dupes",
+    "blank_ids",
+    # Two states that contradict each other at any instant: a trip cannot
+    # both have ended no_driver_found and hold an accepted offer. A trip
+    # still being dispatched is in neither population.
+    "accepted_but_unmatched",
+}
+
+
+def _quality_ctes() -> dict[str, str]:
+    """Each named CTE in quality.sql, with its comment lines removed."""
+    text = (NUS / "z-config" / "quality.sql").read_text()
+    body = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("--")
+    )
+    found = {}
+    for match in re.finditer(r"^(\w+) AS \((.*?)^\),?$", body, re.S | re.M):
+        found[match.group(1)] = match.group(2)
+    return found
+
+
+def test_every_bar_reading_two_tables_allows_for_the_gap_between_the_reads():
+    """The failure that hit twice, made into a rule.
+
+    ClickHouse reads each table at its own moment. On a live stream the
+    second read sees rows the first did not, so a bar that pairs two
+    tables measures the traffic in between unless it waits for both sides
+    to settle - or is one of the few whose answer cannot depend on timing.
+    """
+    ctes = _quality_ctes()
+    assert len(ctes) >= 14, f"only parsed {sorted(ctes)}"
+
+    for name, body in ctes.items():
+        tables = set(re.findall(r"nus\.(\w+)", body))
+        if len(tables) < 2 or name in NO_SETTLE_NEEDED:
+            continue
+        assert "INTERVAL" in body, (
+            f"{name} pairs {sorted(tables)} with no settle window, so it "
+            "measures what arrived between the two reads"
+        )
+
+
+def test_the_two_bars_that_learned_this_still_carry_it():
+    ctes = _quality_ctes()
+    assert "INTERVAL" in ctes["orphan_offers"], "Q14 lost its settle window"
+    assert "INTERVAL" in ctes["facts_missing"], "Q13 lost its settle window"
+    # Q13 as a subtraction could read zero while trips were both missing
+    # and duplicated, because the two errors cancel.
+    assert "NOT IN" in ctes["facts_missing"], (
+        "Q13 is a subtraction of two counts again; it needs to name the gap"
+    )
+
+
+def test_a_trip_id_has_enough_room_for_a_full_scale_day() -> None:
+    """The suffix is a birthday problem over ONE DAY's trips, not the seed.
+
+    Eight hex digits is 2^32. At the 655,000 trips a day .env.example
+    targets, N^2/2M is 50 expected collisions EVERY DAY - a certainty, not
+    a risk. It cost a 141-minute bootstrap at the 50% scale rung: two trips
+    held one id, so one trip appeared to accept two offers and Postgres
+    refused it on dispatch_offers_one_accepted_idx.
+
+    The width cannot grow - trip_id is FixedString(21) in six ClickHouse
+    columns - so the alphabet carries the whole margin, and this is the bar
+    it has to clear.
+    """
+    from nus_common import ids
+
+    space = len(ids._TRIP_ID_ALPHABET) ** ids._TRIP_ID_SUFFIX_LENGTH
+    per_day = 655_000
+    expected = per_day ** 2 / (2 * space)
+    assert expected < 0.01, (
+        f"{expected:.3f} expected id collisions per day at {per_day:,} trips - "
+        f"a suffix space of {space:,} is not enough for full scale"
+    )
+
+
+def test_a_trip_id_is_still_exactly_the_width_the_warehouse_stores() -> None:
+    """FixedString rejects a wrong-length id outright; it does not truncate."""
+    import random
+    from datetime import datetime
+
+    from nus_common import ids
+
+    for seed in range(200):
+        made = ids.new_trip_id(datetime(2026, 10, 1), random.Random(seed))
+        assert len(made) == ids.TRIP_ID_LENGTH, made
+        assert made.startswith("trp-20261001-"), made
+
+
+def _inventory():
+    """The schema generator. z-config and docs are not on PYTHONPATH."""
+    import importlib.util
+
+    path = NUS / "docs" / "schema_inventory.py"
+    spec = importlib.util.spec_from_file_location("schema_inventory", path)
+    assert spec is not None and spec.loader is not None, path
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _declared_tables(directory: Path) -> set[str]:
+    names: set[str] = set()
+    for path in sorted(directory.glob("*.sql")):
+        text = "\n".join(
+            line.split("--", 1)[0] for line in path.read_text().splitlines()
+        )
+        names.update(
+            re.findall(
+                r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:ONLY\s+)?"
+                r"(?:nus\.)?([a-z_][a-z0-9_]*)",
+                text,
+                flags=re.I,
+            )
+        )
+    return names
+
+
+def _dictionary_section(dictionary: str, table: str) -> str:
+    marker = f"### `{table}`"
+    start = dictionary.index(marker)
+    rest = dictionary[start + len(marker) :]
+    nxt = rest.find("\n### ")
+    return rest[: nxt if nxt != -1 else len(rest)]
+
+
+def _closed_sets() -> str:
+    text = _standard()
+    start = text.index("### 9.6 ")
+    rest = text[start:]
+    nxt = re.search(r"\n## \d", rest)
+    assert nxt, "§9.6 has no following section"
+    return rest[: nxt.start()]
+
+
+def test_dictionary_and_erd_match_the_shipped_schema():
+    """A column added in SQL and not regenerated is a fail.
+
+    The markdown is a render of the migrations and the ClickHouse DDL.
+    Hand-editing either document, or adding a table the parser misses,
+    fails here.
+    """
+    inv = _inventory()
+    dictionary = (NUS / "docs" / "DATA_DICTIONARY.md").read_text()
+    erd = (NUS / "docs" / "ERD.md").read_text()
+    assert dictionary == inv.render_dictionary()
+    assert erd == inv.render_erd()
+    assert inv.F4 in dictionary
+
+    oltp = inv.oltp_tables()
+    warehouse = inv.warehouse_tables()
+    assert _declared_tables(NUS / "h-bootstrap" / "migrations") == set(oltp)
+    assert _declared_tables(NUS / "e-infra-clickhouse" / "ddl") == set(warehouse)
+    assert all(cols for cols in (*oltp.values(), *warehouse.values()))
+
+    for table, cols in oltp.items():
+        body = _dictionary_section(dictionary, table)
+        missing = [name for name, _typ in cols if f"| `{name}` |" not in body]
+        assert missing == [], f"{table} missing columns {missing}"
+    for table, cols in warehouse.items():
+        body = _dictionary_section(dictionary, f"nus.{table}")
+        missing = [name for name, _typ in cols if f"| `{name}` |" not in body]
+        assert missing == [], f"nus.{table} missing columns {missing}"
+    for table in oltp:
+        assert table in erd
+
+    trip_cols = {name for name, _typ in oltp["trips"]}
+    assert {"payment_method", "driver_payout"} <= trip_cols
+
+
+def test_closed_sets_are_written_in_the_contract():
+    """ksqlDB, Superset, and the quality bars have a pass line on paper.
+
+    The strings come from the files the Makefile targets already read.
+    A renamed stream, a new chart, or an edited pass line fails until
+    §9.6 is updated to match.
+    """
+    inv = _inventory()
+    section = _closed_sets()
+    assert inv.F4 in section
+
+    bars = inv.quality_bars()
+    assert [name.split()[0] for name, _line in bars] == [f"Q{i}" for i in range(15)]
+    for name, pass_line in bars:
+        assert name in section, name
+        assert pass_line in section, pass_line
+
+    for kind, name in inv.ksql_objects():
+        assert name in section, name
+        assert kind in section, kind
+
+    assert f"{inv.chart_count()} charts" in section
+    assert f"{inv.dataset_count()} datasets" in section
+    dashboards = inv.dashboard_count()
+    word = "dashboard" if dashboards == 1 else "dashboards"
+    assert f"{dashboards} {word}" in section
+
+    checker = (NUS / "c-infra-kafka" / "ksql" / "check-ksql.py").read_text()
+    block = re.search(r"CLIENT_SETTINGS = \{([^}]+)\}", checker)
+    assert block, checker
+    for key, value in re.findall(r'"([^"]+)":\s*"([^"]+)"', block.group(1)):
+        assert f"`{key}` is `{value}`" in section, key
+
