@@ -26,7 +26,22 @@ FROM ${UV_IMAGE} AS uv
 
 # pg_restore must be able to read a dump written by this same major.
 # Debian's client is 17. The database, and the dump, are 18.
+# The python image does not carry the libraries that client is linked to
+# (libpq, Kerberos, LDAP), so they are taken from this image too.
 FROM ${PG_IMAGE} AS pgclient
+RUN mkdir -p /pgclient-libs \
+ && ldd /usr/lib/postgresql/18/bin/pg_restore \
+    | while read -r line; do \
+        case "$line" in \
+          *'=> /'*) \
+            lib=${line#*=> }; lib=${lib%% *}; \
+            case "$lib" in \
+              */libc.so*|*/libpthread.so*|*/libdl.so*|*/librt.so*|*/libm.so*|*/ld-linux*) ;; \
+              *) cp -L "$lib" /pgclient-libs/ ;; \
+            esac ;; \
+        esac; \
+      done \
+ && test -n "$(ls -A /pgclient-libs)"
 
 # --------------------------------------------------------------------------
 # Build stage: create the virtual environment
@@ -98,7 +113,8 @@ RUN apt-get update \
  && chown -R nus:nus /data
 
 COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_restore /usr/local/bin/pg_restore
-COPY --from=pgclient /usr/lib/x86_64-linux-gnu/libpq.so.5* /usr/lib/x86_64-linux-gnu/
+COPY --from=pgclient /pgclient-libs/ /usr/lib/x86_64-linux-gnu/
+RUN ldconfig
 
 COPY --from=build --chown=nus:nus /app /app
 
