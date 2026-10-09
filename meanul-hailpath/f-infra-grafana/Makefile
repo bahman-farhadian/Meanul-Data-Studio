@@ -44,14 +44,14 @@ tiles-health:
 	fi; \
 	printf "  $(G)ok$(X)      hailpath-tiles healthy\n"; \
 	base="http://hailpath-proxy:3000"; \
-	json=$$($(COMPOSE) exec -T grafana wget -S -O /dev/null "$$base/tiles/styles.json" 2>&1 || true); \
+	json=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/tiles/styles.json" 2>&1 || true); \
 	if ! printf '%s' "$$json" | grep -q ' 200 OK'; then \
 		printf "  $(R)FAIL$(X)    GET /tiles/styles.json did not return 200. 503 means HAProxy has no tiles backend.\n"; \
 		printf '%s\n' "$$json" | sed -n '1,6p' | sed 's/^/              /'; \
 		exit 1; \
 	fi; \
 	printf "  $(G)ok$(X)      HAProxy /tiles/styles.json 200\n"; \
-	png=$$($(COMPOSE) exec -T grafana wget -S -O /dev/null "$$base/tiles/styles/nus/11/602/768.png" 2>&1 || true); \
+	png=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/tiles/styles/nus/11/602/768.png" 2>&1 || true); \
 	if printf '%s' "$$png" | grep -q ' 200 OK' && printf '%s' "$$png" | grep -qi 'Content-Type: *image/png'; then \
 		printf "  $(G)ok$(X)      HAProxy /tiles/styles/nus/11/602/768.png 200 image/png\n"; \
 	else \
