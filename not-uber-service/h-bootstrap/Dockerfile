@@ -18,10 +18,15 @@
 
 ARG PYTHON_IMAGE=python:3.13.15-slim
 ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
+ARG PG_IMAGE=pgrouting/pgrouting:18-3.6-3.8.0
 
 # uv is copied out of its own published image rather than installed with pip:
 # one binary, one pinned version, and no dependency resolution to do first.
 FROM ${UV_IMAGE} AS uv
+
+# pg_restore must be able to read a dump written by this same major.
+# Debian's client is 17. The database, and the dump, are 18.
+FROM ${PG_IMAGE} AS pgclient
 
 # --------------------------------------------------------------------------
 # Build stage: create the virtual environment
@@ -70,9 +75,9 @@ LABEL org.opencontainers.image.title="nus/bootstrap" \
       org.opencontainers.image.licenses="MIT" \
       org.opencontainers.image.base.name="${PYTHON_IMAGE}"
 
-# postgresql-client: pg_restore, to load the routable graph h-bootstrap/
-# lion-prepare/ already built on the host - this container never builds the
-# graph itself, only restores it.
+# pg_restore loads the routable graph h-bootstrap/lion-prepare/ already
+# built. The binary is the PostgreSQL 18 client from that database image.
+# Debian's postgresql-client is 17 and refuses this dump.
 #
 # useradd and the apt packages live in this layer, before the application
 # copy, so a Python change does not re-run apt-get.
@@ -84,7 +89,6 @@ LABEL org.opencontainers.image.title="nus/bootstrap" \
 # dump would fail with a permission error.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
-        postgresql-client \
         ca-certificates \
         tzdata \
  && apt-get clean \
@@ -92,6 +96,9 @@ RUN apt-get update \
  && useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
  && mkdir -p /data/lion \
  && chown -R nus:nus /data
+
+COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_restore /usr/local/bin/pg_restore
+COPY --from=pgclient /usr/lib/x86_64-linux-gnu/libpq.so.5* /usr/lib/x86_64-linux-gnu/
 
 COPY --from=build --chown=nus:nus /app /app
 
@@ -106,6 +113,7 @@ USER nus
 # migrations have been missing entirely before.
 RUN python -c "import bootstrap, nus_common" \
  && test "$(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l)" -gt 0 \
+ && pg_restore --version | grep -q ' 18\.' \
  && echo "bootstrap: $(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l) migrations present"
 
 # Runs once and exits. A non-zero exit means the stack is not prepared, and

@@ -163,6 +163,9 @@ def test_make_steps_exist_and_demos_are_gone():
     lion = (NUS / "h-bootstrap" / "lion-prepare" / "Dockerfile").read_text()
     assert "postgresql-client" not in lion
     assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_dump" in lion
+    bootstrap = (NUS / "h-bootstrap" / "Dockerfile").read_text()
+    assert "        postgresql-client" not in bootstrap
+    assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_restore" in bootstrap
 
 
 def test_live_walk_and_tile_terms_are_in_the_sources():
