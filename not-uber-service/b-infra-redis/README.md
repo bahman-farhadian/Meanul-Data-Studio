@@ -9,7 +9,7 @@ One process, `redis-1` / `nus-redis-1`. Clients use `REDIS_HOST`
 (default `redis-1`, `nus-redis-1` in the root example).
 
 HAProxy publishes that process on **6379** and **6380**. Both ports are
-`nus-redis-1`. `lb-b` publishes **16379** and **16380**. `make verify-redis`
+`nus-redis-1`. `make verify-redis`
 is a PING.
 
 Logical databases are fixed in

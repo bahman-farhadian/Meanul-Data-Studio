@@ -12,8 +12,7 @@ Debezium can open a `pgoutput` slot. Timestamps are UTC.
 process. A 9 GB cap was not enough: the process was killed near 8.3 GB.
 
 Clients use `PG_HOST=nus-lb-a`. Port **5432** and port **5433** are both
-`nus-pg-1`. Debezium uses 5432. `lb-b` publishes the same process on
-**15432** and **15433**.
+`nus-pg-1`. Debezium uses 5432.
 
 `pg_hba.conf` allows local sockets, scram-sha-256 for network logins,
 and a replication line for the `postgres` user. A replication connection
@@ -60,10 +59,10 @@ That runs `pg_isready` on `nus-pg-1`.
 In the full stack, connect through HAProxy. Both ports are the one
 process.
 
-| | lb-a | lb-b |
-| --- | --- | --- |
-| Write port | `5432` | `15432` |
-| Second port, same process | `5433` | `15433` |
+| Port | What it is |
+| --- | --- |
+| `5432` | Write port. Debezium uses this one. |
+| `5433` | The same process. |
 
 User `postgres`, database `nus`, password `PG_SUPERUSER_PASSWORD`.
 

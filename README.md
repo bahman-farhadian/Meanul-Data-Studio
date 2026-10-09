@@ -128,11 +128,9 @@ of *n*ot-*u*ber-*s*ervice**: the `nus-backbone` Docker network and the
 `nus/` image namespace. The data processes are `nus-pg-1`, `nus-redis-1`,
 `nus-kafka-1`, and `nus-ch-s1r1`.
 
-#### Load-balancer tier (lb-a / lb-b)
+#### Load-balancer tier (lb-a)
 
-Two HAProxy containers form a single **active-passive** entry tier for the
-whole stack: every client lists both (`lb-a,lb-b`) and fails over
-client-side. The pair routes:
+One HAProxy publishes a stable host port for each store:
 
 - **5432 / 5433** -> the one PostgreSQL. Both ports are `nus-pg-1`.
   Debezium uses 5432;
@@ -142,9 +140,8 @@ client-side. The pair routes:
 - **8123 / 9000** -> the one ClickHouse (HTTP / native);
 - **3000 / 8088** -> Grafana / Superset.
 
-`lb-b` publishes the same processes on the `1xxxx` host ports. HAProxy
-is there so a client keeps a stable port. It does not hide a second data
-process.
+HAProxy is there so a client keeps a stable port. Each port is the one
+process behind it.
 
 #### Trip lifecycle & fares
 
@@ -176,7 +173,7 @@ system:
 `docker-compose up` brings the stack up in a strict order, enforced through
 healthchecks and `depends_on: condition: service_healthy`:
 
-1. **Infrastructure** starts first: the HAProxy pair (`lb-a` / `lb-b`),
+1. **Infrastructure** starts first: HAProxy (`lb-a`),
    one PostgreSQL, one Redis, one Kafka broker with Schema Registry and
    ksqlDB, Debezium Connect, one ClickHouse, Grafana, Superset — each
    with a healthcheck.
@@ -292,8 +289,8 @@ PostgreSQL layer relies on three pillars:
   columns with GIN indexes where needed — PostgreSQL covers the
   document-store role, so no MongoDB is part of the stack.
 
-**Entry point:** services connect through the HAProxy pair (`lb-a` /
-`lb-b`, see [2.1](#load-balancer-tier-lb-a--lb-b)). Port **5432** and
+**Entry point:** services connect through HAProxy (`lb-a`, see
+[2.1](#load-balancer-tier-lb-a)). Port **5432** and
 port **5433** are both `nus-pg-1`. Debezium uses the write port. `PG_HOST`
 is `nus-lb-a`.
 
@@ -303,7 +300,7 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 
 ```mermaid
 graph TB
-    HAP["lb-a / lb-b (HAProxy pair)<br/>5432 and 5433"]
+    HAP["lb-a<br/>5432 and 5433"]
     PG[("nus-pg-1")]
 
     HAP --> PG
@@ -367,7 +364,7 @@ ports 6379 and 6380 are that process. `make verify-redis` is a PING.
 
 ```mermaid
 graph TB
-    HAP["lb-a / lb-b<br/>6379 and 6380"]
+    HAP["lb-a<br/>6379 and 6380"]
     R[("nus-redis-1")]
 
     HAP --> R
@@ -469,7 +466,7 @@ This keeps those lookups off PostgreSQL, per the cache-first rule in
 Section 1.
 
 **Client entry point:** `clickhouse-sink`, Grafana, and Superset reach
-the server through HAProxy (`lb-a` / `lb-b`) on 8123 (HTTP) and 9000
+the server through HAProxy (`lb-a`) on 8123 (HTTP) and 9000
 (native). Both ports are `nus-ch-s1r1`. `bootstrap` loads history here
 so dashboards have rows after init. Grafana uses the ClickHouse
 datasource plugin. Superset uses `clickhouse-connect` and keeps its own
@@ -569,7 +566,7 @@ meanul-data-studio/
 └── not-uber-service/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── Makefile                      # the runbook, executable: make help / init / preflight / up / verify
-    ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
+    ├── docker-compose.yaml           # root file: lb-a + include of every component compose
     ├── .env.example                  # template for the untracked .env — the MASTER settings file
     │                                 #   for the whole stack (every include resolves from it)
     ├── a-infra-postgres/             # one PostgreSQL (PostGIS, pgRouting)
@@ -590,7 +587,7 @@ meanul-data-studio/
     ├── m-service-city/               # demand scores per zone, live traffic factors
     ├── n-service-clickhouse-sink/    # every event into ClickHouse, enriched from Redis
     ├── z-config/                     # stack-level config (sorts last on purpose)
-    │   └── haproxy/                  # lb-a / lb-b config
+    │   └── haproxy/                  # lb-a config
     └── z-lib/                        # shared Python code (sorts last for the same reason)
         └── nus-common/               # clients, logging, lifecycle used by h- and every service
 ```
@@ -657,7 +654,7 @@ make up
 
 which runs the preflight and then every piece in dependency order, with the
 one-shots at the points where they belong. The root compose file defines the
-stack-level services (`lb-a`/`lb-b`) and includes each component compose
+stack-level service (`lb-a`) and includes each component compose
 file. Each service sets `cpus`, `mem_limit`, and `memswap_limit`, with
 `memswap_limit` equal to `mem_limit` so no container can swap.
 
@@ -676,7 +673,7 @@ retention is bounded.
 | Component | Containers | CPU ceiling | Memory ceiling |
 | --- | --- | --- | --- |
 | PostgreSQL (`nus-pg-1`, `shared_buffers` 4 GB) | 1 | 10 | 16 GB |
-| HAProxy (`lb-a` / `lb-b`) | 2 | 0.5 | 128 MB |
+| HAProxy (`lb-a`) | 1 | 0.5 | 128 MB |
 | Redis (`nus-redis-1`) | 1 | 0.5 | 4 GB |
 | Kafka (`nus-kafka-1`, heap 3.5 GB) | 1 | 1.2 | 5.5 GB |
 | Schema Registry | 1 | 0.2 | 1 GB |

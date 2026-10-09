@@ -3,7 +3,7 @@
 # One ClickHouse. A second copy on this host is not a second machine,
 # so there is no shard, no replica, and no Keeper.
 #
-# Clients (clickhouse-sink, Grafana, Superset) come in through the lb-a/lb-b
+# Clients (clickhouse-sink, Grafana, Superset) come in through lb-a
 # HAProxy pair on 8123 (HTTP) and 9000 (native).
 #
 # Standalone test:

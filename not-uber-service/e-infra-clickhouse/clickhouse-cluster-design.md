@@ -2,8 +2,7 @@
 
 One ClickHouse process, `ch-s1r1` / `nus-ch-s1r1`. Grafana, Superset,
 and `clickhouse-sink` query it through HAProxy on 8123 (HTTP) and 9000
-(native). Both ports are that process. `lb-a` and `lb-b` are two
-published addresses for the same server.
+(native). Both ports are that process. `lb-a` is the stable address.
 
 The numbers match the root [README](../../README.md) section 2.9.
 
@@ -12,7 +11,7 @@ The numbers match the root [README](../../README.md) section 2.9.
 | Layer | Containers | CPU | Memory |
 | --- | --- | --- | --- |
 | ClickHouse | 1 (`ch-s1r1`) | 1.3 | 8 GB |
-| Entry tier | 2 (`lb-a`, `lb-b`) | 0.5 each | 128 MB each |
+| Entry tier | 1 (`lb-a`) | 0.5 | 128 MB |
 
 A second data copy on this host is not a second machine. It dies when
 the host dies, and it spends CPU and disk on a copy that does not

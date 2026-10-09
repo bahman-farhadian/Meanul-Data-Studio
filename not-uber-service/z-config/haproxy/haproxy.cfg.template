@@ -1,11 +1,10 @@
-# nus-lb-a / nus-lb-b — stack-wide active-passive HAProxy pair.
-# Identical config on both instances; clients list both (nus-lb-a,nus-lb-b)
-# and fail over client-side. Backends resolve through Docker's embedded DNS
-# (127.0.0.11) with init-addr none, so HAProxy starts cleanly even while
-# a backend's containers do not exist yet.
+# nus-lb-a — one HAProxy. It publishes a stable host port for each store.
+# Each backend is the one process behind that port. Backends resolve through
+# Docker's embedded DNS (127.0.0.11) with init-addr none, so HAProxy starts
+# cleanly even while a backend's container does not exist yet.
 #
 # THIS IS A TEMPLATE, not the file HAProxy reads. __REDIS_PASSWORD__ below
-# is filled in by the render-haproxy-config one-shot before lb-a/lb-b start
+# is filled in by the render-haproxy-config one-shot before lb-a starts
 # (HAProxy does not expand ${VAR} from its own environment inside a
 # tcp-check string — confirmed, not assumed) — see
 # z-config/haproxy/render-config.sh. Never put a real password in this
@@ -91,8 +90,6 @@ listen redis_read
 # One broker. A client is told the address baked into advertised.listeners,
 # so HAProxy only publishes that address. Two ports because this host can
 # have two network paths, and a broker advertises one address per listener.
-# lb-b does not publish them: a second proxy cannot change an address that
-# was fixed when the broker started.
 
 listen kafka-1-a
     bind :9094

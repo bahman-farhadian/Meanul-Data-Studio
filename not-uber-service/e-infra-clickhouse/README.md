@@ -59,7 +59,7 @@ exceeded". An OOM kill does not.
 ## Ports
 
 HAProxy **8123** (HTTP) and **9000** (native) both go to
-`nus-ch-s1r1`. `lb-b` publishes **18123** and **19000**. Clients use
+`nus-ch-s1r1`. Clients use
 `CH_HOST=nus-lb-a`.
 
 ## Files

@@ -72,7 +72,7 @@ WAIT_LIVE_SETTLE  ?= 900
 ERRORS_WINDOW ?= 15m
 
 # --- the stack, in the pieces the runbook names -------------------------------
-ENTRY    := lb-a lb-b
+ENTRY    := lb-a
 PIECE_A  := pg-1
 PIECE_B  := redis-1
 PIECE_C  := kafka-1 schema-registry ksqldb-server

@@ -29,9 +29,9 @@ client bootstraps on either port. Both are `nus-kafka-1`.
 ksqlDB is the SQL reader. DBeaver speaks its REST API, not the raw
 broker protocol.
 
-| | lb-a | lb-b |
-| --- | --- | --- |
-| ksqlDB | `<host>:8089` | `<host>:18089` |
+| | lb-a |
+| --- | --- |
+| ksqlDB | `<host>:8089` |
 
 Login is `KSQLDB_ADMIN_USER` / `KSQLDB_ADMIN_PASSWORD` (HTTP Basic).
 That lock is the REST API. Kafka itself has no authentication in this

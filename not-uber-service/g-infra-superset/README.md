@@ -6,8 +6,8 @@ Lab, turn the result into a chart, put charts on a dashboard. Grafana
 read the same ClickHouse cluster. At this stage this piece only brings the
 tool up and connects it — see below.
 
-Reached through the entry tier on **port 8088** (`lb-a`) or **18088**
-(`lb-b`). Superset itself publishes no host port.
+Reached through the entry tier on **port 8088** (`lb-a`). Superset itself
+publishes no host port.
 
 ## Superset's own database
 

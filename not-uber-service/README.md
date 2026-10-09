@@ -183,7 +183,7 @@ happened, which is the whole reason this is a Makefile and not one
 | Step | Command | Why here |
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
-| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a`/`lb-b` start. |
+| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a` starts. |
 | 3 | `make ch-secrets` | Writes the ClickHouse login file the DDL one-shot and the server expect. |
 | 4 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
 | 5 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
@@ -295,13 +295,13 @@ $EDITOR .env        # Section 1 — all 8 passwords need real values, even
 
 # build/pull ONLY piece a's images — not `make prepare`, which does all 14
 docker compose build pg-1
-docker compose pull lb-a lb-b
+docker compose pull lb-a
 
 # the one-shots piece a needs before its first start
 docker compose run --rm volume-perms          # whole tree, harmless to run unscoped
-docker compose run --rm haproxy-config-render # lb-a/lb-b's config — piece a's entry tier needs this too
+docker compose run --rm haproxy-config-render # lb-a's config — piece a's entry tier needs this too
 
-# start it — lb-a, lb-b, pg-1, nothing else
+# start it — lb-a, pg-1, nothing else
 make up-piece PIECE=a
 
 make ps
@@ -331,7 +331,7 @@ Write `<letter>-<kind>-<name>/docker-compose.yaml` and its README, add the
 add its settings to [`.env.example`](.env.example) in a section of their own,
 add its `listen` block to
 [z-config/haproxy/haproxy.cfg](z-config/haproxy/haproxy.cfg) plus the
-`LB_A_*`/`LB_B_*` port lines if it is proxied, add it to the right group
+`LB_A_*` port lines if it is proxied, add it to the right group
 variable in the [Makefile](Makefile), and update the tables in the main
 [README](../README.md).
 

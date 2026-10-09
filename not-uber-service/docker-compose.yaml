@@ -1,6 +1,6 @@
 # Meanul Data Studio — Version 1 (Cab / Ride-Hailing Platform)
 #
-# Root compose file. Defines the stack-wide pieces (the lb-a/lb-b HAProxy
+# Root compose file. Defines the stack-wide pieces (the lb-a HAProxy
 # entry tier) and stitches the components together via `include:` — every
 # component directory ships its own docker-compose.yaml and is testable in
 # isolation.
@@ -99,9 +99,9 @@ services:
   # One-shot: renders haproxy.cfg.template into the shared config volume,
   # filling in REDIS_PASSWORD. HAProxy does not expand ${VAR} from its own
   # environment inside a tcp-check string (confirmed, not assumed), so the
-  # password has to be baked into the file before lb-a/lb-b read it.
+  # password has to be baked into the file before lb-a reads it.
   #
-  # Run it BEFORE lb-a/lb-b start, and again any time REDIS_PASSWORD changes.
+  # Run it BEFORE lb-a starts, and again any time REDIS_PASSWORD changes.
   haproxy-config-render:
     image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
     profiles: ["init"]
@@ -150,44 +150,8 @@ services:
       # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
       # port a client is told to dial here has to be the exact port it can
       # actually reach — remapping the host side would silently break that.
-      # lb-a only, matching haproxy.cfg.template's own reasoning: lb-b
-      # failover doesn't compose with an address fixed at broker startup.
       - "9094:9094"
       - "9097:9097"
-    healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - backbone
-
-  # Passive twin: identical config, alternate host ports. In-network
-  # clients list both (lb-a,lb-b) and fail over client-side.
-  lb-b:
-    image: ${HAPROXY_IMAGE:-haproxy:3.4.0}
-    container_name: nus-lb-b
-    hostname: nus-lb-b
-    restart: unless-stopped
-    cpus: ${LB_CPUS:-0.5}
-    mem_limit: ${LB_MEM:-128m}
-    memswap_limit: ${LB_MEM:-128m}
-    environment:
-      TZ: ${TZ:-UTC}
-    volumes:
-      - haproxy-config:/usr/local/etc/haproxy:ro
-    ports:
-      - "${LB_B_PG_WRITE_PORT:-15432}:5432"
-      - "${LB_B_PG_READ_PORT:-15433}:5433"
-      - "${LB_B_REDIS_WRITE_PORT:-16379}:6379"
-      - "${LB_B_REDIS_READ_PORT:-16380}:6380"
-      - "${LB_B_STATS_PORT:-18404}:8404"
-      - "${LB_B_CH_HTTP_PORT:-18123}:8123"
-      - "${LB_B_CH_NATIVE_PORT:-19000}:9000"
-      - "${LB_B_GRAFANA_PORT:-13000}:3000"
-      - "${LB_B_SUPERSET_PORT:-18088}:8088"
-      - "${LB_B_KSQLDB_PORT:-18089}:8089"
-      - "${LB_B_DEBEZIUM_PORT:-18083}:8083"
     healthcheck:
       test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
       interval: 10s

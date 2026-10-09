@@ -7,8 +7,8 @@ tool; it is not used by these dashboards. Both *can* read the same
 ClickHouse cluster. This piece brings Grafana up, connects it, and
 provisions the NUS dashboards from files.
 
-Reached through the entry tier on **port 3000** (`lb-a`) or **13000**
-(`lb-b`). Grafana itself publishes no host port.
+Reached through the entry tier on **port 3000** (`lb-a`). Grafana itself
+publishes no host port.
 
 ## What this piece does
 

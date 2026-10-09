@@ -79,9 +79,9 @@ Connect's REST API is proxied through the entry tier like everything else in
 this stack, so `/connectors/nus-pg/status` and friends are reachable without
 shelling into the container:
 
-| | via `lb-a` | via `lb-b` |
-| --- | --- | --- |
-| Debezium Connect | `<host>:8083` | `<host>:18083` |
+| | via `lb-a` |
+| --- | --- |
+| Debezium Connect | `<host>:8083` |
 
 One backend, no authentication — Connect's REST API has none of its own, and
 the raw Kafka ports it depends on have none either, so a login here would
@@ -121,17 +121,9 @@ gate nothing that isn't already open one layer down.
 | `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.2.Final` | Base image for the build. |
 | `AVRO_CONVERTER_VERSION` | `8.3.1` | Confluent Avro converter version; keep it in step with the Schema Registry. |
 | `PYTHON_IMAGE` | `python:3.13.15-slim` | Image used by the registration one-shot. |
-| `CDC_PG_HOST` / `CDC_PG_PORT` | `nus-lb-a` / `5432` | Where to read from — the write port, which always points at the current leader. |
+| `CDC_PG_HOST` / `CDC_PG_PORT` | `nus-lb-a` / `5432` | The one Postgres, on the write port. |
 | `CDC_PG_DATABASE` / `CDC_PG_USER` | `nus` / `postgres` | Database and login. The user must be allowed to read the WAL. |
 | `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
-
-## Known limitation: one hostname
-
-Every other client in the stack lists both proxies (`nus-lb-a,nus-lb-b`) and
-fails over on its own. Debezium accepts a single `database.hostname`, so it
-cannot. If `nus-lb-a` is lost, change `CDC_PG_HOST` to `nus-lb-b` in `.env`
-and run `connector-register` again; the connector picks up where it
-stopped, because its read position lives in Kafka, not in the container.
 
 ## Verify
 

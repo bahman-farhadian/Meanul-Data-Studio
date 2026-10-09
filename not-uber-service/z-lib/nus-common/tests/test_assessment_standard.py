@@ -580,6 +580,17 @@ def test_one_redis_and_no_sentinel():
     assert "sentinel-" not in root
 
 
+def test_one_haproxy():
+    """One proxy publishes the stable ports. It does not have a failover twin."""
+    compose = (NUS / "docker-compose.yaml").read_text()
+    assert "container_name: nus-lb-a" in compose
+    assert "nus-lb-b" not in compose
+    assert "\n  lb-b:" not in compose
+    root = (NUS / "Makefile").read_text()
+    assert "ENTRY    := lb-a\n" in root
+    assert "lb-b" not in root
+
+
 def test_declared_topics_have_avro_schemas():
     tsv = (NUS / "c-infra-kafka" / "topics" / "topics.tsv").read_text()
     names: list[str] = []
