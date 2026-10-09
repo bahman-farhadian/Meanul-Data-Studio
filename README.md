@@ -2,7 +2,7 @@
 
 Assessment contract: [ASSESSMENT.md](ASSESSMENT.md). Studio-wide bars for
 schema, the message broker, cache, data generation, and simulation apply
-to every version in this repository. Version 1 (`not-uber-service`) binds
+to every version in this repository. Version 1 (`ride-hailing`) binds
 those bars to named Makefile targets and domain measurements in the same
 file. Later versions add a profile; they do not replace the file.
 
@@ -455,7 +455,7 @@ Kafka topics above and writes the warehouse tables that back Grafana
 Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or
 `ReplacingMergeTree`. A second copy on this host would not be a second
 machine. See
-`not-uber-service/e-infra-clickhouse/clickhouse-cluster-design.md`.
+`ride-hailing/e-infra-clickhouse/clickhouse-cluster-design.md`.
 
 **Relationship with Redis:** before inserting, the sink enriches events
 using Redis — for example, when a completed trip arrives it looks up
@@ -534,18 +534,18 @@ The map is stored by the **PostGIS** extension and routed by the
 ### 2.8 Project structure
 
 Each version of the studio lives in its own top-level directory; Version 1
-is `not-uber-service/` (fun naming intended). Future versions will sit next
-to it as siblings.
+is `ride-hailing/`. The later projects are named in
+`ride-hailing/TODO.md`. They do not have directories yet.
 
 **Modular compose:** every component directory ships its own
 `docker-compose.yaml` defining just its containers, volumes, and networks;
-the root `not-uber-service/docker-compose.yaml` stitches the full stack
+the root `ride-hailing/docker-compose.yaml` stitches the full stack
 together with Compose's `include:` directive. Each component can therefore
 be brought up and tested **in isolation** (`docker compose up` inside its
 directory) — exactly matching the build/test order below — while the root
 file still provides the single-command full-stack deployment.
 
-Every component lives directly under `not-uber-service/` (no `infra/` /
+Every component lives directly under `ride-hailing/` (no `infra/` /
 `services/` / `docs/` grouping) and is named
 `<letter>-infra-<name>` or `<letter>-service-<name>`, where the letter
 encodes a single **alphabetic build/test-order** (`a-`, `b-`, `c-`, ...)
@@ -563,7 +563,7 @@ meanul-data-studio/
 ├── README.md
 ├── LICENSE
 ├── .gitignore
-└── not-uber-service/                 # Version 1 — cab / ride-hailing platform
+└── ride-hailing/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── Makefile                      # the runbook, executable: make help / init / preflight / up / verify
     ├── docker-compose.yaml           # root file: lb-a + include of every component compose
@@ -601,7 +601,7 @@ runtime stage; no venv ever touches the host). What all seven have in
 common — reading settings, JSON logging, clean shutdown, and the clients for
 PostgreSQL, Redis, Kafka and ClickHouse — lives once in `z-lib/nus-common`
 and is pulled in as a path dependency; their build context is
-`not-uber-service/` so the image holds the same layout as the repository.
+`ride-hailing/` so the image holds the same layout as the repository.
 The HAProxy pair is stack-wide, so its two services are defined in the root
 `docker-compose.yaml` with their config under `z-config/haproxy/`
 (`z-config/` sorts last and collects stack-level config files; the
@@ -636,7 +636,7 @@ tested in isolation before the next depends on it:
 
 The stack targets a dedicated Docker server with **20 CPU cores, 120 GB
 RAM, and NVMe storage**. Each store is one process. The figures below are
-container ceilings from `not-uber-service/.env.example` (tiles uses the
+container ceilings from `ride-hailing/.env.example` (tiles uses the
 compose default, because that file does not set `TILES_*`). A ceiling is
 not a reserved core. The CPU ceilings sum above 20. A process uses what
 its work needs, up to its cap.
@@ -646,7 +646,7 @@ Explicit limits are mandatory: the JVM-based components (Kafka, Debezium
 Connect) and ClickHouse will otherwise size themselves against all visible
 host RAM.
 
-The stack is brought up through the Makefile in `not-uber-service/`:
+The stack is brought up through the Makefile in `ride-hailing/`:
 
 ```bash
 make up

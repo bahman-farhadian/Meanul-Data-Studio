@@ -1,0 +1,117 @@
+# f-infra-grafana — the live view of the platform.
+#
+# Grafana answers "what is happening right now": trips finishing, position
+# events arriving, where demand is. Superset (piece g) is the slower,
+# analytical view. Both read the same ClickHouse cluster.
+#
+# The ClickHouse connection and the NUS dashboards are provisioned from
+# files in this directory, so a rebuilt container comes back exactly the
+# same. Dashboards query the warehouse tables, not
+# Kafka, Redis, or Postgres.
+#
+# Standalone test:
+#   docker network create nus-backbone
+#   cp .env.example .env                (+ edit the passwords)
+#   docker compose up -d --build
+#
+# In the full stack this file is include'd by the root docker-compose.yaml
+# and reached through lb-a on port 3000. Full-stack runbook: ../README.md
+
+name: f-infra-grafana
+
+services:
+  grafana:
+    build:
+      # Builds install packages, which needs egress from the build container.
+      # Defaults to the host's own network: a tunnel between here and this
+      # host usually cannot see a build's forwarded container traffic, even
+      # while the host's own connections work fine. Set BUILD_NETWORK=default
+      # if this host has no such gap.
+      network: ${BUILD_NETWORK:-host}
+      context: .
+      args:
+        GRAFANA_IMAGE: ${GRAFANA_IMAGE:-grafana/grafana:12.4.10}
+        CLICKHOUSE_PLUGIN_VERSION: ${GRAFANA_CLICKHOUSE_PLUGIN_VERSION:-4.21.2}
+    image: nus/grafana:${NUS_VERSION:-0.1.0}
+    container_name: nus-grafana
+    hostname: nus-grafana
+    restart: unless-stopped
+    cpus: ${GRAFANA_CPUS:-0.2}
+    mem_limit: ${GRAFANA_MEM:-1g}
+    memswap_limit: ${GRAFANA_MEM:-1g}
+    environment:
+      TZ: ${TZ:-UTC}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set it in f-infra-grafana/.env}
+      # Nobody signs up for this Grafana; the accounts are the ones set here.
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Grafana never reaches the internet in this stack, so switch off the
+      # calls that would otherwise time out on every start.
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      # Read by the provisioned data source file, so no password is written
+      # into any file in this repository.
+      CH_USER: ${CH_USER:-nus}
+      CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/nus-live-ops.json
+      # Same-origin OSM raster from nus-tiles via HAProxy /tiles/. No key.
+      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"NUS OSM","config":{"url":"/tiles/styles/nus/{z}/{x}/{y}@2x.png","attribution":"© OpenStreetMap","minZoom":0,"maxZoom":14}}'
+    volumes:
+      - ./provisioning:/etc/grafana/provisioning:ro
+      - grafana-data:/var/lib/grafana
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - backbone
+
+  # Raster OSM for Grafana geomap. Browser hits the same origin as Grafana
+  # (/tiles/... on port 3000); HAProxy strips the prefix. Data is the
+  # Planetiler MBTiles from `make tiles-prepare`.
+  tiles:
+    image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v5.6.0}
+    container_name: nus-tiles
+    hostname: nus-tiles
+    restart: unless-stopped
+    cpus: ${TILES_CPUS:-1.0}
+    mem_limit: ${TILES_MEM:-3g}
+    memswap_limit: ${TILES_MEM:-3g}
+    command: ["--config", "/config/config.json", "--bind", "0.0.0.0", "--port", "8080"]
+    environment:
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${NUS_VOLUME_ROOT:?set it in ride-hailing/.env}/nus-tiles-data:/data:ro
+      - ./tiles/config.json:/config/config.json:ro
+      - ./tiles/styles:/config/styles:ro
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://127.0.0.1:8080/',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\"",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 20s
+    networks:
+      - backbone
+
+volumes:
+  # Grafana's own small database: users and stars. Provisioned dashboards
+  # come from the bind-mounted files, not this volume.
+  grafana-data:
+    name: nus-grafana-data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${NUS_VOLUME_ROOT:?set it in ride-hailing/.env}/nus-grafana-data
+
+networks:
+  backbone:
+    external: true
+    name: nus-backbone

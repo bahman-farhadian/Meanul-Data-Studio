@@ -1,0 +1,47 @@
+[project]
+name = "nus-common"
+version = "0.1.0"
+description = "Shared building blocks for the ride-hailing Python components"
+requires-python = ">=3.13"
+
+# Every client the stack talks to, in one place. A service depends on this
+# package and gets a matching set of drivers, so two services can never end
+# up on different versions of the same client by accident.
+dependencies = [
+    # PostgreSQL. The binary build saves every image from compiling libpq.
+    "psycopg[binary,pool]>=3.2",
+    # Redis client library. This stack opens one host.
+    "redis>=5.2",
+    # Kafka. The schema-registry extra is not optional for us: from 2.6 the
+    # registry client moved off requests onto httpx, and confluent-kafka
+    # declares httpx, attrs, cachetools and authlib only under that extra.
+    # Without it `import confluent_kafka.schema_registry` raises
+    # ModuleNotFoundError at startup, which is a crash loop, not a warning.
+    # Naming the extra lets the package state its own needs instead of us
+    # maintaining a hand-copied list that goes stale on the next release.
+    "confluent-kafka[schema-registry]>=2.6",
+    "fastavro>=1.9",
+    "requests>=2.32",
+    # ClickHouse.
+    "clickhouse-connect>=0.8",
+    # Reading the pacing and simulation config files.
+    "pyyaml>=6.0",
+    # The real city zones (NYC TLC's own Taxi Zones): point-in-polygon,
+    # random-point-in-polygon and the STRtree spatial index CityGrid uses.
+    # >=2.0 specifically: STRtree.query() returning integer indices (not
+    # geometries) is Shapely 2.x's API, verified directly against 2.1.2 -
+    # 1.x's STRtree has a different, incompatible return shape.
+    "shapely>=2.0",
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.3",
+]
+
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["nus_common"]
