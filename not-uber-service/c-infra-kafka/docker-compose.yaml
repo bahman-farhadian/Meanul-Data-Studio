@@ -181,8 +181,10 @@ services:
       - backbone
 
   # One-shot: register every .avsc under schemas/ as <topic>-value. Run it
-  # AFTER kafka-topics-init. On a stack that has just been destroyed the
-  # Registry is empty until a producer runs, which happens later, at bootstrap.
+  # AFTER kafka-topics-init and BEFORE ksql-init. The streams read their
+  # value columns out of the Registry, and on a stack that has just been
+  # destroyed the Registry is empty until a producer runs, which happens
+  # later, at bootstrap.
   #
   # It is worth doing on its own account. Without this, the contract for a
   # topic is whatever the first producer to connect happened to send.
@@ -329,51 +331,6 @@ services:
       timeout: 10s
       retries: 6
       start_period: 45s
-    networks:
-      - backbone
-
-  # One-shot: create every topic from topics/topics.tsv. Run it AFTER `up`,
-  # once the brokers are healthy. Re-runs are safe - existing topics are
-  # skipped, so this is also how a newly added topic is rolled out.
-  kafka-topics-init:
-    image: ${KAFKA_IMAGE:-apache/kafka:4.0.0}
-    profiles: ["init"]
-    cpus: ${KAFKA_TOPICS_CPUS:-0.25}
-    mem_limit: ${KAFKA_TOPICS_MEM:-512m}
-    memswap_limit: ${KAFKA_TOPICS_MEM:-512m}
-    entrypoint: ["/bin/sh", "/create-topics.sh"]
-    environment:
-      TZ: ${TZ:-UTC}
-      KAFKA_BOOTSTRAP: nus-kafka-1:9092
-      KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
-    volumes:
-      - ./topics/create-topics.sh:/create-topics.sh:ro
-      - ./topics/topics.tsv:/topics.tsv:ro
-    networks:
-      - backbone
-
-  # One-shot: register every .avsc under schemas/ as <topic>-value. Run it
-  # AFTER kafka-topics-init and BEFORE ksql-init, which is not an arbitrary
-  # order: the ksqlDB streams read their value columns out of the Registry,
-  # and on a stack that has just been destroyed the Registry is empty until
-  # a producer runs - which happens later, at bootstrap.
-  #
-  # It is worth doing on its own account. Without this, the contract for a
-  # topic is whatever the first producer to connect happened to send.
-  schema-init:
-    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.0.0}
-    profiles: ["init"]
-    cpus: ${SCHEMA_INIT_CPUS:-0.25}
-    mem_limit: ${SCHEMA_INIT_MEM:-512m}
-    memswap_limit: ${SCHEMA_INIT_MEM:-512m}
-    entrypoint: ["python3", "/register-schemas.py"]
-    environment:
-      TZ: ${TZ:-UTC}
-      SCHEMA_REGISTRY_URL: http://nus-schema-registry:8081
-      SCHEMA_DIR: /schemas
-    volumes:
-      - ./schemas:/schemas:ro
-      - ./schemas/register-schemas.py:/register-schemas.py:ro
     networks:
       - backbone
 
