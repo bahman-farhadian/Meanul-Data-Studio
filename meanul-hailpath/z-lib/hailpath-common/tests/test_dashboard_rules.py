@@ -21,9 +21,9 @@ import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
-# this file lives at meanul-hailpath/z-lib/nus-common/tests/
-NUS = TESTS.parents[2]
-GRAFANA = NUS / "f-infra-grafana"
+# this file lives at meanul-hailpath/z-lib/hailpath-common/tests/
+HAILPATH = TESTS.parents[2]
+GRAFANA = HAILPATH / "f-infra-grafana"
 JSON_DIR = GRAFANA / "provisioning" / "dashboards" / "json"
 
 
@@ -152,7 +152,7 @@ def test_utilization_panels_say_the_seed_has_no_idle_time() -> None:
         return panel.get("description") or ""
 
     superset = (
-        NUS / "g-infra-superset" / "assets" / "charts" / "utilization-trend.yaml"
+        HAILPATH / "g-infra-superset" / "assets" / "charts" / "utilization-trend.yaml"
     ).read_text()
     for text in (description(history, 6), description(driver, 5), superset):
         assert note in text, text
@@ -227,11 +227,11 @@ def test_a_rollup_panel_may_not_be_quiet_but_a_live_one_may() -> None:
 
 
 def test_the_panel_probe_is_wired_into_verification() -> None:
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert re.search(r"^verify-dash:.*\bverify-grafana\b", root, re.M), (
         "make verify-dash does not run the panel probe"
     )
-    grafana_make = (NUS / "f-infra-grafana" / "Makefile").read_text()
+    grafana_make = (HAILPATH / "f-infra-grafana" / "Makefile").read_text()
     assert "panel-probe.py" in grafana_make
 
 

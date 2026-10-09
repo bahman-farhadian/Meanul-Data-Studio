@@ -1,4 +1,4 @@
-# z-lib/nus-common — shared building blocks
+# z-lib/hailpath-common — shared building blocks
 
 The seven Python components (`h-bootstrap` and the six services) all need
 the same things: read settings from the environment, log in a way a machine
@@ -35,17 +35,17 @@ image can hold both the component and this package in the same shape as the
 repository:
 
 ```
-/build/z-lib/nus-common/     <- this package
+/build/z-lib/hailpath-common/     <- this package
 /build/j-service-driver/     <- the component, and the working directory
 ```
 
 The component's `pyproject.toml` then points at it by path:
 
 ```toml
-dependencies = ["nus-common"]
+dependencies = ["hailpath-common"]
 
 [tool.uv.sources]
-nus-common = { path = "../z-lib/nus-common" }
+hailpath-common = { path = "../z-lib/hailpath-common" }
 ```
 
 Because the layout inside the image matches the layout in the repository,

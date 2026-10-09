@@ -77,14 +77,14 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "faker" },
-    { name = "nus-common" },
+    { name = "hailpath-common" },
     { name = "requests" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "faker", specifier = ">=30.0" },
-    { name = "nus-common", directory = "../z-lib/nus-common" },
+    { name = "hailpath-common", directory = "../z-lib/hailpath-common" },
     { name = "requests", specifier = ">=2.32" },
 ]
 
@@ -610,9 +610,9 @@ wheels = [
 ]
 
 [[package]]
-name = "nus-common"
+name = "hailpath-common"
 version = "0.1.0"
-source = { directory = "../z-lib/nus-common" }
+source = { directory = "../z-lib/hailpath-common" }
 dependencies = [
     { name = "clickhouse-connect" },
     { name = "confluent-kafka", extra = ["schema-registry"] },

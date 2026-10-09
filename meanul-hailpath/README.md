@@ -330,7 +330,7 @@ Write `<letter>-<kind>-<name>/docker-compose.yaml` and its README, add the
 add its settings to [`.env.example`](.env.example) in a section of their own,
 add its `listen` block to
 [z-config/haproxy/haproxy.cfg](z-config/haproxy/haproxy.cfg) plus the
-`LB_A_*` port lines if it is proxied, add it to the right group
+`PROXY_*` port lines if it is proxied, add it to the right group
 variable in the [Makefile](Makefile), and update the tables in the main
 [README](../README.md).
 

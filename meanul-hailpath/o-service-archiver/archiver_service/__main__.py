@@ -29,9 +29,9 @@ rollups) actually reads.
 import sys
 import time
 
-from nus_common import config, postgres, redis_client
-from nus_common.lifecycle import Shutdown, wait_for_bootstrap
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import config, postgres, redis_client
+from hailpath_common.lifecycle import Shutdown, wait_for_bootstrap
+from hailpath_common.logging import get_logger, setup_logging
 
 log = get_logger(__name__)
 

@@ -20,9 +20,9 @@ import uuid
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
-# this file lives at meanul-hailpath/z-lib/nus-common/tests/
-NUS = TESTS.parents[2]
-SUPERSET = NUS / "g-infra-superset"
+# this file lives at meanul-hailpath/z-lib/hailpath-common/tests/
+HAILPATH = TESTS.parents[2]
+SUPERSET = HAILPATH / "g-infra-superset"
 ASSETS = SUPERSET / "assets"
 
 
@@ -158,7 +158,7 @@ def test_the_assets_are_mounted_and_verified() -> None:
     assert "./assets:/app/assets:ro" in compose, "assets/ is not mounted read-only"
     assert "verify-assets.py" in compose, "there is no one-shot that verifies the import"
 
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert "verify-superset" in root, "make verify-dash does not check the assets"
 
 

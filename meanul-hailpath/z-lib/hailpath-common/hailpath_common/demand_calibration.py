@@ -9,12 +9,12 @@ live requests both call the same functions here, so a zone that is busy
 in the seeded history is exactly as busy in live traffic.
 
 Loaded once per process and cached, the same reasoning as
-nus_common.citygrid.CityGrid: a real database round trip on every request
+hailpath_common.citygrid.CityGrid: a real database round trip on every request
 or every historical trip would be a needless cost paid up to hundreds of
 thousands of times per run.
 """
 
-from nus_common import postgres
+from hailpath_common import postgres
 
 # A real sample month never sees every one of 263 zones at every one of
 # 24 hours x 7 days - a zone/hour/day this data genuinely has no rows for

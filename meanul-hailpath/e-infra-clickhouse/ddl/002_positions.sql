@@ -5,7 +5,7 @@
 CREATE TABLE IF NOT EXISTS hailpath.driver_positions
 (
     -- Ids are FixedString, not String: every one of these is a fixed-width
-    -- format by construction (see z-lib/nus-common/nus_common/ids.py, the
+    -- format by construction (see z-lib/hailpath-common/hailpath_common/ids.py, the
     -- one place that mints them), so a variable-length column with its own
     -- length prefix would only cost more to store and compare for no
     -- benefit. A row that does not fit this width is a bug upstream, not
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS hailpath.driver_positions
     -- see h-bootstrap/lion-prepare/taxi-zones.sql), and TLC's own
     -- LocationID is a variable-width 1-3 digit id ("1".."263"), not a
     -- fixed-width format this codebase controls the way driver_id/trip_id
-    -- are (see nus_common/ids.py) - String is the honest type for an id
+    -- are (see hailpath_common/ids.py) - String is the honest type for an id
     -- minted by someone else. LowCardinality still buys the same dictionary
     -- compression a config-sized set like this wants.
     zone_id       LowCardinality(String),

@@ -14,8 +14,8 @@ price is stored on the trip so it can be explained afterwards.
 
 import json
 
-from nus_common import redis_client
-from nus_common.logging import get_logger
+from hailpath_common import redis_client
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

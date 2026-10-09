@@ -19,8 +19,8 @@ from psycopg import Connection
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
-from nus_common import config
-from nus_common.logging import get_logger
+from hailpath_common import config
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -35,7 +35,7 @@ def _connection_string(port: int) -> str:
     password = config.required("PG_PASSWORD")
     # connect_timeout keeps a dead proxy from turning into a hung service.
     # statement_timeout is the same idea for a single query: pgr_ksp
-    # (nus_common.routing.route) is a real graph search over a real street
+    # (hailpath_common.routing.route) is a real graph search over a real street
     # network, and confirmed live, some specific call can run away and
     # exhaust a node's memory rather than just running slowly - a plain
     # pgr_dijkstra call is 50-150ms, so 30s is generous headroom for a
@@ -58,7 +58,7 @@ def _pool(port: int, size: int) -> ConnectionPool:
         # one the server already dropped.
         check=ConnectionPool.check_connection,
         open=True,
-        # pgr_ksp (nus_common.routing.route, called continuously by
+        # pgr_ksp (hailpath_common.routing.route, called continuously by
         # dispatch-service for live trips and by h-bootstrap's historical
         # routing burst) is a pgRouting/Boost Graph Library function -  it
         # manages its own memory outside Postgres's tracked allocator.

@@ -4,7 +4,7 @@ NYC TLC's real Taxi Zones (see h-bootstrap/lion-prepare/taxi-zones.sql) are
 restored once, per bring-up, into city_zones_source alongside the routable
 graph. seed() copies that into city_zones, computing which zones are
 servicable against the just-restored street graph - the shared CityGrid
-(nus_common.citygrid) then loads only the servicable set from there.
+(hailpath_common.citygrid) then loads only the servicable set from there.
 
 grid() caches that load for the life of this process: CityGrid.load() is a
 real database round trip plus parsing 263 real polygons, and the functions
@@ -14,9 +14,9 @@ reusing it is what keeps this the same cheap, in-memory lookup it always
 was, now backed by real geometry instead of grid arithmetic.
 """
 
-from nus_common import postgres, routing
-from nus_common.citygrid import CityGrid
-from nus_common.logging import get_logger
+from hailpath_common import postgres, routing
+from hailpath_common.citygrid import CityGrid
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -109,7 +109,7 @@ def random_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
 
 def random_road_point_in_zone(zone_id: str, rng, attempts: int = 5) -> tuple[float, float]:
     """A random point inside one zone, snapped to the real, connected road
-    network. See nus_common.routing.random_road_point_in_zone - this is
+    network. See hailpath_common.routing.random_road_point_in_zone - this is
     just that, with bootstrap's own shared grid.
     """
     return routing.random_road_point_in_zone(grid(), zone_id, rng, attempts)
@@ -117,7 +117,7 @@ def random_road_point_in_zone(zone_id: str, rng, attempts: int = 5) -> tuple[flo
 
 def build_road_point_pools(pool_size: int, workers: int, seed_value: int = 20250824) -> None:
     """Precompute a pool of real, road-snapped points for every servicable
-    zone, once. See nus_common.routing.build_road_point_pools - this is
+    zone, once. See hailpath_common.routing.build_road_point_pools - this is
     just that, with bootstrap's own shared grid.
     """
     routing.build_road_point_pools(grid(), pool_size, workers, seed_value)
@@ -126,7 +126,7 @@ def build_road_point_pools(pool_size: int, workers: int, seed_value: int = 20250
 def pooled_road_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
     """A real, road-snapped point in this zone, sampled from the pool
     build_road_point_pools already built - no database round trip. See
-    nus_common.routing.pooled_road_point_in_zone - this is just that, with
+    hailpath_common.routing.pooled_road_point_in_zone - this is just that, with
     bootstrap's own shared grid.
     """
     return routing.pooled_road_point_in_zone(grid(), zone_id, rng)

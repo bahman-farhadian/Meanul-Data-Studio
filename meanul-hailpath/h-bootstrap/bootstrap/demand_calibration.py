@@ -3,7 +3,7 @@
 The prepare step (h-bootstrap/zone-demand-prepare/) already did the real
 work - streaming a month of TLC's own trip records and reducing it to two
 small CSVs. This just gets them into zone_demand_calibration/
-od_pair_calibration, which nus_common.demand_calibration reads from
+od_pair_calibration, which hailpath_common.demand_calibration reads from
 everywhere else. Skipped, not an error, when the CSVs are not there:
 SKIP_MAP_IMPORT-style local iteration should not require a multi-hundred-
 MB download just to bring the stack up.
@@ -12,8 +12,8 @@ MB download just to bring the stack up.
 import csv
 from pathlib import Path
 
-from nus_common import postgres
-from nus_common.logging import get_logger
+from hailpath_common import postgres
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

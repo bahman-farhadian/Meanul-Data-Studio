@@ -14,7 +14,7 @@
     <!-- 6.5 GiB, well under the 8 GB container limit -->
     <max_server_memory_usage>6979321856</max_server_memory_usage>
 
-    <!-- Caches, sized small on purpose: this cluster answers dashboards, not
+    <!-- Caches, sized small on purpose: this server answers dashboards, not
          thousands of users. -->
     <mark_cache_size>1073741824</mark_cache_size>
     <uncompressed_cache_size>1073741824</uncompressed_cache_size>

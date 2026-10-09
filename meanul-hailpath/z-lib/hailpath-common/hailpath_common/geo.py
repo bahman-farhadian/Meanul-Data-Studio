@@ -72,7 +72,7 @@ def point_at_fraction(path: list[tuple[float, float]], share: float) -> tuple[fl
 def points_along_linestring(wkt: str, count: int) -> list[tuple[float, float]]:
     """N evenly-spaced (lat, lon) points along a route, start to end.
 
-    `wkt` is the ST_AsText() of the LINESTRING nus_common.routing.route()
+    `wkt` is the ST_AsText() of the LINESTRING hailpath_common.routing.route()
     returns - the real street path pgRouting found, not a straight line
     between its two endpoints. Used to plot position history that follows
     actual streets instead of cutting through whatever sits between pickup

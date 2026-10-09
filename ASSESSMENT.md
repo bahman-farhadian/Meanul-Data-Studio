@@ -17,7 +17,7 @@ bar. A ratio without a threshold is not a bar.
 Numeric thresholds and closed-set symbols in a version profile are copied
 from that version’s shipped sources (SQL, Avro, ClickHouse DDL, Python).
 If this file and those sources disagree, the sources win and this file is
-wrong. `meanul-hailpath/z-lib/nus-common/tests/test_assessment_standard.py`
+wrong. `meanul-hailpath/z-lib/hailpath-common/tests/test_assessment_standard.py`
 fails when the studio rules or the version-1 numbers drift from those
 sources.
 
@@ -289,7 +289,7 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | `warehouse-sink` | `n-service-clickhouse-sink` |
 | `archiver` | `o-service-archiver` |
 | `stack-config` | `z-config` |
-| `shared-lib` | `z-lib` (`nus-common`) |
+| `shared-lib` | `z-lib` (`hailpath-common`) |
 
 ### 9.2 Studio bar → v1 instrument
 
@@ -297,8 +297,8 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | --- | --- |
 | S1, G3, G4, C6 | `make verify-data` |
 | S4, S12, S13, S17, G7 | `make verify-walk`; `test_assessment_standard.py` |
-| S5 | `z-lib/nus-common/nus_common/ids.py` (`drv-` 11, `psg-` 11, `trp-` 21) |
-| S8 | Compose `TZ=UTC`, `SIM_TIMEZONE`; `nus_common/geo.py` |
+| S5 | `z-lib/hailpath-common/hailpath_common/ids.py` (`drv-` 11, `psg-` 11, `trp-` 21) |
+| S8 | Compose `TZ=UTC`, `SIM_TIMEZONE`; `hailpath_common/geo.py` |
 | S9, M5 | No `driver_positions` table in `h-bootstrap/migrations/`; ticks on `driver_location` → `hailpath.driver_positions` |
 | S10 | `d-infra-debezium/connectors/hailpath-pg.json` `column.exclude.list` includes `hailpath.trips.route` |
 | S11 | `make grafana-check` (uid `hailpath-clickhouse`, warehouse table names, no `maptiler`) |
@@ -307,7 +307,7 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | B3 | `make verify-kafka`; `create-topics.sh` `--replication-factor 1` `min.insync.replicas=1` |
 | B5 | `make verify-cdc` (connector `nus-pg`, slot `hailpath_debezium`, plugin `pgoutput`, `wal_status` `reserved`) |
 | B7, M3 | `l-service-dispatch/dispatch_service/__main__.py`: `store_live_state` then `announce` |
-| C3 | `nus_common/redis_client.py` DB 0–4 |
+| C3 | `hailpath_common/redis_client.py` DB 0–4 |
 | C5 | `wait_for_bootstrap` in every generator/coordinator/sink/archiver; **absent** from `i-service-cache-updater` |
 | G1 | Redis `system:bootstrap:done` = 1 via `make verify-data` |
 | G5, G6 | Compose: one `driver-service`, one `passenger-service` |
@@ -336,7 +336,7 @@ One PostgreSQL (`nus-pg-1`). HAProxy `5432` and `5433` are that process. Debeziu
 
 #### `b-infra-redis`
 
-One Redis (`nus-redis-1`). `make verify-redis` is a PING. Logical DBs are fixed in `z-lib/nus-common/nus_common/redis_client.py`:
+One Redis (`hailpath-redis`). `make verify-redis` is a PING. Logical DBs are fixed in `z-lib/hailpath-common/hailpath_common/redis_client.py`:
 
 | DB | Constant | Keys |
 | --- | --- | --- |
@@ -348,7 +348,7 @@ One Redis (`nus-redis-1`). `make verify-redis` is a PING. Logical DBs are fixed 
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| Process | `PONG` from `nus-redis-1` | no reply | `make verify-redis` |
+| Process | `PONG` from `hailpath-redis` | no reply | `make verify-redis` |
 | Cache fill after CDC | db 1 non-zero (drivers+vehicles); db 2 equals seeded passengers once snapshot has drained | db 1 still 0 after CDC | `make verify-data` Redis dbsize line |
 
 #### `c-infra-kafka`
@@ -432,7 +432,7 @@ One-shot: migrations, LION restore, people, history, warehouse load, then
 | Marker | Redis `system:bootstrap:done` is `1` | `(not set)` | `make verify-data` |
 | OLTP seed | `drivers` = `SEED_DRIVERS`; `passengers` = `SEED_PASSENGERS`; `city_zones` = 263 (TLC); `ways` in the hundreds of thousands | `ways` = 0 (`SKIP_MAP_IMPORT` or failed restore) | `make verify-data` |
 | Warehouse seed | After bootstrap, `hailpath.trip_events` count is at least `HISTORY_DAYS × HISTORY_TRIPS_PER_DAY` (one warehouse row per seeded trip). Live traffic then adds lifecycle rows. | 0 events after a finished `make up` | `make verify-data` |
-| History routes | Seeded trips that have a `route` are on-network (same 75 m / long two-point bars as §9.4), produced by `nus_common.routing.route()` | Unsnapped harbour points or two-point chords in history | `z-config/check-on-network.sql` (window is last hour for live; all-time `route IS NOT NULL` is the history form) |
+| History routes | Seeded trips that have a `route` are on-network (same 75 m / long two-point bars as §9.4), produced by `hailpath_common.routing.route()` | Unsnapped harbour points or two-point chords in history | `z-config/check-on-network.sql` (window is last hour for live; all-time `route IS NOT NULL` is the history form) |
 
 #### `i-service-cache-updater`
 
@@ -516,13 +516,13 @@ Stack HAProxy, assessment SQL, `profile.sql`.
 
 #### `z-lib`
 
-`nus-common`: ids, geo, routing, Redis keys, clients.
+`hailpath-common`: ids, geo, routing, Redis keys, clients.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| IDs | `drv-` width 11, `psg-` width 11, `trp-` width 21 | ClickHouse `FixedString` rejects the id | `z-lib/nus-common/nus_common/ids.py`; `make verify-walk` |
+| IDs | `drv-` width 11, `psg-` width 11, `trp-` width 21 | ClickHouse `FixedString` rejects the id | `z-lib/hailpath-common/hailpath_common/ids.py`; `make verify-walk` |
 | Chord | `is_chord_path(..., min_km=0.2)` is true iff the path has exactly two points ≥ 0.2 km apart | Treating a short two-vertex LION block as a chord | `make verify-walk` |
-| Route geometry | `ROUTE_GEOMETRY_SQL` orients edges (`ST_Reverse` when traversed target→source) then `ST_MakeLine` in visit order | `ST_LineMerge(ST_Collect)` without path order | `z-lib/nus-common/nus_common/routing.py`; live `make verify-positions` |
+| Route geometry | `ROUTE_GEOMETRY_SQL` orients edges (`ST_Reverse` when traversed target→source) then `ST_MakeLine` in visit order | `ST_LineMerge(ST_Collect)` without path order | `z-lib/hailpath-common/hailpath_common/routing.py`; live `make verify-positions` |
 
 ### 9.4 Constraint surface (M1) — a cab is not a boat
 
@@ -542,7 +542,7 @@ be greater than `chord_km` (mean pickup–dropoff distance) when `trips` > 0.
 A last-hour `trips` = 0 is “no live completed trips yet”, not a pass. Wait
 and re-run `make verify-positions`.
 
-From `z-lib/nus-common/nus_common/geo.py`:
+From `z-lib/hailpath-common/hailpath_common/geo.py`:
 
 ```
 is_chord_path(path, min_km=0.2)
@@ -574,7 +574,7 @@ Default small seed used to prove this file: `SEED_DRIVERS=800`,
 `TRIP_REQUESTS_PER_MINUTE=40.0`, `SKIP_MAP_IMPORT=false`. Those values are
 `.env` knobs, not additional bars.
 
-From `z-lib/nus-common/nus_common/ids.py` (ClickHouse `FixedString` matches):
+From `z-lib/hailpath-common/hailpath_common/ids.py` (ClickHouse `FixedString` matches):
 
 | Entity | Prefix / shape | Length |
 | --- | --- | --- |
@@ -586,11 +586,11 @@ From `z-lib/nus-common/nus_common/ids.py` (ClickHouse `FixedString` matches):
 
 Stored timestamps are UTC (`TZ=UTC`, ClickHouse `DateTime64(3, 'UTC')`).
 Demand, `day_period`, and TLC `zone_weight` use `SIM_TIMEZONE`
-(version-1 default `America/New_York`) via `nus_common.geo.in_sim_tz` /
+(version-1 default `America/New_York`) via `hailpath_common.geo.in_sim_tz` /
 `sim_zoneinfo`.
 
 Browser tiles: `/tiles/styles/hailpath/{z}/{x}/{y}@2x.png` (and the 1× PNG).
-HAProxy on `LB_A_GRAFANA_PORT` (default 3000) strips `/tiles/` on the tiles
+HAProxy on `PROXY_GRAFANA_PORT` (default 3000) strips `/tiles/` on the tiles
 backend and forwards to `hailpath-tiles:8080`.
 
 | GET | Pass |
@@ -716,9 +716,9 @@ SQL and pytest the bars cite:
 | `meanul-hailpath/z-docs/ERD.md` | OLTP foreign keys |
 | `z-config/check-positions.sql` | Diagnostic only (§2) |
 | `z-config/profile.sql` | Warehouse freshness and ranges |
-| `z-lib/nus-common/nus_common/geo.py` | `is_chord_path` `min_km=0.2` |
-| `z-lib/nus-common/nus_common/ids.py` | `drv-` / `psg-` / `trp-` |
-| `z-lib/nus-common/tests/` | `make verify-walk`; this contract |
+| `z-lib/hailpath-common/hailpath_common/geo.py` | `is_chord_path` `min_km=0.2` |
+| `z-lib/hailpath-common/hailpath_common/ids.py` | `drv-` / `psg-` / `trp-` |
+| `z-lib/hailpath-common/tests/` | `make verify-walk`; this contract |
 | `j-service-driver/tests/` | polyline walk vs chord |
 | `h-bootstrap/migrations/` | S2–S10 |
 | `c-infra-kafka/schemas/` | B1 |
@@ -747,5 +747,5 @@ A new studio version:
 
 Version 1 is closed for this file when `make verify`, `make tiles-health`,
 `make verify-walk`, and `make verify-positions` (last-hour `trips` > 0)
-all pass the tables in §9, and the pytest in `z-lib/nus-common/tests/`
+all pass the tables in §9, and the pytest in `z-lib/hailpath-common/tests/`
 exits 0.

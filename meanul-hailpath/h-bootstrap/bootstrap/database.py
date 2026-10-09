@@ -1,10 +1,10 @@
 """Creating the application's own database and schema, before anything else.
 
-Every other module in this stack — nus_common.postgres included — connects
+Every other module in this stack — hailpath_common.postgres included — connects
 to whatever PG_DATABASE says. That is a problem for exactly one step: the
 very first thing this container does. On a brand new cluster, PG_DATABASE
 (now "hailpath", not Postgres's default "postgres") does not exist yet, so the
-pooled connections nus_common.postgres hands out would fail before bootstrap
+pooled connections hailpath_common.postgres hands out would fail before bootstrap
 even gets to wait_for(postgres.ping, ...).
 
 This module solves it with one raw, unpooled connection to the "postgres"
@@ -18,9 +18,9 @@ anywhere needing to be schema-qualified.
 
 import psycopg
 
-from nus_common import config
-from nus_common.lifecycle import wait_for
-from nus_common.logging import get_logger
+from hailpath_common import config
+from hailpath_common.lifecycle import wait_for
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -39,7 +39,7 @@ def _admin_connection_string(dbname: str) -> str:
 def ensure_ready() -> None:
     """Create the application database and schema, idempotently.
 
-    Runs before anything touches nus_common.postgres's pools. Every check
+    Runs before anything touches hailpath_common.postgres's pools. Every check
     here is safe to run again: a restarted or re-run bootstrap must not
     fail just because "hailpath" already exists from the run before.
     """

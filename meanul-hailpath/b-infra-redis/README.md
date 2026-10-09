@@ -13,7 +13,7 @@ HAProxy publishes that process on **6379** and **6380**. Both ports are
 is a PING.
 
 Logical databases are fixed in
-`z-lib/nus-common/nus_common/redis_client.py`:
+`z-lib/hailpath-common/hailpath_common/redis_client.py`:
 
 | DB | Constant | Keys |
 | --- | --- | --- |

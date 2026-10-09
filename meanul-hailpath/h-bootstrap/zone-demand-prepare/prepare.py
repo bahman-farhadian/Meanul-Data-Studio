@@ -81,7 +81,7 @@ def main() -> int:
 
     df["hour_of_day"] = df["pickup_datetime"].dt.hour
     # 0 = Monday .. 6 = Sunday, pandas' own convention - documented in
-    # 012_zone_demand_calibration.sql and relied on by nus_common.
+    # 012_zone_demand_calibration.sql and relied on by hailpath_common.
     # demand_calibration, which passes date.weekday() straight through.
     df["day_of_week"] = df["pickup_datetime"].dt.dayofweek
 

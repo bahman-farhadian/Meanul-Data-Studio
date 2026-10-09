@@ -52,7 +52,7 @@ services:
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://hailpath-schema-registry:8081}
-      KAFKA_GROUP_ID: ${CITY_GROUP_ID:-city-service}
+      KAFKA_GROUP_ID: ${CITY_GROUP_ID:-hailpath-city}
 
       REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}

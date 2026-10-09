@@ -23,14 +23,14 @@ from decimal import Decimal
 
 import psycopg
 
-from nus_common import config, postgres, redis_client, routing
-from nus_common.citygrid import CityGrid
-from nus_common.geo import day_period, distance_km, to_millis, utc_now
-from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
-from nus_common.lifecycle import Shutdown, wait_for_bootstrap
-from nus_common.logging import get_logger, setup_logging
-from nus_common.money import money, money_or_none
-from nus_common.offers import Offer, run_chain
+from hailpath_common import config, postgres, redis_client, routing
+from hailpath_common.citygrid import CityGrid
+from hailpath_common.geo import day_period, distance_km, to_millis, utc_now
+from hailpath_common.kafka import AvroTopicConsumer, AvroTopicProducer
+from hailpath_common.lifecycle import Shutdown, wait_for_bootstrap
+from hailpath_common.logging import get_logger, setup_logging
+from hailpath_common.money import money, money_or_none
+from hailpath_common.offers import Offer, run_chain
 
 from dispatch_service import pricing, ratings
 from dispatch_service.trips import ActiveTrip, first_change_at, next_status
@@ -340,7 +340,7 @@ def live_state_payload(trip: ActiveTrip, now: datetime) -> dict:
 
 
 def main() -> int:
-    setup_logging("dispatch-service")
+    setup_logging("hailpath-dispatch")
     shutdown = Shutdown()
     rng = random.Random(config.integer("RANDOM_SEED", 20250824))
     grid = CityGrid.load()
@@ -374,11 +374,11 @@ def main() -> int:
     redis_trip = redis_client.primary(redis_client.DB_TRIP)
     wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
-    producer = AvroTopicProducer(LIFECYCLE_TOPIC, "dispatch-service")
-    offer_producer = AvroTopicProducer(OFFER_TOPIC, "dispatch-service")
+    producer = AvroTopicProducer(LIFECYCLE_TOPIC, "hailpath-dispatch")
+    offer_producer = AvroTopicProducer(OFFER_TOPIC, "hailpath-dispatch")
     consumer = AvroTopicConsumer(
         topics=[REQUEST_TOPIC],
-        group_id=config.optional("KAFKA_GROUP_ID", "dispatch-service"),
+        group_id=config.optional("KAFKA_GROUP_ID", "hailpath-dispatch"),
         # From the beginning: a request nobody answered is a rider still
         # waiting, so a restart should pick those up rather than skip them.
         from_beginning=True,

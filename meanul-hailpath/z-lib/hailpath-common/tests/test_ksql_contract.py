@@ -18,12 +18,12 @@ import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
-# this file lives at meanul-hailpath/z-lib/nus-common/tests/
-NUS = TESTS.parents[2]
+# this file lives at meanul-hailpath/z-lib/hailpath-common/tests/
+HAILPATH = TESTS.parents[2]
 
-KSQL_DIR = NUS / "c-infra-kafka" / "ksql"
-SCHEMA_DIR = NUS / "c-infra-kafka" / "schemas"
-TOPICS_TSV = NUS / "c-infra-kafka" / "topics" / "topics.tsv"
+KSQL_DIR = HAILPATH / "c-infra-kafka" / "ksql"
+SCHEMA_DIR = HAILPATH / "c-infra-kafka" / "schemas"
+TOPICS_TSV = HAILPATH / "c-infra-kafka" / "topics" / "topics.tsv"
 
 # CREATE STREAM|TABLE [IF NOT EXISTS] name  -> the same expression
 # check-ksql.py uses. Kept identical on purpose: test_check_regex_matches
@@ -204,7 +204,7 @@ def test_schemas_are_registered_before_the_streams_are_created() -> None:
     empty at that moment, so the schemas have to be put there first. This is
     the order that failed on the server once.
     """
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     order = [
         root.index("--no-print-directory topics"),
         root.index("--no-print-directory schemas"),
@@ -214,7 +214,7 @@ def test_schemas_are_registered_before_the_streams_are_created() -> None:
         "make up must run topics, then schemas, then ksql-ddl"
     )
 
-    kafka_make = (NUS / "c-infra-kafka" / "Makefile").read_text()
+    kafka_make = (HAILPATH / "c-infra-kafka" / "Makefile").read_text()
     assert "run --rm schema-init" in kafka_make, "schemas does not run the one-shot"
 
 
@@ -223,7 +223,7 @@ def test_the_registered_subject_matches_what_the_producers_use() -> None:
 
     register-schemas.py writes <topic>-value. The producers reach the same
     name through Confluent's default TopicNameStrategy, because
-    nus_common.kafka serializes with a SerializationContext of (topic,
+    hailpath_common.kafka serializes with a SerializationContext of (topic,
     VALUE). If either side changed, ksqlDB would read one subject while the
     producers wrote another, and the mismatch would look like a schema
     problem rather than a naming one.
@@ -233,7 +233,7 @@ def test_the_registered_subject_matches_what_the_producers_use() -> None:
         "register-schemas.py no longer names subjects <topic>-value"
     )
 
-    producer = (NUS / "z-lib" / "nus-common" / "nus_common" / "kafka.py").read_text()
+    producer = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "kafka.py").read_text()
     assert "MessageField.VALUE" in producer, (
         "the producer no longer serializes with a VALUE SerializationContext, "
         "so the subject it writes may not be <topic>-value any more"
@@ -242,13 +242,13 @@ def test_the_registered_subject_matches_what_the_producers_use() -> None:
 
 def test_ksql_is_wired_into_bring_up_and_verification() -> None:
     """Registered by `make up`, and checked by a target that can fail."""
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert "--no-print-directory ksql-ddl" in root, "make up does not run ksql-ddl"
     assert re.search(r"^verify:.*\bverify-ksqldb\b", root, re.M), (
         "make verify does not include verify-ksqldb"
     )
 
-    kafka_make = (NUS / "c-infra-kafka" / "Makefile").read_text()
+    kafka_make = (HAILPATH / "c-infra-kafka" / "Makefile").read_text()
     assert "run --rm ksql-init" in kafka_make, "ksql-ddl does not run the one-shot"
     assert "/ksql/check-ksql.py" in kafka_make, (
         "verify-ksqldb still prints SHOW STREAMS instead of failing on an empty server"

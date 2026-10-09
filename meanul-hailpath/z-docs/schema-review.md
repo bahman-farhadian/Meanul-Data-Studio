@@ -213,7 +213,7 @@ matching Postgres's `numeric(10,2)` exactly.
 
 *Needs one local check before it is planned, not assumed:* this stack
 serialises through `confluent-kafka[schema-registry]` over `fastavro`
-(`z-lib/nus-common/pyproject.toml`), and fastavro does implement the
+(`z-lib/hailpath-common/pyproject.toml`), and fastavro does implement the
 decimal logical type — but round-tripping a `Decimal("12.22")` through
 `AvroSerializer`/`AvroDeserializer` against the real Registry is a
 five-minute local test and should be run before any `.avsc` is changed.

@@ -2,7 +2,7 @@
 
 Demand is not flat - it has two peaks a day. Which zones are more popular
 than others used to live here too, as a hash-derived guess; it now comes
-from nus_common.demand_calibration's real TLC-trip-record weights instead,
+from hailpath_common.demand_calibration's real TLC-trip-record weights instead,
 read directly by passenger_service/__main__.py.
 """
 

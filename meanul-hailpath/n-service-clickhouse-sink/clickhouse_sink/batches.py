@@ -13,8 +13,8 @@ take minutes to fill, and a dashboard should not be minutes behind.
 import time
 from dataclasses import dataclass, field
 
-from nus_common import clickhouse
-from nus_common.logging import get_logger
+from hailpath_common import clickhouse
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

@@ -10,15 +10,15 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-NUS = Path(__file__).resolve().parents[1]
-MIGRATIONS = NUS / "h-bootstrap" / "migrations"
-CH_DDL = NUS / "e-infra-clickhouse" / "ddl"
-TOPICS = NUS / "c-infra-kafka" / "topics" / "topics.tsv"
-KSQL = NUS / "c-infra-kafka" / "ksql"
-QUALITY = NUS / "z-config" / "quality.sql"
-CHARTS = NUS / "g-infra-superset" / "assets" / "charts"
-DATASETS = NUS / "g-infra-superset" / "assets" / "datasets"
-DASHBOARDS = NUS / "g-infra-superset" / "assets" / "dashboards"
+HAILPATH = Path(__file__).resolve().parents[1]
+MIGRATIONS = HAILPATH / "h-bootstrap" / "migrations"
+CH_DDL = HAILPATH / "e-infra-clickhouse" / "ddl"
+TOPICS = HAILPATH / "c-infra-kafka" / "topics" / "topics.tsv"
+KSQL = HAILPATH / "c-infra-kafka" / "ksql"
+QUALITY = HAILPATH / "z-config" / "quality.sql"
+CHARTS = HAILPATH / "g-infra-superset" / "assets" / "charts"
+DATASETS = HAILPATH / "g-infra-superset" / "assets" / "datasets"
+DASHBOARDS = HAILPATH / "g-infra-superset" / "assets" / "dashboards"
 
 CREATE = re.compile(
     r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)"

@@ -106,19 +106,16 @@ The platform is split into one **one-shot init service** and several
 
 | Service | Type | Responsibility |
 | --- | --- | --- |
-| `bootstrap` | one-shot | Runs DB migrations (plain ordered SQL), downloads the NYC OSM extract (**skipped when already present on its volume**), imports it into PostgreSQL and builds the pgRouting topology, seeds initial reference data (drivers, passengers, city zones), generates **one week of historical mock activity** (trips, locations, per-segment traffic), bulk-loads that week into ClickHouse so dashboards start populated, and finally sets the `system:bootstrap:done` marker in Redis. Exits when done and stays as a stopped container, so its log can still be read. |
-| `driver-service` | long-running | Simulates the pool of active drivers (not one container per driver — one service internally manages many simulated drivers). Produces driver status/location activity. |
-| `passenger-service` | long-running | Simulates the pool of riders. Produces trip requests and rider device location streams. |
-| `dispatch-service` | long-running | Matches trip requests from `passenger-service` to available drivers, computes the route via pgRouting, calculates the fare estimate (base + distance + time, surge-adjusted), and assigns the trip. |
-| `city-service` | long-running | Watches live trip/location traffic, computes per-zone demand "hotspot" scores and per-road-segment congestion factors (refreshing `segment_traffic` used by routing), and publishes hotspots so drivers can be guided toward demand. |
-| `clickhouse-sink` | long-running | Consumes Kafka topics, enriches events via Redis, and writes into ClickHouse for analytics/dashboards. |
-| `cache-updater` | long-running | Consumes the Debezium CDC topics and applies PostgreSQL changes to Redis, keeping the cache in sync with the source of truth. |
+| `hailpath-bootstrap` | one-shot | `make bootstrap`: migrations, restore the LION graph with the pgRouting image, seed people and a week of history into PostgreSQL and ClickHouse, then set `system:bootstrap:done` in Redis. The live services wait on that marker. |
+| `hailpath-driver` | long-running | Simulates the pool of active drivers (not one container per driver — one process manages many). Produces driver status and location. |
+| `hailpath-passenger` | long-running | Simulates the pool of riders. Produces trip requests and rider location. |
+| `hailpath-dispatch` | long-running | Matches requests to drivers, routes with pgRouting, prices the trip, and walks the offer chain. |
+| `hailpath-city` | long-running | Zone demand scores and per-segment traffic used by routing. |
+| `hailpath-clickhouse-sink` | long-running | Kafka topics into ClickHouse, enriched from Redis. |
+| `hailpath-cache-updater` | long-running | Debezium CDC topics into Redis. |
+| `hailpath-archiver` | long-running | Prunes ended trips from PostgreSQL after they are in the warehouse. |
 
-Note: in the real world, driver-side and rider-side telemetry are **not**
-1:1 mirrors of each other (different devices, different sampling rates,
-different failure modes) — `driver-service` and `passenger-service` are
-independent generators that happen to refer to the same trips, not a single
-simulation duplicated into two streams.
+Driver and rider telemetry are independent generators that refer to the same trips.
 
 Naming: running processes use `hailpath-<job>` for the compose service
 name, `container_name`, and hostname. Directory prefixes in
@@ -204,11 +201,11 @@ loops, and analytics path — so each stays readable.
 ```mermaid
 graph LR
     subgraph GEN ["Generators"]
-        DRV["driver-service"]
-        PSG["passenger-service"]
+        DRV["hailpath-driver"]
+        PSG["hailpath-passenger"]
     end
 
-    DISP["dispatch-service"]
+    DISP["hailpath-dispatch"]
     PG[("PostgreSQL")]
     KAFKA[("Kafka")]
 
@@ -226,8 +223,8 @@ graph LR
 ```mermaid
 graph LR
     BOOT["bootstrap<br/>(one-shot)"]
-    CITY["city-service"]
-    CUPD["cache-updater"]
+    CITY["hailpath-city"]
+    CUPD["hailpath-cache-updater"]
 
     PG[("PostgreSQL")]
     REDIS[("Redis")]
@@ -255,7 +252,7 @@ index from Redis — never from PostgreSQL directly.)
 graph LR
     KAFKA[("Kafka")]
     REDIS[("Redis")]
-    SINK["clickhouse-sink"]
+    SINK["hailpath-clickhouse-sink"]
     CH[("ClickHouse")]
     BOOT["bootstrap"]
     GRAF["Grafana"]
@@ -308,9 +305,9 @@ graph TB
 graph LR
     subgraph WRITERS ["Writers"]
         BOOT["bootstrap"]
-        DRV["driver-service"]
-        PSG["passenger-service"]
-        DISP["dispatch-service"]
+        DRV["hailpath-driver"]
+        PSG["hailpath-passenger"]
+        DISP["hailpath-dispatch"]
     end
 
     subgraph PGDB ["PostgreSQL"]
@@ -355,7 +352,7 @@ Core tables (conceptual):
 
 ### 2.4 Redis (HLD)
 
-One Redis, `nus-redis-1`, is the **only** read path for cached reference
+One Redis, `hailpath-redis`, is the **only** read path for cached reference
 and hot-path data — generators, dispatch, the city service, and the
 ClickHouse sink read from here, never directly from PostgreSQL. HAProxy
 ports 6379 and 6380 are that process. `make verify-redis` is a PING.
@@ -363,7 +360,7 @@ ports 6379 and 6380 are that process. `make verify-redis` is a PING.
 ```mermaid
 graph TB
     HAP["hailpath-proxy<br/>6379 and 6380"]
-    R[("nus-redis-1")]
+    R[("hailpath-redis")]
 
     HAP --> R
 ```
@@ -474,7 +471,7 @@ metadata in **SQLite on a named volume**.
 graph TB
     KAFKA[("Kafka")]
     REDIS[("Redis")]
-    SINK["clickhouse-sink"]
+    SINK["hailpath-clickhouse-sink"]
     CH[("nus-ch-s1r1")]
     GRAF["Grafana"]
     SUPER["Superset"]
@@ -593,7 +590,7 @@ meanul-data-studio/
     │   └── haproxy/                  # hailpath-proxy config
     ├── z-docs/                       # generated schema dictionary and ERD
     ├── z-lib/                        # shared Python code
-    │   └── nus-common/               # clients, logging, lifecycle used by h- and every service
+    │   └── hailpath-common/               # clients, logging, lifecycle used by h- and every service
     └── z-mk/                         # Makefile fragments included by the root Makefile
 ```
 
@@ -604,7 +601,7 @@ dependency manager — each component carries its own `pyproject.toml` +
 `uv.lock` and a multi-stage Dockerfile (`uv sync` in the build stage, slim
 runtime stage; no venv ever touches the host). What all seven have in
 common — reading settings, JSON logging, clean shutdown, and the clients for
-PostgreSQL, Redis, Kafka and ClickHouse — lives once in `z-lib/nus-common`
+PostgreSQL, Redis, Kafka and ClickHouse — lives once in `z-lib/hailpath-common`
 and is pulled in as a path dependency; their build context is
 `meanul-hailpath/` so the image holds the same layout as the repository.
 The proxy is stack-wide, so `hailpath-proxy` is defined in the root

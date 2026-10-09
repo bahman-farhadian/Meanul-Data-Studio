@@ -8,7 +8,7 @@
 CREATE TABLE IF NOT EXISTS hailpath.trip_events
 (
     -- FixedString/Enum8 for the ids and status this codebase mints itself
-    -- (nus_common/ids.py) and constrains itself (Avro's TripStatus, and
+    -- (hailpath_common/ids.py) and constrains itself (Avro's TripStatus, and
     -- Postgres's own CHECK) - see driver_positions/rider_positions in
     -- 002_positions.sql. pickup_zone_id is LowCardinality(String), not
     -- FixedString: it's TLC's own variable-width LocationID, not a format

@@ -11,6 +11,13 @@ Meanul Data Studio is the portfolio. Four projects. Only the first one has code.
 
 The rest of this file is the finish plan for project 1 only.
 
+The running stack is one process per store: one PostgreSQL, one Redis, one
+Kafka broker, one ClickHouse. There is no Patroni, etcd, Sentinel, or
+ClickHouse replica set. Evidence blocks below that name `nus-pg-1`,
+`etcd-existing`, or a four-node warehouse are the 2026-10-06 archive.
+They are not the current design. The bring-up is `make destroy`,
+`make init`, `make prepare` if needed, `make up`.
+
 # meanul-hailpath — finalization plan
 
 One step at a time. A step is finished when its **Done when** line is true,
@@ -127,7 +134,7 @@ archives describe is not a passed step 12. The night bring-up this
 section was waiting on is the 2026-10-08 run, recorded under step 12.
 Do not destroy that stack to re-score it.
 
-The bring-up that is already written (destroy, init, up, etcd-existing)
+The bring-up that is already written (destroy, init, up)
 stays the protocol. These items are what has to be in that image first.
 
 ### Must-fix before another bring-up
@@ -233,7 +240,7 @@ The 09:10 log slice is a different fact about the same query family.
 `pgr_ksp` retries were 441 in driver-service and 91 in dispatch, and
 `gave up` was 0 for both. Those retries already work. They are not this
 fix. The captured stack is `_follow_jobs` → `drive_path` → `route`
-(`nus_common/routing.py`, the snap at the start of `route`) →
+(`hailpath_common/routing.py`, the snap at the start of `route`) →
 `nearest_road_point` → `postgres.fetch_one`. `route` calls
 `nearest_road_point` on both ends before `_query_with_retry`. The retry
 wraps only the `pgr_ksp` query. A replica cancel on the snap therefore
@@ -396,7 +403,7 @@ print secrets. It is not part of the repo.
 
 ## Block B closed — 2026-10-02, measured on one clean bring-up
 
-`make destroy` + `init` + `up` + `etcd-existing`, then five hours of live
+`make destroy` + `init` + `up`, then five hours of live
 traffic before the evaluation ran. Everything below came off that one
 stack, not from separate runs.
 
@@ -1500,7 +1507,7 @@ on the warehouse that still holds the seven rows is not required.
 ---
 
 The 2026-10-06 crash, and the supply-ratio reasoning that led to this
-stop, are kept below. The destroy / init / up / etcd-existing cycle
+stop, are kept below. The destroy / init / up cycle
 they describe has already been run for the record above.
 
 **Historical, kept because the reasoning matters: fulfilment was 0.611 at

@@ -28,7 +28,7 @@ drivable streets (`FeatureTyp`/`SegmentTyp`/`TrafDir`), computes `cost_s`/
 `reverse_cost_s` from real segment length and real posted speed limits, builds
 the routing topology (`pgr_createTopology`), and marks which vertices are
 actually reachable from each other (`on_main_network`) — the one thing every
-later point-picking call (`nus_common.routing.nearest_road_point`) trusts, so
+later point-picking call (`hailpath_common.routing.nearest_road_point`) trusts, so
 a generated trip can never reference a point that was never really on a road.
 
 ## Running it by hand

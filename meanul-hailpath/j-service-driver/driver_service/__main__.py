@@ -20,12 +20,12 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from nus_common import config, postgres, redis_client, routing
-from nus_common.citygrid import CityGrid
-from nus_common.geo import day_period, is_chord_path, linestring_vertices, to_millis, utc_now
-from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
-from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import config, postgres, redis_client, routing
+from hailpath_common.citygrid import CityGrid
+from hailpath_common.geo import day_period, is_chord_path, linestring_vertices, to_millis, utc_now
+from hailpath_common.kafka import AvroTopicConsumer, AvroTopicProducer
+from hailpath_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
+from hailpath_common.logging import get_logger, setup_logging
 
 from driver_service.fleet import (
     EN_ROUTE_PICKUP,
@@ -408,7 +408,7 @@ def record_shift_changes(starts: list[tuple[str, str]], ends: list[str]) -> None
 
 
 def main() -> int:
-    setup_logging("driver-service")
+    setup_logging("hailpath-driver")
     shutdown = Shutdown()
     rng = random.Random(config.integer("RANDOM_SEED", 20250824))
     grid = CityGrid.load()
@@ -467,7 +467,7 @@ def main() -> int:
     # online" loop below calls it once per online driver (up to ~63,600 at
     # full scale), and shift changes/idle re-targeting call it again
     # continuously, every tick, for as long as this process runs. Built
-    # once here instead; see nus_common.routing.build_road_point_pools's
+    # once here instead; see hailpath_common.routing.build_road_point_pools's
     # own docstring for the full story (confirmed directly in
     # h-bootstrap: this was most of what made a scale-sized seeding step
     # take tens of minutes with the host otherwise idle).
@@ -500,10 +500,10 @@ def main() -> int:
     # The producer exists before the opening path pass. That pass used to
     # finish every idle path and only then construct this, so a restart
     # published nothing until the whole fleet had a route.
-    producer = AvroTopicProducer(TOPIC, "driver-service")
+    producer = AvroTopicProducer(TOPIC, "hailpath-driver")
     consumer = AvroTopicConsumer(
         topics=[LIFECYCLE_TOPIC],
-        group_id=config.optional("KAFKA_GROUP_ID", "driver-service"),
+        group_id=config.optional("KAFKA_GROUP_ID", "hailpath-driver"),
         # Only what happens from now on: old trip news is history, and this
         # service holds no state that needs rebuilding from it.
         from_beginning=False,

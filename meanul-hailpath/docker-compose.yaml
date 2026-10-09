@@ -86,7 +86,7 @@ services:
         # Grafana runs as 472 with group 0; Superset as 1000.
         own 472:0 hailpath-grafana-data hailpath-grafana-plugins
         own 1000:1000 hailpath-superset-home hailpath-tiles-data
-        # h-bootstrap and the six services all run as the 'nus' user, 10001.
+        # h-bootstrap and the six services all run as the 'hailpath' user, 10001.
         own 10001:10001 hailpath-lion-data
         # ClickHouse starts as root and drops privileges itself, so its
         # data directory stays root-owned.
@@ -117,7 +117,7 @@ services:
     volumes:
       - ./z-config/haproxy/haproxy.cfg.template:/template/haproxy.cfg.template:ro
       - ./z-config/haproxy/render-config.sh:/render-config.sh:ro
-      - haproxy-config:/out
+      - hailpath-haproxy-config:/out
     networks:
       - backbone
 
@@ -126,25 +126,25 @@ services:
     container_name: hailpath-proxy
     hostname: hailpath-proxy
     restart: unless-stopped
-    cpus: ${LB_CPUS:-0.5}
-    mem_limit: ${LB_MEM:-128m}
-    memswap_limit: ${LB_MEM:-128m}
+    cpus: ${PROXY_CPUS:-0.5}
+    mem_limit: ${PROXY_MEM:-128m}
+    memswap_limit: ${PROXY_MEM:-128m}
     environment:
       TZ: ${TZ:-UTC}
     volumes:
-      - haproxy-config:/usr/local/etc/haproxy:ro
+      - hailpath-haproxy-config:/usr/local/etc/haproxy:ro
     ports:
-      - "${LB_A_PG_WRITE_PORT:-5432}:5432"
-      - "${LB_A_PG_READ_PORT:-5433}:5433"
-      - "${LB_A_REDIS_WRITE_PORT:-6379}:6379"
-      - "${LB_A_REDIS_READ_PORT:-6380}:6380"
-      - "${LB_A_STATS_PORT:-8404}:8404"
-      - "${LB_A_CH_HTTP_PORT:-8123}:8123"
-      - "${LB_A_CH_NATIVE_PORT:-9000}:9000"
-      - "${LB_A_GRAFANA_PORT:-3000}:3000"
-      - "${LB_A_SUPERSET_PORT:-8088}:8088"
-      - "${LB_A_KSQLDB_PORT:-8089}:8089"
-      - "${LB_A_DEBEZIUM_PORT:-8083}:8083"
+      - "${PROXY_PG_WRITE_PORT:-5432}:5432"
+      - "${PROXY_PG_READ_PORT:-5433}:5433"
+      - "${PROXY_REDIS_WRITE_PORT:-6379}:6379"
+      - "${PROXY_REDIS_READ_PORT:-6380}:6380"
+      - "${PROXY_STATS_PORT:-8404}:8404"
+      - "${PROXY_CH_HTTP_PORT:-8123}:8123"
+      - "${PROXY_CH_NATIVE_PORT:-9000}:9000"
+      - "${PROXY_GRAFANA_PORT:-3000}:3000"
+      - "${PROXY_SUPERSET_PORT:-8088}:8088"
+      - "${PROXY_KSQLDB_PORT:-8089}:8089"
+      - "${PROXY_DEBEZIUM_PORT:-8083}:8083"
       # Fixed literal, not a `${VAR:-default}:CONTAINER` pair like every
       # line above: a broker's advertised address is baked into its own
       # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
@@ -161,7 +161,7 @@ services:
 
 volumes:
   # Rendered by haproxy-config-render; never mounted read-write anywhere else.
-  haproxy-config:
+  hailpath-haproxy-config:
     name: hailpath-haproxy-config
     driver: local
     driver_opts:

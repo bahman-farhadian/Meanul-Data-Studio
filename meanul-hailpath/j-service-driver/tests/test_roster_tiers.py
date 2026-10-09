@@ -18,7 +18,7 @@ from __future__ import annotations
 import json
 import random
 
-from nus_common import redis_client
+from hailpath_common import redis_client
 
 from driver_service.__main__ import (
     cache_counts, load_roster, routing_workers, settled_caches,

@@ -2,7 +2,7 @@
 
 import random
 
-from nus_common.geo import is_chord_path, linestring_vertices
+from hailpath_common.geo import is_chord_path, linestring_vertices
 
 from driver_service.fleet import IDLE, Driver
 

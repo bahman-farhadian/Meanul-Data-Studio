@@ -22,11 +22,11 @@ import json
 import sys
 import time
 
-from nus_common import config, redis_client
-from nus_common.geo import day_period, utc_now
-from nus_common.kafka import AvroTopicConsumer
-from nus_common.lifecycle import Shutdown, wait_for_bootstrap
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import config, redis_client
+from hailpath_common.geo import day_period, utc_now
+from hailpath_common.kafka import AvroTopicConsumer
+from hailpath_common.lifecycle import Shutdown, wait_for_bootstrap
+from hailpath_common.logging import get_logger, setup_logging
 
 from clickhouse_sink.batches import Batches
 from clickhouse_sink.seen import SeenEvents
@@ -82,7 +82,7 @@ class HotspotCache:
 
 
 def main() -> int:
-    setup_logging("clickhouse-sink")
+    setup_logging("hailpath-clickhouse-sink")
     shutdown = Shutdown()
 
     batches = Batches(
@@ -104,7 +104,7 @@ def main() -> int:
     hotspots = HotspotCache(redis, config.number("SINK_HOTSPOT_REFRESH_SECONDS", 30.0))
     consumer = AvroTopicConsumer(
         topics=TOPICS,
-        group_id=config.optional("KAFKA_GROUP_ID", "clickhouse-sink"),
+        group_id=config.optional("KAFKA_GROUP_ID", "hailpath-clickhouse-sink"),
         # From the beginning: anything that reached Kafka belongs in
         # ClickHouse, including whatever arrived while the sink was down.
         from_beginning=True,

@@ -24,12 +24,12 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-NUS = Path(__file__).resolve().parents[3]
-sys.path.insert(0, str(NUS / "z-lib" / "nus-common"))
+HAILPATH = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(HAILPATH / "z-lib" / "hailpath-common"))
 
 from confluent_kafka import KafkaError  # noqa: E402
 
-from nus_common.kafka import AvroTopicConsumer  # noqa: E402
+from hailpath_common.kafka import AvroTopicConsumer  # noqa: E402
 
 
 class _Bare:

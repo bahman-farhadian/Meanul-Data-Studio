@@ -29,9 +29,9 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app/m-service-city
 
-# Metadata only. nus-common's Python source is copied after the wheel
+# Metadata only. hailpath-common's Python source is copied after the wheel
 # install, so a change to routing.py does not invalidate this layer.
-COPY z-lib/nus-common/pyproject.toml /app/z-lib/nus-common/pyproject.toml
+COPY z-lib/hailpath-common/pyproject.toml /app/z-lib/hailpath-common/pyproject.toml
 COPY m-service-city/pyproject.toml m-service-city/uv.lock /app/m-service-city/
 
 # --frozen: install exactly what uv.lock says. A build must never quietly
@@ -47,7 +47,7 @@ ENV UV_LINK_MODE=copy \
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv sync --frozen --no-dev --no-install-project --no-install-local
 
-COPY z-lib/nus-common /app/z-lib/nus-common
+COPY z-lib/hailpath-common /app/z-lib/hailpath-common
 COPY m-service-city/city_service /app/m-service-city/city_service
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv sync --frozen --no-dev
@@ -71,10 +71,10 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends tzdata \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus
+ && useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 hailpath
 
-COPY --from=build --chown=nus:nus /app /app
-COPY --chown=nus:nus c-infra-kafka/schemas /app/schemas
+COPY --from=build --chown=hailpath:hailpath /app /app
+COPY --chown=hailpath:hailpath c-infra-kafka/schemas /app/schemas
 
 WORKDIR /app/m-service-city
 ENV PATH="/app/m-service-city/.venv/bin:${PATH}" \
@@ -82,11 +82,11 @@ ENV PATH="/app/m-service-city/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-USER nus
+USER hailpath
 
 # Fail the build rather than ship an image whose entrypoint cannot import
 # itself — a broken path or a missed COPY would otherwise only show up as a
 # crash loop after deployment.
-RUN python -c "import city_service, nus_common; print('hailpath/city imports cleanly')"
+RUN python -c "import city_service, hailpath_common; print('hailpath/city imports cleanly')"
 
 CMD ["python", "-m", "city_service"]

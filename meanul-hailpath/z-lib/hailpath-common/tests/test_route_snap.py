@@ -2,7 +2,7 @@
 
 import psycopg
 
-from nus_common import routing
+from hailpath_common import routing
 
 
 def test_snap_serialization_failure_does_not_escape_route(monkeypatch):

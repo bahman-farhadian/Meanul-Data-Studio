@@ -229,7 +229,7 @@ services:
         chmod 0444 /secrets/jaas_config.file /secrets/password.properties
         echo "ksqlDB Basic-auth credentials written for user $$KSQLDB_ADMIN_USER"
     volumes:
-      - ksqldb-secrets:/secrets
+      - hailpath-ksqldb-secrets:/secrets
     networks:
       - backbone
 
@@ -318,7 +318,7 @@ services:
       KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
       KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
     volumes:
-      - ksqldb-secrets:/etc/ksqldb-secrets:ro
+      - hailpath-ksqldb-secrets:/etc/ksqldb-secrets:ro
     healthcheck:
       # python3, not curl - same finding as schema-registry: this image has
       # neither curl nor wget nor nc, so a curl healthcheck never passes.
@@ -369,7 +369,7 @@ volumes:
       o: bind
       device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-data
 
-  ksqldb-secrets:
+  hailpath-ksqldb-secrets:
     name: hailpath-ksqldb-secrets
     driver: local
     driver_opts:

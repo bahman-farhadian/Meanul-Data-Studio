@@ -1,19 +1,19 @@
 [project]
-name = "clickhouse-sink"
+name = "hailpath-clickhouse-sink"
 version = "0.1.0"
 description = "Writes every event into ClickHouse, enriched from Redis"
 requires-python = ">=3.13"
 
 dependencies = [
     # Clients, logging and lifecycle helpers shared by every Python
-    # component. See ../z-lib/nus-common.
-    "nus-common",
+    # component. See ../z-lib/hailpath-common.
+    "hailpath-common",
 ]
 
 [tool.uv.sources]
 # A path, not a version: the shared package lives in this repository, and the
 # image keeps the same layout so this resolves in both places.
-nus-common = { path = "../z-lib/nus-common" }
+hailpath-common = { path = "../z-lib/hailpath-common" }
 
 [build-system]
 requires = ["hatchling==1.27.0"]

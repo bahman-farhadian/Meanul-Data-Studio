@@ -18,8 +18,8 @@ import shapely
 from shapely import STRtree
 from shapely.geometry import Point
 
-from nus_common import postgres
-from nus_common.geo import distance_km
+from hailpath_common import postgres
+from hailpath_common.geo import distance_km
 
 ZONES_SQL = """
     SELECT zone_id, name, borough,

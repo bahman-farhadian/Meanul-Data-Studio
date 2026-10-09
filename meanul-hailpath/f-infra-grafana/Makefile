@@ -17,7 +17,7 @@ grafana-health:
 	@printf "  Geomap tiles are same-origin /tiles/ — checked by $(C)make tiles-health$(X).\n"
 
 # The HTTP half runs through HAProxy from inside hailpath-net, never from a
-# host address. It used to curl 127.0.0.1:LB_A_GRAFANA_PORT and reported a
+# host address. It used to curl 127.0.0.1:PROXY_GRAFANA_PORT and reported a
 # tiles failure on a stack whose tiles were perfectly healthy: Docker's
 # published-port DNAT cannot send a loopback destination out to a real
 # interface while net.ipv4.conf.*.route_localnet is 0, so docker-proxy

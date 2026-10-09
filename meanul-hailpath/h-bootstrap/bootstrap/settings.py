@@ -7,7 +7,7 @@ editing code.
 
 from dataclasses import dataclass
 
-from nus_common import config
+from hailpath_common import config
 
 
 @dataclass(frozen=True)

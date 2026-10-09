@@ -19,7 +19,7 @@ import random
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from nus_common.geo import point_at_fraction, points_along_linestring
+from hailpath_common.geo import point_at_fraction, points_along_linestring
 
 # What comes after what, and how long the step normally takes in seconds.
 # The pickup drive and the trip itself are worked out per trip, so they are

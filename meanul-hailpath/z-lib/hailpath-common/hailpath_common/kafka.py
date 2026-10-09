@@ -25,8 +25,8 @@ from confluent_kafka.serialization import (
     StringSerializer,
 )
 
-from nus_common import config
-from nus_common.logging import get_logger
+from hailpath_common import config
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

@@ -7,8 +7,8 @@ That is a table and a loop, and a framework would only hide it.
 
 from pathlib import Path
 
-from nus_common import postgres
-from nus_common.logging import get_logger
+from hailpath_common import postgres
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

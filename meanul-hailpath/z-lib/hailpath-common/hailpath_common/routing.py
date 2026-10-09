@@ -34,9 +34,9 @@ from concurrent.futures import ThreadPoolExecutor
 
 import psycopg
 
-from nus_common import config, postgres
-from nus_common.geo import linestring_vertices
-from nus_common.logging import get_logger
+from hailpath_common import config, postgres
+from hailpath_common.geo import linestring_vertices
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 
@@ -396,7 +396,7 @@ def random_road_point_in_zone(grid, zone_id: str, rng, attempts: int = 5) -> tup
     network - never open water, a park, or a real island with no car bridge.
 
     grid is anything with random_point_in(zone_id, rng) and centre_of(zone_id)
-    - a nus_common.citygrid.CityGrid, from any caller (h-bootstrap,
+    - a hailpath_common.citygrid.CityGrid, from any caller (h-bootstrap,
     driver-service, passenger-service all draw the same grid from it).
 
     Retries with a fresh random point a few times before falling back to the

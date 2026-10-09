@@ -5,7 +5,7 @@ running for a day, and the traffic factors that routing depends on would
 have nothing to start from. So bootstrap invents a believable week that ends
 right now.
 
-Historical trips are routed for real, through nus_common.routing.route() -
+Historical trips are routed for real, through hailpath_common.routing.route() -
 the same pgRouting query dispatch-service uses for live trips. A pickup and
 dropoff picked at random are never priced until the router has confirmed
 they are actually connected by a real road; when they are not (a point in
@@ -14,7 +14,7 @@ no_driver_found instead of priced across nothing. Position reports then
 follow that real route rather than a straight line between the two ends.
 
 Routing is a Postgres round trip - the most expensive step in the pipeline,
-per nus_common.routing's own docstring - so it runs on a small pool of
+per hailpath_common.routing's own docstring - so it runs on a small pool of
 worker threads (HISTORY_ROUTING_WORKERS) instead of one trip at a time.
 Everything that has to stay reproducible for a given seed (which zones, which
 ids, which outcome, how much jitter) is decided sequentially, before the
@@ -42,12 +42,12 @@ from decimal import Decimal
 
 import psycopg
 
-from nus_common import demand_calibration, postgres, redis_client, routing
-from nus_common.geo import day_period, distance_km, in_sim_tz, points_along_linestring
-from nus_common.ids import new_trip_id
-from nus_common.logging import get_logger
-from nus_common.money import money, money_or_none
-from nus_common.offers import run_chain
+from hailpath_common import demand_calibration, postgres, redis_client, routing
+from hailpath_common.geo import day_period, distance_km, in_sim_tz, points_along_linestring
+from hailpath_common.ids import new_trip_id
+from hailpath_common.logging import get_logger
+from hailpath_common.money import money, money_or_none
+from hailpath_common.offers import run_chain
 
 from bootstrap import people, zones
 from bootstrap.settings import Settings
@@ -379,7 +379,7 @@ def _next_spec(
     )
 
     # Real TLC-trip-record weight for this exact zone/hour/day-of-week
-    # (nus_common.demand_calibration - see zone-demand-prepare), not a
+    # (hailpath_common.demand_calibration - see zone-demand-prepare), not a
     # flat per-zone guess: JFK at 8am on a Monday is genuinely busier than
     # a residential zone at 3am, and now that shows up here because it
     # showed up in a real month of trips.
@@ -579,7 +579,7 @@ def _finish_trip(
     )
 
     # The offer chain that produced this match, using the same acceptance
-    # model dispatch-service runs live (nus_common.offers). A seeded week
+    # model dispatch-service runs live (hailpath_common.offers). A seeded week
     # whose funnel looked different from live traffic would make every
     # acceptance-rate chart read as a step change at the seed boundary.
     matched_at, offers, winner = _seed_offers(spec, surge, rng, settings, week)

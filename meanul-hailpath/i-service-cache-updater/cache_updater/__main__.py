@@ -25,15 +25,15 @@ import json
 import sys
 import time
 
-from nus_common import config, redis_client
-from nus_common.kafka import AvroTopicConsumer
-from nus_common.lifecycle import Shutdown
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import config, redis_client
+from hailpath_common.kafka import AvroTopicConsumer
+from hailpath_common.lifecycle import Shutdown
+from hailpath_common.logging import get_logger, setup_logging
 
 log = get_logger(__name__)
 
 # Which cdc topic feeds which Redis key, and which of the numbered
-# databases (nus_common.redis_client.DB_*) that key belongs to. This is the
+# databases (hailpath_common.redis_client.DB_*) that key belongs to. This is the
 # one service that writes across every domain - everyone else's own cache
 # reads live in one db, but cache-updater is the thing that puts them
 # there, straight from whichever table changed.
@@ -69,7 +69,7 @@ def key_for(topic: str, key_value, row: dict | None) -> tuple[str, int] | None:
 
 
 def main() -> int:
-    setup_logging("cache-updater")
+    setup_logging("hailpath-cache-updater")
     shutdown = Shutdown()
 
     # A pattern, not a list: Debezium creates one topic per table, and a new
@@ -86,7 +86,7 @@ def main() -> int:
     pipelines = {db: connections[db].pipeline() for db in dbs}
     consumer = AvroTopicConsumer(
         topics=[pattern],
-        group_id=config.optional("KAFKA_GROUP_ID", "cache-updater"),
+        group_id=config.optional("KAFKA_GROUP_ID", "hailpath-cache-updater"),
         from_beginning=True,
         # Debezium encodes its keys as Avro, unlike the stack's own producers.
         avro_keys=True,

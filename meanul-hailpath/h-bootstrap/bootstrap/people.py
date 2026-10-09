@@ -28,9 +28,9 @@ from concurrent.futures import ProcessPoolExecutor
 
 from faker import Faker
 
-from nus_common import postgres, redis_client
-from nus_common.ids import driver_id, passenger_id
-from nus_common.logging import get_logger
+from hailpath_common import postgres, redis_client
+from hailpath_common.ids import driver_id, passenger_id
+from hailpath_common.logging import get_logger
 
 from bootstrap import zones
 from bootstrap.settings import Settings

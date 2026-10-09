@@ -6,8 +6,8 @@ requires-python = ">=3.13"
 
 dependencies = [
     # Everything shared with the other Python components: clients, logging,
-    # lifecycle helpers. See ../z-lib/nus-common.
-    "nus-common",
+    # lifecycle helpers. See ../z-lib/hailpath-common.
+    "hailpath-common",
     # Believable people, vehicles and phone numbers for the seed data.
     "faker>=30.0",
     # Downloading the map extract and its checksum.
@@ -18,7 +18,7 @@ dependencies = [
 # A path, not a version: the shared package lives in this repository. The
 # image is built with meanul-hailpath/ as its context and keeps the same
 # layout, so this relative path works both here and inside the container.
-nus-common = { path = "../z-lib/nus-common" }
+hailpath-common = { path = "../z-lib/hailpath-common" }
 
 [build-system]
 requires = ["hatchling==1.27.0"]

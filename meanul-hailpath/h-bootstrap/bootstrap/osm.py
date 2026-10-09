@@ -13,8 +13,8 @@ one-shot `graph-restore`, so this Python image does not carry pg_restore.
 
 from pathlib import Path
 
-from nus_common import postgres
-from nus_common.logging import get_logger
+from hailpath_common import postgres
+from hailpath_common.logging import get_logger
 
 from bootstrap.settings import Settings
 

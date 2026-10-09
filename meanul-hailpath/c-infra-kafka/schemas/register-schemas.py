@@ -18,7 +18,7 @@ ksql-init. Registering here, right after the topics are created, is what
 makes the order work.
 
 Subjects are named <topic>-value, which is Confluent's default
-TopicNameStrategy and exactly what the producers use: nus_common.kafka
+TopicNameStrategy and exactly what the producers use: hailpath_common.kafka
 builds its AvroSerializer with a SerializationContext of (topic, VALUE).
 The file's own name is the topic name, so the two cannot drift.
 

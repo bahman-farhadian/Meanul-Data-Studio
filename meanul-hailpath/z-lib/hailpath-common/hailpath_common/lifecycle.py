@@ -16,7 +16,7 @@ import threading
 import time
 from collections.abc import Callable
 
-from nus_common.logging import get_logger
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

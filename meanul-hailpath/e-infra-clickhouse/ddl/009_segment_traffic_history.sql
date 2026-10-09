@@ -2,7 +2,7 @@
 -- segments, as it happens. segment_traffic (Postgres) only ever holds the
 -- current factor; this is the history behind it, which is what makes a real
 -- time series of "how congested was this zone, at this time" answerable -
--- and, once routing picks between multiple real routes (nus_common.routing),
+-- and, once routing picks between multiple real routes (hailpath_common.routing),
 -- a real signal of how traffic actually shifted between them.
 
 CREATE TABLE IF NOT EXISTS hailpath.segment_traffic_history

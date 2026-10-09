@@ -27,9 +27,9 @@ import os
 import sys
 from pathlib import Path
 
-from nus_common import clickhouse, postgres, redis_client
-from nus_common.lifecycle import BOOTSTRAP_DONE_KEY, wait_for
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import clickhouse, postgres, redis_client
+from hailpath_common.lifecycle import BOOTSTRAP_DONE_KEY, wait_for
+from hailpath_common.logging import get_logger, setup_logging
 
 from bootstrap import database, demand_calibration, history, migrate, osm, people
 from bootstrap import settings as settings_module
@@ -46,7 +46,7 @@ def _duplicate_trip_ids(trip_rows: list[dict]) -> list[str]:
     Ids carry the request date and eight random characters, so collisions
     are a birthday problem over one day's trips rather than over the whole
     seed. At eight HEX digits that was 12.5 expected collisions at 327,500
-    trips a day and 50 at full scale; see nus_common.ids for why the
+    trips a day and 50 at full scale; see hailpath_common.ids for why the
     alphabet changed. This stays as the backstop, because the cost of
     finding out late is measured in hours.
     """

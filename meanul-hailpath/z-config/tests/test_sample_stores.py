@@ -23,7 +23,7 @@ from sample_graph import LATS, LONS, WATER_LAT, WATER_LON, load as load_graph
 
 REPO = Path(__file__).resolve().parents[2]
 COMPOSE_FILE = REPO / "z-config" / "sample-stack" / "docker-compose.yaml"
-SCRATCH = Path(os.environ.get("NUS_SAMPLE_SCRATCH", "/tmp/grok-goal-9d807b438e5a/implementer"))
+SCRATCH = Path(os.environ.get("HAILPATH_SAMPLE_SCRATCH", "/tmp/grok-goal-9d807b438e5a/implementer"))
 PROJECT = "hailpath-goal-sample"
 
 
@@ -96,7 +96,7 @@ def sample_env():
         }
     )
 
-    from nus_common import clickhouse, postgres
+    from hailpath_common import clickhouse, postgres
 
     postgres.reset_pools()
     clickhouse.reset_client()
@@ -121,8 +121,8 @@ def sample_env():
 
     yield passwords
 
-    from nus_common import clickhouse as ch
-    from nus_common import postgres as pg
+    from hailpath_common import clickhouse as ch
+    from hailpath_common import postgres as pg
 
     pg.reset_pools()
     ch.reset_client()
@@ -130,7 +130,7 @@ def sample_env():
 
 
 def _metres_to_ways(lat: float, lon: float) -> float:
-    from nus_common import postgres
+    from hailpath_common import postgres
 
     with postgres.read_connection() as conn:
         row = postgres.fetch_one(
@@ -157,7 +157,7 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
     """
     from datetime import datetime, timedelta, timezone
 
-    from nus_common import postgres
+    from hailpath_common import postgres
     from sample_graph import LATS, LONS
 
     from dispatch_service.__main__ import ALREADY_HANDLED, handle_one_request
@@ -236,7 +236,7 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
     # A second chain whose sequence is new still hits the partial unique
     # index. That rejection must come back as "already stored", not an
     # exception, and must not add another accepted row.
-    from nus_common.offers import Offer
+    from hailpath_common.offers import Offer
 
     now = datetime.now(timezone.utc)
     second = Offer(
@@ -269,15 +269,15 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
 
 
 def test_water_point_does_not_snap(sample_env):
-    from nus_common import routing
+    from hailpath_common import routing
 
     assert routing.nearest_road_point(WATER_LAT, WATER_LON) is None
     assert _metres_to_ways(WATER_LAT, WATER_LON) > 500
 
 
 def test_generation_never_returns_a_harbour_point(sample_env):
-    from nus_common import routing
-    from nus_common.citygrid import CityGrid
+    from hailpath_common import routing
+    from hailpath_common.citygrid import CityGrid
 
     grid = CityGrid.load(from_leader=True)
     rng = random.Random(20250824)
@@ -287,8 +287,8 @@ def test_generation_never_returns_a_harbour_point(sample_env):
 
 
 def test_route_walks_the_l_not_the_chord(sample_env):
-    from nus_common import routing
-    from nus_common.geo import is_chord_path, linestring_vertices
+    from hailpath_common import routing
+    from hailpath_common.geo import is_chord_path, linestring_vertices
 
     # Southwest corner to one block north-and-east: the street path is an L.
     from_lat, from_lon = LATS[0], LONS[0]
@@ -309,8 +309,8 @@ def test_route_walks_the_l_not_the_chord(sample_env):
 
 
 def test_reverse_traversal_keeps_shape_points_in_visit_order(sample_env):
-    from nus_common import routing
-    from nus_common.geo import linestring_vertices
+    from hailpath_common import routing
+    from hailpath_common.geo import linestring_vertices
 
     # East to west along the southernmost street: the stored edge runs west→east.
     from_lat, from_lon = LATS[0], LONS[-1]
@@ -324,7 +324,7 @@ def test_reverse_traversal_keeps_shape_points_in_visit_order(sample_env):
 
 
 def test_drive_path_does_not_install_a_sea_chord(sample_env):
-    from nus_common import routing
+    from hailpath_common import routing
 
     path = routing.drive_path(WATER_LAT, WATER_LON, LATS[0], LONS[0], "night")
     # Water is off the main network; sitting still beats flying.
@@ -334,9 +334,9 @@ def test_drive_path_does_not_install_a_sea_chord(sample_env):
 def test_broker_cache_and_databases(sample_env):
     from datetime import timedelta
 
-    from nus_common import clickhouse, postgres, redis_client, routing
-    from nus_common.geo import linestring_vertices, to_millis, utc_now
-    from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
+    from hailpath_common import clickhouse, postgres, redis_client, routing
+    from hailpath_common.geo import linestring_vertices, to_millis, utc_now
+    from hailpath_common.kafka import AvroTopicConsumer, AvroTopicProducer
 
     from dispatch_service.trips import ActiveTrip
     from dispatch_service.__main__ import store_live_state
@@ -549,7 +549,7 @@ def test_broker_cache_and_databases(sample_env):
 
 def test_on_network_sql_fails_a_sea_pickup_and_chord_route(sample_env):
     """The shipped verify SQL must flag a harbour pickup and a two-point chord."""
-    from nus_common import postgres
+    from hailpath_common import postgres
 
     sql = (REPO / "z-config" / "check-on-network.sql").read_text()
     with postgres.write_connection() as conn:

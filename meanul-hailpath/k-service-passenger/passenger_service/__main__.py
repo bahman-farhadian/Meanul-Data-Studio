@@ -18,13 +18,13 @@ import random
 import sys
 import time
 
-from nus_common import config, demand_calibration, postgres, redis_client, routing
-from nus_common.citygrid import CityGrid
-from nus_common.geo import in_sim_tz, to_millis, utc_now
-from nus_common.ids import new_trip_id
-from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
-from nus_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import config, demand_calibration, postgres, redis_client, routing
+from hailpath_common.citygrid import CityGrid
+from hailpath_common.geo import in_sim_tz, to_millis, utc_now
+from hailpath_common.ids import new_trip_id
+from hailpath_common.kafka import AvroTopicConsumer, AvroTopicProducer
+from hailpath_common.lifecycle import Shutdown, wait_for, wait_for_bootstrap
+from hailpath_common.logging import get_logger, setup_logging
 
 from passenger_service.demand import requests_this_tick
 
@@ -108,7 +108,7 @@ def load_rider_ids(redis) -> list[str]:
 
 
 def main() -> int:
-    setup_logging("passenger-service")
+    setup_logging("hailpath-passenger")
     shutdown = Shutdown()
     rng = random.Random(config.integer("RANDOM_SEED", 20250824))
     grid = CityGrid.load()
@@ -149,15 +149,15 @@ def main() -> int:
     # random_road_point_in_zone's own snapping step is a real database
     # round trip - every new trip request calls it twice (pickup and
     # dropoff), forever, at TRIP_REQUESTS_PER_MINUTE. Built once here
-    # instead; see nus_common.routing.build_road_point_pools's own
+    # instead; see hailpath_common.routing.build_road_point_pools's own
     # docstring for the full story.
     routing.build_road_point_pools(grid, road_point_pool_size, road_point_pool_workers)
 
-    request_producer = AvroTopicProducer(REQUEST_TOPIC, "passenger-service")
-    position_producer = AvroTopicProducer(POSITION_TOPIC, "passenger-service")
+    request_producer = AvroTopicProducer(REQUEST_TOPIC, "hailpath-passenger")
+    position_producer = AvroTopicProducer(POSITION_TOPIC, "hailpath-passenger")
     consumer = AvroTopicConsumer(
         topics=[LIFECYCLE_TOPIC],
-        group_id=config.optional("KAFKA_GROUP_ID", "passenger-service"),
+        group_id=config.optional("KAFKA_GROUP_ID", "hailpath-passenger"),
         from_beginning=False,
     )
 

@@ -19,9 +19,9 @@
 bootstrap:
 	$(call say,Bootstrap — schema, street graph restore, people, a week of history)
 	@$(MAKE) --no-print-directory pg-cpus-bootstrap
-	@if $(COMPOSE) run --rm -e BOOTSTRAP_PHASE=schema hailpath-bootstrap \
+	@if $(COMPOSE) --profile init run --rm -e BOOTSTRAP_PHASE=schema hailpath-bootstrap \
 		&& $(COMPOSE) --profile init run --rm graph-restore \
-		&& $(COMPOSE) run --rm hailpath-bootstrap; then \
+		&& $(COMPOSE) --profile init run --rm hailpath-bootstrap; then \
 		printf "\n  $(G)ok$(X)      bootstrap finished; system:bootstrap:done is set\n"; \
 		$(MAKE) --no-print-directory pg-cpus-normal; \
 	else \

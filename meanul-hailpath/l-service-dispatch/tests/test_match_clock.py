@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 import random
 
 from dispatch_service import __main__ as dispatch
-from nus_common.offers import Offer
+from hailpath_common.offers import Offer
 
 
 def test_matched_at_is_after_the_route_and_not_before_the_request(monkeypatch):

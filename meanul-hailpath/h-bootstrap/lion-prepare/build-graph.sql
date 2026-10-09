@@ -42,7 +42,7 @@ DROP TABLE IF EXISTS ways_vertices_pgr CASCADE;
 -- which OGR treats as multi-part-capable) - ST_Dump splits any that
 -- genuinely have more than one part into their own rows, with a synthetic
 -- gid, so ways.the_geom stays plain LineString the way pgr_createTopology
--- and nus_common/routing.py's ST_Collect/ST_LineMerge both expect.
+-- and hailpath_common/routing.py's ST_Collect/ST_LineMerge both expect.
 CREATE TABLE lion_filtered AS
 SELECT
     row_number() OVER ()   AS gid,
@@ -68,7 +68,7 @@ ALTER TABLE lion_filtered ADD COLUMN reverse_cost_s double precision;
 
 -- -1 is pgRouting's convention for "this direction cannot be driven" - the
 -- same convention the previous osm2pgrouting-built graph already used for
--- one-way streets, so nus_common/routing.py needs no change here.
+-- one-way streets, so hailpath_common/routing.py needs no change here.
 UPDATE lion_filtered SET
     cost_s = CASE
         WHEN traf_dir = 'A' THEN -1
@@ -80,7 +80,7 @@ UPDATE lion_filtered SET
     END;
 
 -- 3. The table shape pgr_createTopology expects, matching the column names
--- nus_common/routing.py already queries (the_geom, cost_s, reverse_cost_s,
+-- hailpath_common/routing.py already queries (the_geom, cost_s, reverse_cost_s,
 -- length_m, source, target).
 --
 -- geom::geometry(LineString, 4326), not a bare geom AS the_geom: ST_Dump's
@@ -121,7 +121,7 @@ CREATE INDEX ways_vertices_pgr_geom_idx ON ways_vertices_pgr USING gist (the_geo
 
 -- 4. Mark which vertices are actually reachable from each other - the
 -- verified, connected core every generated point gets snapped to
--- (nus_common/routing.py::nearest_road_point). Real islands (Governors,
+-- (hailpath_common/routing.py::nearest_road_point). Real islands (Governors,
 -- Liberty, Ellis - no car bridge) correctly stay unmarked; nothing here
 -- changes that, it only stops the rest of the map from paying for it.
 ALTER TABLE ways_vertices_pgr ADD COLUMN on_main_network boolean NOT NULL DEFAULT false;

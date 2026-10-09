@@ -53,7 +53,7 @@ services:
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://hailpath-schema-registry:8081}
-      KAFKA_GROUP_ID: ${PASSENGER_GROUP_ID:-passenger-service}
+      KAFKA_GROUP_ID: ${PASSENGER_GROUP_ID:-hailpath-passenger}
 
       REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
@@ -70,7 +70,7 @@ services:
       MAX_SNAP_KM: ${MAX_SNAP_KM:-0.5}
 
       # A pool of real, road-snapped points per zone, built once at startup
-      # (nus_common.routing.build_road_point_pools) instead of paying a real
+      # (hailpath_common.routing.build_road_point_pools) instead of paying a real
       # database round trip twice per new trip request, forever.
       ROAD_POINT_POOL_SIZE: ${ROAD_POINT_POOL_SIZE:-300}
       ROAD_POINT_POOL_WORKERS: ${ROAD_POINT_POOL_WORKERS:-8}

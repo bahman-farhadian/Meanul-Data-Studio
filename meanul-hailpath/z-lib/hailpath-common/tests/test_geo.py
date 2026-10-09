@@ -1,6 +1,6 @@
 """Direct tests of shipped geo helpers: street polylines vs a two-point chord."""
 
-from nus_common.geo import (
+from hailpath_common.geo import (
     is_chord_path,
     linestring_vertices,
     point_at_fraction,

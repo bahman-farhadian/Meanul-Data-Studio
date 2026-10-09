@@ -72,15 +72,15 @@ wheels = [
 ]
 
 [[package]]
-name = "cache-updater"
+name = "hailpath-cache-updater"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "nus-common" },
+    { name = "hailpath-common" },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "nus-common", directory = "../z-lib/nus-common" }]
+requires-dist = [{ name = "hailpath-common", directory = "../z-lib/hailpath-common" }]
 
 [[package]]
 name = "cachetools"
@@ -592,9 +592,9 @@ wheels = [
 ]
 
 [[package]]
-name = "nus-common"
+name = "hailpath-common"
 version = "0.1.0"
-source = { directory = "../z-lib/nus-common" }
+source = { directory = "../z-lib/hailpath-common" }
 dependencies = [
     { name = "clickhouse-connect" },
     { name = "confluent-kafka", extra = ["schema-registry"] },

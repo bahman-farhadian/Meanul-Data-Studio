@@ -91,7 +91,7 @@ INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PI
 INFRA_WAIT := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_E) $(PIECE_F) $(PIECE_G)
 
 # Consumer groups, for the lag report. Must match the consumer-group section of .env.example.
-GROUPS := cache-updater driver-service passenger-service dispatch-service city-service clickhouse-sink
+GROUPS := hailpath-cache-updater hailpath-driver hailpath-passenger hailpath-dispatch hailpath-city hailpath-clickhouse-sink
 
 # --- output -------------------------------------------------------------------
 B := \033[1m
@@ -300,16 +300,16 @@ _need-uv:
 .PHONY: verify-walk
 verify-walk: _need-uv
 	$(call say,Walk checks)
-	@cd z-lib/nus-common && uv sync --extra test >/dev/null
-	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
-		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-lib/nus-common/tests j-service-driver/tests l-service-dispatch/tests
+	@cd z-lib/hailpath-common && uv sync --extra test >/dev/null
+	@PYTHONPATH="z-lib/hailpath-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
+		z-lib/hailpath-common/.venv/bin/pytest -c pytest.ini z-lib/hailpath-common/tests j-service-driver/tests l-service-dispatch/tests
 
 .PHONY: verify-sample
 verify-sample: _need-uv
 	$(call say,Sample stores)
-	@cd z-lib/nus-common && uv sync --extra test >/dev/null
-	@PYTHONPATH="z-lib/nus-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
-		z-lib/nus-common/.venv/bin/pytest -c pytest.ini z-config/tests
+	@cd z-lib/hailpath-common && uv sync --extra test >/dev/null
+	@PYTHONPATH="z-lib/hailpath-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
+		z-lib/hailpath-common/.venv/bin/pytest -c pytest.ini z-config/tests
 
 include z-mk/wait-live.mk
 

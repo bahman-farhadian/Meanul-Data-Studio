@@ -25,17 +25,17 @@ import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
-# this file lives at meanul-hailpath/z-lib/nus-common/tests/
-NUS = TESTS.parents[2]
+# this file lives at meanul-hailpath/z-lib/hailpath-common/tests/
+HAILPATH = TESTS.parents[2]
 
 LOOPBACK = re.compile(r"127\.0\.0\.1|\[::1\]")
 FETCHES = re.compile(r"\b(curl|wget)\b")
 
 
 def _makefiles() -> list[Path]:
-    assert NUS.name == "meanul-hailpath", NUS
-    found = [NUS / "Makefile"] + sorted(NUS.glob("*/Makefile")) + sorted((NUS / "z-mk").glob("*.mk"))
-    assert len(found) > 5, f"expected the component Makefiles under {NUS}"
+    assert HAILPATH.name == "meanul-hailpath", HAILPATH
+    found = [HAILPATH / "Makefile"] + sorted(HAILPATH.glob("*/Makefile")) + sorted((HAILPATH / "z-mk").glob("*.mk"))
+    assert len(found) > 5, f"expected the component Makefiles under {HAILPATH}"
     return [p for p in found if p.is_file()]
 
 
@@ -53,7 +53,7 @@ def _fetch_lines() -> list[tuple[Path, int, str]]:
 
 def test_no_health_check_uses_a_host_loopback_literal():
     offenders = [
-        f"{path.relative_to(NUS)}:{number}"
+        f"{path.relative_to(HAILPATH)}:{number}"
         for path, number, line in _fetch_lines()
         if LOOPBACK.search(line)
     ]
@@ -66,7 +66,7 @@ def test_no_health_check_uses_a_host_loopback_literal():
 
 def test_localhost_fetches_only_run_inside_a_container():
     offenders = [
-        f"{path.relative_to(NUS)}:{number}"
+        f"{path.relative_to(HAILPATH)}:{number}"
         for path, number, line in _fetch_lines()
         if "localhost" in line and "exec" not in line
     ]
@@ -124,7 +124,7 @@ def test_no_comment_interrupts_a_continued_recipe():
             # how a stray "# probe" left in this file broke make capacity a
             # second time after the first fix.
             if nxt.lstrip().startswith("#"):
-                offenders.append(f"{path.relative_to(NUS)}:{i + 2}")
+                offenders.append(f"{path.relative_to(HAILPATH)}:{i + 2}")
     assert not offenders, (
         "a comment interrupts a continued recipe at: "
         + ", ".join(offenders)

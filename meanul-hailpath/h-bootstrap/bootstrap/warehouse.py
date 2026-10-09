@@ -8,8 +8,8 @@ Everything here is inserted in batches. ClickHouse is built for that: one
 insert of ten thousand rows costs far less than ten thousand inserts of one.
 """
 
-from nus_common import clickhouse
-from nus_common.logging import get_logger
+from hailpath_common import clickhouse
+from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 

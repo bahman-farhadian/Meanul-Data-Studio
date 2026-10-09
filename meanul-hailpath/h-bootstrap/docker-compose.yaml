@@ -14,7 +14,8 @@
 #
 # Standalone test:
 #   cp .env.example .env    (+ match the passwords to pieces a, b and e)
-#   docker compose up --build
+#   make bootstrap          # schema, graph-restore, then seed. Do not
+#                           # `compose up hailpath-bootstrap` on its own.
 #
 # In the full stack this file is include'd by the root docker-compose.yaml.
 # Full-stack runbook: ../README.md
@@ -39,6 +40,10 @@ services:
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
     image: hailpath/bootstrap:${HAILPATH_VERSION:-0.1.0}
     container_name: hailpath-bootstrap
+    # init profile: `docker compose up -d` must not start this without
+    # graph-restore. `make bootstrap` is the path; it runs schema, then
+    # graph-restore, then this service.
+    profiles: ["init"]
     # A one-shot must not come back after it finishes. Anything else would
     # mean re-running the whole preparation on every container restart.
     restart: "no"
@@ -127,7 +132,7 @@ services:
     volumes:
       # The downloaded LION data and the graph built from it both live here,
       # so a rebuilt container does not redo either step.
-      - lion-data:/data/lion
+      - hailpath-lion-data:/data/lion
     networks:
       - backbone
 
@@ -141,21 +146,22 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      PGHOST: ${PG_HOST:-hailpath-proxy}
-      PGPORT: ${PG_WRITE_PORT:-5432}
+      # Direct to the database. A dump restore does not need the proxy.
+      PGHOST: hailpath-postgres
+      PGPORT: "5432"
       PGDATABASE: ${PG_DATABASE:-hailpath}
       PGUSER: ${PG_USER:-postgres}
       PGPASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
       SKIP_MAP_IMPORT: ${SKIP_MAP_IMPORT:-false}
     volumes:
-      - lion-data:/data/lion:ro
+      - hailpath-lion-data:/data/lion:ro
       - ./graph-restore.sh:/graph-restore.sh:ro
     entrypoint: ["/bin/bash", "/graph-restore.sh"]
     networks:
       - backbone
 
 volumes:
-  lion-data:
+  hailpath-lion-data:
     name: hailpath-lion-data
     driver: local
     driver_opts:

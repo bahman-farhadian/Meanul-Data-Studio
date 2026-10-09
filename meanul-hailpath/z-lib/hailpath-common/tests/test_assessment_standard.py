@@ -13,32 +13,32 @@ import re
 from pathlib import Path
 
 TESTS = Path(__file__).resolve().parent
-# this file lives at meanul-hailpath/z-lib/nus-common/tests/
-NUS = TESTS.parents[2]
+# this file lives at meanul-hailpath/z-lib/hailpath-common/tests/
+HAILPATH = TESTS.parents[2]
 ROOT = TESTS.parents[3]
 STANDARD = ROOT / "ASSESSMENT.md"
 
 
 def _standard() -> str:
-    assert NUS.name == "meanul-hailpath", NUS
+    assert HAILPATH.name == "meanul-hailpath", HAILPATH
     assert STANDARD.is_file(), f"missing assessment contract: {STANDARD}"
     return STANDARD.read_text()
 
 
 def _on_network_sql() -> str:
-    path = NUS / "z-config" / "check-on-network.sql"
+    path = HAILPATH / "z-config" / "check-on-network.sql"
     return path.read_text()
 
 
 def _geo_source() -> str:
-    return (NUS / "z-lib" / "nus-common" / "nus_common" / "geo.py").read_text()
+    return (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "geo.py").read_text()
 
 
 def _makefile_targets() -> set[str]:
-    root_make = NUS / "Makefile"
+    root_make = HAILPATH / "Makefile"
     texts = [root_make.read_text()]
     for inc in re.finditer(r"^include\s+(\S+)", texts[0], re.M):
-        path = NUS / inc.group(1)
+        path = HAILPATH / inc.group(1)
         if path.is_file():
             texts.append(path.read_text())
     names: set[str] = set()
@@ -54,12 +54,12 @@ def test_standard_lists_every_lettered_component():
     text = _standard()
     dirs = sorted(
         p.name
-        for p in NUS.iterdir()
+        for p in HAILPATH.iterdir()
         if p.is_dir()
         and not p.name.startswith(".")
         and (re.match(r"^[a-o]-", p.name) or p.name in {"z-config", "z-lib"})
     )
-    assert dirs, f"no lettered components under {NUS}"
+    assert dirs, f"no lettered components under {HAILPATH}"
     missing = [name for name in dirs if name not in text]
     assert missing == [], f"ASSESSMENT.md missing components: {missing}"
 
@@ -118,10 +118,10 @@ def test_make_steps_exist_and_demos_are_gone():
     """make up and make prepare call real targets. The old demo aliases do not."""
     targets = _makefile_targets()
     texts = []
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     texts.append(root)
     for inc in re.finditer(r"^include\s+(\S+)", root, re.M):
-        path = NUS / inc.group(1)
+        path = HAILPATH / inc.group(1)
         if path.is_file():
             texts.append(path.read_text())
     called = set()
@@ -155,40 +155,42 @@ def test_make_steps_exist_and_demos_are_gone():
     ]
     absent = [name for name in resume if name not in root or name not in targets]
     assert absent == [], f"help or the Makefiles dropped a step that make up still needs: {absent}"
-    preflight = (NUS / "z-mk" / "preflight.mk").read_text()
+    preflight = (HAILPATH / "z-mk" / "preflight.mk").read_text()
     assert 'runnet="--network host"' in preflight
     assert 'docker run --rm $$runnet "$$probe"' in preflight
-    trips = (NUS / "h-bootstrap" / "Makefile").read_text()
+    trips = (HAILPATH / "h-bootstrap" / "Makefile").read_text()
     assert "fhvhv_tripdata_{month}" not in trips
     assert "s/{month}/" in trips
-    lion = (NUS / "h-bootstrap" / "lion-prepare" / "Dockerfile").read_text()
+    lion = (HAILPATH / "h-bootstrap" / "lion-prepare" / "Dockerfile").read_text()
     assert "postgresql-client" not in lion
     assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_dump" in lion
-    bootstrap = (NUS / "h-bootstrap" / "Dockerfile").read_text()
+    bootstrap = (HAILPATH / "h-bootstrap" / "Dockerfile").read_text()
     assert "        postgresql-client" not in bootstrap
     assert "COPY --from=pgclient" not in bootstrap
     assert "pg_restore" not in bootstrap
-    compose = (NUS / "h-bootstrap" / "docker-compose.yaml").read_text()
+    compose = (HAILPATH / "h-bootstrap" / "docker-compose.yaml").read_text()
     assert "\n  graph-restore:\n" in compose
     assert "pgrouting/pgrouting:18-3.6-3.8.0" in compose
-    grafana = (NUS / "f-infra-grafana" / "docker-compose.yaml").read_text()
+    assert "PGHOST: hailpath-postgres" in compose
+    assert 'profiles: ["init"]' in compose
+    grafana = (HAILPATH / "f-infra-grafana" / "docker-compose.yaml").read_text()
     assert "grafana/grafana:12.4.10" in grafana
     assert "\n    build:\n" not in grafana
-    assert not (NUS / "f-infra-grafana" / "Dockerfile").exists()
-    debezium_df = (NUS / "d-infra-debezium" / "Dockerfile")
+    assert not (HAILPATH / "f-infra-grafana" / "Dockerfile").exists()
+    debezium_df = (HAILPATH / "d-infra-debezium" / "Dockerfile")
     assert not debezium_df.exists()
-    debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
+    debezium = (HAILPATH / "d-infra-debezium" / "docker-compose.yaml").read_text()
     assert "quay.io/debezium/connect:3.6.2.Final" in debezium
     assert "confluent-avro-converter" in debezium
 
 
 def test_live_walk_and_tile_terms_are_in_the_sources():
     text = _standard()
-    ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()
-    redis = (NUS / "z-lib" / "nus-common" / "nus_common" / "redis_client.py").read_text()
-    driver = (NUS / "j-service-driver" / "driver_service" / "__main__.py").read_text()
-    haproxy = (NUS / "z-config" / "haproxy" / "haproxy.cfg.template").read_text()
-    tiles_make = (NUS / "f-infra-grafana" / "Makefile").read_text()
+    ids = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "ids.py").read_text()
+    redis = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "redis_client.py").read_text()
+    driver = (HAILPATH / "j-service-driver" / "driver_service" / "__main__.py").read_text()
+    haproxy = (HAILPATH / "z-config" / "haproxy" / "haproxy.cfg.template").read_text()
+    tiles_make = (HAILPATH / "f-infra-grafana" / "Makefile").read_text()
 
     assert "drv-" in ids and "drv-" in text
     assert "psg-" in ids and "psg-" in text
@@ -235,7 +237,7 @@ def test_studio_contract_sections_and_roles():
 
 def _migrations() -> list[Path]:
     """Every migration, in the order the bootstrap applies them."""
-    found = sorted((NUS / "h-bootstrap" / "migrations").glob("*.sql"))
+    found = sorted((HAILPATH / "h-bootstrap" / "migrations").glob("*.sql"))
     assert found, "no migrations found"
     return found
 
@@ -347,16 +349,16 @@ def _ch_enum8_symbols(sql: str, after: str) -> list[str]:
 
 
 def test_closed_status_sets_align_across_stores():
-    core = (NUS / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
-    city = (NUS / "h-bootstrap" / "migrations" / "003_city.sql").read_text()
-    positions = (NUS / "e-infra-clickhouse" / "ddl" / "002_positions.sql").read_text()
-    trips = (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text()
-    hotspots = (NUS / "e-infra-clickhouse" / "ddl" / "004_hotspots.sql").read_text()
+    core = (HAILPATH / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
+    city = (HAILPATH / "h-bootstrap" / "migrations" / "003_city.sql").read_text()
+    positions = (HAILPATH / "e-infra-clickhouse" / "ddl" / "002_positions.sql").read_text()
+    trips = (HAILPATH / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text()
+    hotspots = (HAILPATH / "e-infra-clickhouse" / "ddl" / "004_hotspots.sql").read_text()
     geo = _geo_source()
 
     driver_pg = _pg_check_symbols(core, "drivers_status_check")
     driver_avro = _avro_enum_symbols(
-        NUS / "c-infra-kafka" / "schemas" / "driver_location.avsc",
+        HAILPATH / "c-infra-kafka" / "schemas" / "driver_location.avsc",
         "DriverStatus",
     )
     driver_ch = _ch_enum8_symbols(positions, "hailpath.driver_positions")
@@ -366,7 +368,7 @@ def test_closed_status_sets_align_across_stores():
     # to append 'arrived'.
     trip_pg = _pg_effective_check("trips_status_check")
     trip_avro = _avro_enum_symbols(
-        NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
+        HAILPATH / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc",
         "TripStatus",
     )
     trip_ch = _ch_enum8_symbols(trips, "hailpath.trip_events")
@@ -376,7 +378,7 @@ def test_closed_status_sets_align_across_stores():
     # would renumber every symbol after it and reinterpret existing rows.
     assert trip_pg[-1] == "arrived", trip_pg
 
-    lifecycle = NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc"
+    lifecycle = HAILPATH / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc"
     for constraint, enum_name, column in (
         ("trips_payment_method_check", "PaymentMethod", "payment_method"),
         ("trips_cancellation_reason_check", "CancellationReason", "cancellation_reason"),
@@ -389,17 +391,17 @@ def test_closed_status_sets_align_across_stores():
 
     offers_pg = _pg_effective_check("dispatch_offers_status_check")
     offers_avro = _avro_enum_symbols(
-        NUS / "c-infra-kafka" / "schemas" / "dispatch_offers.avsc", "OfferStatus"
+        HAILPATH / "c-infra-kafka" / "schemas" / "dispatch_offers.avsc", "OfferStatus"
     )
     offers_ch = _ch_enum8_symbols(
-        (NUS / "e-infra-clickhouse" / "ddl" / "010_dispatch_offers.sql").read_text(),
+        (HAILPATH / "e-infra-clickhouse" / "ddl" / "010_dispatch_offers.sql").read_text(),
         "hailpath.dispatch_offers",
     )
     assert offers_pg == offers_avro == offers_ch
 
     period_pg = _pg_check_symbols(city, "segment_traffic_period_check")
     period_avro = _avro_enum_symbols(
-        NUS / "c-infra-kafka" / "schemas" / "city_hotspots.avsc",
+        HAILPATH / "c-infra-kafka" / "schemas" / "city_hotspots.avsc",
         "DayPeriod",
     )
     period_ch = _ch_enum8_symbols(hotspots, "hailpath.hotspot_history")
@@ -425,10 +427,10 @@ def test_every_trip_field_on_the_wire_has_a_home_in_both_stores():
     not see it: it compares symbol lists for sets that exist in all three
     places, not the existence of the field itself.
     """
-    avro = _avro_field_names(NUS / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc")
+    avro = _avro_field_names(HAILPATH / "c-infra-kafka" / "schemas" / "trip_lifecycle.avsc")
     pg = _pg_trips_columns()
     ch = _ch_columns(
-        (NUS / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text(),
+        (HAILPATH / "e-infra-clickhouse" / "ddl" / "003_trips.sql").read_text(),
         "hailpath.trip_events",
     )
 
@@ -471,9 +473,9 @@ def test_the_two_warehouse_writers_agree_on_every_column():
     driver_payout from the warehouse in the first place.
     """
     sink = (
-        NUS / "n-service-clickhouse-sink" / "clickhouse_sink" / "batches.py"
+        HAILPATH / "n-service-clickhouse-sink" / "clickhouse_sink" / "batches.py"
     ).read_text()
-    bootstrap = (NUS / "h-bootstrap" / "bootstrap" / "warehouse.py").read_text()
+    bootstrap = (HAILPATH / "h-bootstrap" / "bootstrap" / "warehouse.py").read_text()
 
     def sink_columns(table: str) -> list[str]:
         match = re.search(rf'"{re.escape(table)}":\s*\[(.*?)\]', sink, re.S)
@@ -502,7 +504,7 @@ def test_every_warehouse_table_carries_an_event_id():
     the envelope exists. A table without event_id is a table whose counts
     cannot be checked, and the quality bar in step 7 would silently pass it.
     """
-    ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
+    ddl_dir = HAILPATH / "e-infra-clickhouse" / "ddl"
     missing = []
     for path in sorted(ddl_dir.glob("*.sql")):
         for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (hailpath\.\w+)", path.read_text()):
@@ -518,10 +520,10 @@ def test_every_warehouse_table_carries_an_event_id():
 
 
 def test_minted_id_widths_match_warehouse():
-    ids = (NUS / "z-lib" / "nus-common" / "nus_common" / "ids.py").read_text()
+    ids = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "ids.py").read_text()
     ddl = "\n".join(
         path.read_text()
-        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+        for path in sorted((HAILPATH / "e-infra-clickhouse" / "ddl").glob("*.sql"))
     )
 
     def _length(name: str) -> str:
@@ -542,32 +544,32 @@ def test_minted_id_widths_match_warehouse():
 
 def test_one_clickhouse_merge_tree():
     """The warehouse is one server. Query names are MergeTree tables."""
-    compose = (NUS / "e-infra-clickhouse" / "docker-compose.yaml").read_text()
+    compose = (HAILPATH / "e-infra-clickhouse" / "docker-compose.yaml").read_text()
     assert "container_name: hailpath-clickhouse" in compose
     assert "ch-s1r2" not in compose
     assert "ch-keeper" not in compose
     ddl = "\n".join(
         path.read_text()
-        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+        for path in sorted((HAILPATH / "e-infra-clickhouse" / "ddl").glob("*.sql"))
     )
     assert "ENGINE = Distributed" not in ddl
     assert "ReplicatedMergeTree" not in ddl
     assert "ON CLUSTER" not in ddl
     assert "ENGINE = MergeTree" in ddl
-    apply = (NUS / "e-infra-clickhouse" / "ddl" / "apply-ddl.sh").read_text()
+    apply = (HAILPATH / "e-infra-clickhouse" / "ddl" / "apply-ddl.sh").read_text()
     assert "nus_cluster" not in apply
     assert "system.clusters" not in apply
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert "PIECE_E  := hailpath-clickhouse" in root
     assert "ch-secrets" not in root
     assert "ch-secrets-init" not in compose
-    assert not (NUS / "e-infra-clickhouse" / "config" / "keeper" / "keeper.xml").exists()
-    assert not (NUS / "e-infra-clickhouse" / "config" / "clickhouse" / "config.d" / "cluster.xml").exists()
+    assert not (HAILPATH / "e-infra-clickhouse" / "config" / "keeper" / "keeper.xml").exists()
+    assert not (HAILPATH / "e-infra-clickhouse" / "config" / "clickhouse" / "config.d" / "cluster.xml").exists()
 
 
 def test_one_postgres_and_no_patroni():
     """The database is one process. Debezium tails that process."""
-    compose = (NUS / "a-infra-postgres" / "docker-compose.yaml").read_text()
+    compose = (HAILPATH / "a-infra-postgres" / "docker-compose.yaml").read_text()
     assert "container_name: hailpath-postgres" in compose
     assert "nus-pg-2" not in compose
     assert "nus-pg-3" not in compose
@@ -576,14 +578,18 @@ def test_one_postgres_and_no_patroni():
     assert "pgrouting/pgrouting:18-3.6-3.8.0" in compose
     assert "\n    build:\n" not in compose
     assert "./pg_hba.conf:/etc/pg_hba.conf:ro" in compose
-    assert not (NUS / "a-infra-postgres" / "Dockerfile").exists()
-    hba = (NUS / "a-infra-postgres" / "pg_hba.conf").read_text()
+    assert "./postgresql.conf:/etc/postgresql/postgresql.conf:ro" in compose
+    pgconf = (HAILPATH / "a-infra-postgres" / "postgresql.conf").read_text()
+    assert "listen_addresses = '*'" in pgconf
+    assert "config_file=/etc/postgresql/postgresql.conf" in compose
+    assert not (HAILPATH / "a-infra-postgres" / "Dockerfile").exists()
+    hba = (HAILPATH / "a-infra-postgres" / "pg_hba.conf").read_text()
     assert "host replication postgres" in hba
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert "PIECE_A  := hailpath-postgres" in root
     assert "etcd" not in root.lower()
-    assert not (NUS / "a-infra-postgres" / "etcd.env").exists()
-    debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
+    assert not (HAILPATH / "a-infra-postgres" / "etcd.env").exists()
+    debezium = (HAILPATH / "d-infra-debezium" / "docker-compose.yaml").read_text()
     assert "CDC_PG_HOST" in debezium or "PG_HOST" in debezium
     # quay.io/debezium/connect:3.6 writes only CONNECT_* into
     # connect-distributed.properties. The unprefixed names are ignored,
@@ -600,40 +606,40 @@ def test_one_postgres_and_no_patroni():
         "STATUS_STORAGE_REPLICATION_FACTOR",
     ):
         assert f"\n      {bare}:" not in debezium
-    connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "hailpath-pg.json").read_text())
+    connector = json.loads((HAILPATH / "d-infra-debezium" / "connectors" / "hailpath-pg.json").read_text())
     assert connector["config"]["topic.creation.default.replication.factor"] == "1"
     assert connector["config"]["database.user"] == "filled in by register.py"
 
 
 def test_one_redis_and_no_sentinel():
     """The cache is one process. Clients open that process, not Sentinel."""
-    compose = (NUS / "b-infra-redis" / "docker-compose.yaml").read_text()
+    compose = (HAILPATH / "b-infra-redis" / "docker-compose.yaml").read_text()
     assert "container_name: hailpath-redis" in compose
     assert "nus-redis-2" not in compose
     assert "nus-redis-3" not in compose
     assert "sentinel" not in compose.lower()
-    client = (NUS / "z-lib" / "nus-common" / "nus_common" / "redis_client.py").read_text()
+    client = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "redis_client.py").read_text()
     assert "redis.sentinel" not in client
     assert "REDIS_SENTINELS" not in client
     assert 'config.optional("REDIS_HOST", "hailpath-redis")' in client
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert "PIECE_B  := hailpath-redis" in root
     assert "sentinel-" not in root
 
 
 def test_one_haproxy():
     """One proxy publishes the stable ports. It does not have a failover twin."""
-    compose = (NUS / "docker-compose.yaml").read_text()
+    compose = (HAILPATH / "docker-compose.yaml").read_text()
     assert "container_name: hailpath-proxy" in compose
     assert "nus-lb-b" not in compose
     assert "\n  lb-b:" not in compose
-    root = (NUS / "Makefile").read_text()
+    root = (HAILPATH / "Makefile").read_text()
     assert "ENTRY    := hailpath-proxy\n" in root
     assert "lb-b" not in root
 
 
 def test_declared_topics_have_avro_schemas():
-    tsv = (NUS / "c-infra-kafka" / "topics" / "topics.tsv").read_text()
+    tsv = (HAILPATH / "c-infra-kafka" / "topics" / "topics.tsv").read_text()
     names: list[str] = []
     for line in tsv.splitlines():
         if not line.strip() or line.lstrip().startswith("#"):
@@ -643,7 +649,7 @@ def test_declared_topics_have_avro_schemas():
             names.append(name)
     assert names, tsv
     assert all(not name.startswith("cdc.") for name in names)
-    schemas = NUS / "c-infra-kafka" / "schemas"
+    schemas = HAILPATH / "c-infra-kafka" / "schemas"
     missing = [name for name in names if not (schemas / f"{name}.avsc").is_file()]
     assert missing == [], missing
     extra = sorted(path.stem for path in schemas.glob("*.avsc") if path.stem not in names)
@@ -652,7 +658,7 @@ def test_declared_topics_have_avro_schemas():
     for name in names:
         assert name in text, name
     assert "topics.tsv" in text
-    create = (NUS / "c-infra-kafka" / "topics" / "create-topics.sh").read_text()
+    create = (HAILPATH / "c-infra-kafka" / "topics" / "create-topics.sh").read_text()
     assert "--replication-factor 1" in create
     assert "min.insync.replicas=1" in create
     assert "replication-factor 1" in text
@@ -661,7 +667,7 @@ def test_declared_topics_have_avro_schemas():
 
 def test_cdc_excludes_oltp_geometry():
     connector = json.loads(
-        (NUS / "d-infra-debezium" / "connectors" / "hailpath-pg.json").read_text()
+        (HAILPATH / "d-infra-debezium" / "connectors" / "hailpath-pg.json").read_text()
     )
     excluded = connector["config"]["column.exclude.list"]
     assert "hailpath.trips.route" in excluded
@@ -671,10 +677,10 @@ def test_cdc_excludes_oltp_geometry():
 
 
 def test_oltp_uses_jsonb_not_a_document_db():
-    core = (NUS / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
+    core = (HAILPATH / "h-bootstrap" / "migrations" / "002_core_tables.sql").read_text()
     assert "jsonb" in core.lower()
     compose = "\n".join(
-        path.read_text().lower() for path in NUS.rglob("docker-compose.yaml")
+        path.read_text().lower() for path in HAILPATH.rglob("docker-compose.yaml")
     )
     assert "mongo" not in compose
     text = _standard()
@@ -682,16 +688,16 @@ def test_oltp_uses_jsonb_not_a_document_db():
 
 
 def test_cache_updater_skips_bootstrap_wait():
-    updater = (NUS / "i-service-cache-updater" / "cache_updater" / "__main__.py").read_text()
+    updater = (HAILPATH / "i-service-cache-updater" / "cache_updater" / "__main__.py").read_text()
     assert "wait_for_bootstrap" not in updater
     assert "does not wait" in updater.lower()
     must_wait = (
-        NUS / "j-service-driver" / "driver_service" / "__main__.py",
-        NUS / "k-service-passenger" / "passenger_service" / "__main__.py",
-        NUS / "l-service-dispatch" / "dispatch_service" / "__main__.py",
-        NUS / "m-service-city" / "city_service" / "__main__.py",
-        NUS / "n-service-clickhouse-sink" / "clickhouse_sink" / "__main__.py",
-        NUS / "o-service-archiver" / "archiver_service" / "__main__.py",
+        HAILPATH / "j-service-driver" / "driver_service" / "__main__.py",
+        HAILPATH / "k-service-passenger" / "passenger_service" / "__main__.py",
+        HAILPATH / "l-service-dispatch" / "dispatch_service" / "__main__.py",
+        HAILPATH / "m-service-city" / "city_service" / "__main__.py",
+        HAILPATH / "n-service-clickhouse-sink" / "clickhouse_sink" / "__main__.py",
+        HAILPATH / "o-service-archiver" / "archiver_service" / "__main__.py",
     )
     for path in must_wait:
         source = path.read_text()
@@ -702,7 +708,7 @@ def test_cache_updater_skips_bootstrap_wait():
 
 
 def test_store_live_state_before_announce_is_required():
-    dispatch = (NUS / "l-service-dispatch" / "dispatch_service" / "__main__.py").read_text()
+    dispatch = (HAILPATH / "l-service-dispatch" / "dispatch_service" / "__main__.py").read_text()
     store = dispatch.index("def store_live_state")
     announce = dispatch.index("def announce")
     # Both exist; call order on the match path is store then announce.
@@ -736,7 +742,7 @@ def test_archiver_prunes_every_child_of_trips():
     assert children, "expected at least trip_ratings to reference trips"
 
     archiver = (
-        NUS / "o-service-archiver" / "archiver_service" / "__main__.py"
+        HAILPATH / "o-service-archiver" / "archiver_service" / "__main__.py"
     ).read_text()
     missing = sorted(t for t in children if f"DELETE FROM {t} " not in archiver)
     assert missing == [], (
@@ -756,7 +762,7 @@ def test_calibration_insert_matches_the_rows_it_is_given():
     """
     import sys
 
-    sys.path.insert(0, str(NUS / "h-bootstrap"))
+    sys.path.insert(0, str(HAILPATH / "h-bootstrap"))
     from bootstrap import demand_calibration as dc
 
     zone_row = {
@@ -787,7 +793,7 @@ def test_calibration_insert_matches_the_rows_it_is_given():
 def test_prepare_writes_the_provenance_the_loader_reads():
     """The CSV is where source_month comes from, not the environment."""
     prepare = (
-        NUS / "h-bootstrap" / "zone-demand-prepare" / "prepare.py"
+        HAILPATH / "h-bootstrap" / "zone-demand-prepare" / "prepare.py"
     ).read_text()
     assert 'zone_demand["source_month"]' in prepare
     assert 'od_counts["source_month"]' in prepare
@@ -809,7 +815,7 @@ def test_a_timed_tick_sets_its_clock_before_doing_the_work():
     The rule this encodes: an interval timer is advanced before the work it
     guards, so a failure costs one interval rather than every future one.
     """
-    source = (NUS / "m-service-city" / "city_service" / "__main__.py").read_text()
+    source = (HAILPATH / "m-service-city" / "city_service" / "__main__.py").read_text()
     for clock, call in (("last_score", "_publish_scores"), ("last_traffic", "_update_traffic")):
         guard = re.search(
             rf"if now_monotonic - {clock} >=.*?\n(.*?)\n\n", source, re.S
@@ -839,7 +845,7 @@ def test_partition_granularity_follows_the_ttl():
     """
     ddl = "\n".join(
         path.read_text()
-        for path in sorted((NUS / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+        for path in sorted((HAILPATH / "e-infra-clickhouse" / "ddl").glob("*.sql"))
     )
     for match in re.finditer(
         r"CREATE TABLE IF NOT EXISTS (hailpath\.\w+)(.*?);", ddl, re.S
@@ -879,7 +885,7 @@ def test_raw_telemetry_is_rolled_up_before_it_expires():
     """
     import re
 
-    ddl_dir = NUS / "e-infra-clickhouse" / "ddl"
+    ddl_dir = HAILPATH / "e-infra-clickhouse" / "ddl"
     # Comment lines are dropped before matching: one of them contains
     # "three days; under a monthly partition", and a semicolon inside a
     # comment ends a statement as far as a regex is concerned.
@@ -922,7 +928,7 @@ def test_raw_telemetry_is_rolled_up_before_it_expires():
 
 def test_the_rollups_sum_and_never_store_an_average():
     """Same rule as every other rollup: sums beside their counts."""
-    ddl = (NUS / "e-infra-clickhouse" / "ddl" / "012_position_rollups.sql").read_text()
+    ddl = (HAILPATH / "e-infra-clickhouse" / "ddl" / "012_position_rollups.sql").read_text()
     for total, count in (("speed_kmh_sum", "speed_samples"),
                          ("accuracy_m_sum", "accuracy_samples")):
         assert total in ddl and count in ddl, (
@@ -955,7 +961,7 @@ NO_SETTLE_NEEDED = {
 
 def _quality_ctes() -> dict[str, str]:
     """Each named CTE in quality.sql, with its comment lines removed."""
-    text = (NUS / "z-config" / "quality.sql").read_text()
+    text = (HAILPATH / "z-config" / "quality.sql").read_text()
     body = "\n".join(
         line for line in text.splitlines() if not line.lstrip().startswith("--")
     )
@@ -1010,7 +1016,7 @@ def test_a_trip_id_has_enough_room_for_a_full_scale_day() -> None:
     columns - so the alphabet carries the whole margin, and this is the bar
     it has to clear.
     """
-    from nus_common import ids
+    from hailpath_common import ids
 
     space = len(ids._TRIP_ID_ALPHABET) ** ids._TRIP_ID_SUFFIX_LENGTH
     per_day = 655_000
@@ -1026,7 +1032,7 @@ def test_a_trip_id_is_still_exactly_the_width_the_warehouse_stores() -> None:
     import random
     from datetime import datetime
 
-    from nus_common import ids
+    from hailpath_common import ids
 
     for seed in range(200):
         made = ids.new_trip_id(datetime(2026, 10, 1), random.Random(seed))
@@ -1038,7 +1044,7 @@ def _inventory():
     """The schema generator. z-config and docs are not on PYTHONPATH."""
     import importlib.util
 
-    path = NUS / "z-docs" / "schema_inventory.py"
+    path = HAILPATH / "z-docs" / "schema_inventory.py"
     spec = importlib.util.spec_from_file_location("schema_inventory", path)
     assert spec is not None and spec.loader is not None, path
     module = importlib.util.module_from_spec(spec)
@@ -1088,16 +1094,16 @@ def test_dictionary_and_erd_match_the_shipped_schema():
     fails here.
     """
     inv = _inventory()
-    dictionary = (NUS / "z-docs" / "DATA_DICTIONARY.md").read_text()
-    erd = (NUS / "z-docs" / "ERD.md").read_text()
+    dictionary = (HAILPATH / "z-docs" / "DATA_DICTIONARY.md").read_text()
+    erd = (HAILPATH / "z-docs" / "ERD.md").read_text()
     assert dictionary == inv.render_dictionary()
     assert erd == inv.render_erd()
     assert inv.F4 in dictionary
 
     oltp = inv.oltp_tables()
     warehouse = inv.warehouse_tables()
-    assert _declared_tables(NUS / "h-bootstrap" / "migrations") == set(oltp)
-    assert _declared_tables(NUS / "e-infra-clickhouse" / "ddl") == set(warehouse)
+    assert _declared_tables(HAILPATH / "h-bootstrap" / "migrations") == set(oltp)
+    assert _declared_tables(HAILPATH / "e-infra-clickhouse" / "ddl") == set(warehouse)
     assert all(cols for cols in (*oltp.values(), *warehouse.values()))
 
     for table, cols in oltp.items():
@@ -1142,7 +1148,7 @@ def test_closed_sets_are_written_in_the_contract():
     word = "dashboard" if dashboards == 1 else "dashboards"
     assert f"{dashboards} {word}" in section
 
-    checker = (NUS / "c-infra-kafka" / "ksql" / "check-ksql.py").read_text()
+    checker = (HAILPATH / "c-infra-kafka" / "ksql" / "check-ksql.py").read_text()
     block = re.search(r"CLIENT_SETTINGS = \{([^}]+)\}", checker)
     assert block, checker
     for key, value in re.findall(r'"([^"]+)":\s*"([^"]+)"', block.group(1)):

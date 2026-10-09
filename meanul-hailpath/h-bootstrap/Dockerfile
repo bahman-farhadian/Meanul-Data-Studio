@@ -34,9 +34,9 @@ COPY --from=uv /uv /usr/local/bin/uv
 
 WORKDIR /app/h-bootstrap
 
-# Metadata only. nus-common's Python source is copied after the wheel
+# Metadata only. hailpath-common's Python source is copied after the wheel
 # install, so a change to routing.py does not invalidate this layer.
-COPY z-lib/nus-common/pyproject.toml /app/z-lib/nus-common/pyproject.toml
+COPY z-lib/hailpath-common/pyproject.toml /app/z-lib/hailpath-common/pyproject.toml
 COPY h-bootstrap/pyproject.toml h-bootstrap/uv.lock /app/h-bootstrap/
 
 # --frozen: install exactly what uv.lock says. A build must never quietly
@@ -52,7 +52,7 @@ ENV UV_LINK_MODE=copy \
 RUN --mount=type=cache,target=/root/.cache/uv,sharing=locked \
     uv sync --frozen --no-dev --no-install-project --no-install-local
 
-COPY z-lib/nus-common /app/z-lib/nus-common
+COPY z-lib/hailpath-common /app/z-lib/hailpath-common
 COPY h-bootstrap/bootstrap /app/h-bootstrap/bootstrap
 # The migrations are data the container reads at run time, not code, so it is
 # easy to forget them here — and the failure comes much later, from inside a
@@ -87,22 +87,22 @@ RUN apt-get update \
         tzdata \
  && apt-get clean \
  && rm -rf /var/lib/apt/lists/* \
- && useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 nus \
+ && useradd --create-home --no-log-init --shell /usr/sbin/nologin --uid 10001 hailpath \
  && mkdir -p /data/lion \
- && chown -R nus:nus /data
+ && chown -R hailpath:hailpath /data
 
-COPY --from=build --chown=nus:nus /app /app
+COPY --from=build --chown=hailpath:hailpath /app /app
 
 WORKDIR /app/h-bootstrap
 ENV PATH="/app/h-bootstrap/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
 
-USER nus
+USER hailpath
 
 # Fail the build rather than ship an image that cannot do its job. The
 # migrations have been missing entirely before.
-RUN python -c "import bootstrap, nus_common" \
+RUN python -c "import bootstrap, hailpath_common" \
  && test "$(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l)" -gt 0 \
  && echo "bootstrap: $(ls -1 /app/h-bootstrap/migrations/*.sql | wc -l) migrations present"
 

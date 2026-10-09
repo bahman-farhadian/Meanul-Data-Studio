@@ -22,12 +22,12 @@ from collections import defaultdict
 
 from psycopg.errors import OperationalError, QueryCanceled
 
-from nus_common import config, postgres, redis_client
-from nus_common.citygrid import CityGrid
-from nus_common.geo import day_period, to_millis, utc_now
-from nus_common.kafka import AvroTopicConsumer, AvroTopicProducer
-from nus_common.lifecycle import Shutdown, wait_for_bootstrap
-from nus_common.logging import get_logger, setup_logging
+from hailpath_common import config, postgres, redis_client
+from hailpath_common.citygrid import CityGrid
+from hailpath_common.geo import day_period, to_millis, utc_now
+from hailpath_common.kafka import AvroTopicConsumer, AvroTopicProducer
+from hailpath_common.lifecycle import Shutdown, wait_for_bootstrap
+from hailpath_common.logging import get_logger, setup_logging
 
 from city_service.counters import ZoneCounter, surge_from_score
 
@@ -65,7 +65,7 @@ UPDATE_TRAFFIC = """
 
 
 def main() -> int:
-    setup_logging("city-service")
+    setup_logging("hailpath-city")
     shutdown = Shutdown()
     grid = CityGrid.load()
 
@@ -79,11 +79,11 @@ def main() -> int:
     redis = redis_client.primary(redis_client.DB_DEMAND)
     wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
-    producer = AvroTopicProducer(HOTSPOT_TOPIC, "city-service")
-    traffic_producer = AvroTopicProducer(TRAFFIC_TOPIC, "city-service")
+    producer = AvroTopicProducer(HOTSPOT_TOPIC, "hailpath-city")
+    traffic_producer = AvroTopicProducer(TRAFFIC_TOPIC, "hailpath-city")
     consumer = AvroTopicConsumer(
         topics=WATCHED_TOPICS,
-        group_id=config.optional("KAFKA_GROUP_ID", "city-service"),
+        group_id=config.optional("KAFKA_GROUP_ID", "hailpath-city"),
         # Only what is happening now. Replaying yesterday's positions would
         # produce a picture of yesterday's city.
         from_beginning=False,

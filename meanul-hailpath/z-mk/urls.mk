@@ -14,17 +14,17 @@ urls:
 	done; fi; \
 	printf "\n  Substitute one of those for $(C)<host>$(X) below — every port is the same\n"; \
 	printf "  regardless of which address you reach it on.\n\n"; \
-	printf "  %-18s %s\n" "PostgreSQL writes" "<host>:$(call getenv,LB_A_PG_WRITE_PORT,5432)"; \
-	printf "  %-18s %s\n" "PostgreSQL reads"  "<host>:$(call getenv,LB_A_PG_READ_PORT,5433)"; \
-	printf "  %-18s %s\n" "Redis writes"      "<host>:$(call getenv,LB_A_REDIS_WRITE_PORT,6379)"; \
-	printf "  %-18s %s\n" "Redis reads"       "<host>:$(call getenv,LB_A_REDIS_READ_PORT,6380)"; \
-	printf "  %-18s %s\n" "ksqlDB"            "http://<host>:$(call getenv,LB_A_KSQLDB_PORT,8089)"; \
-	printf "  %-18s %s\n" "Debezium Connect"  "http://<host>:$(call getenv,LB_A_DEBEZIUM_PORT,8083)"; \
-	printf "  %-18s %s\n" "ClickHouse HTTP"   "<host>:$(call getenv,LB_A_CH_HTTP_PORT,8123)"; \
-	printf "  %-18s %s\n" "ClickHouse native" "<host>:$(call getenv,LB_A_CH_NATIVE_PORT,9000)"; \
-	printf "  %-18s %s\n" "Grafana"           "http://<host>:$(call getenv,LB_A_GRAFANA_PORT,3000)"; \
-	printf "  %-18s %s\n" "Superset"          "http://<host>:$(call getenv,LB_A_SUPERSET_PORT,8088)"; \
-	printf "  %-18s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,LB_A_STATS_PORT,8404)/stats"; \
+	printf "  %-18s %s\n" "PostgreSQL writes" "<host>:$(call getenv,PROXY_PG_WRITE_PORT,5432)"; \
+	printf "  %-18s %s\n" "PostgreSQL reads"  "<host>:$(call getenv,PROXY_PG_READ_PORT,5433)"; \
+	printf "  %-18s %s\n" "Redis writes"      "<host>:$(call getenv,PROXY_REDIS_WRITE_PORT,6379)"; \
+	printf "  %-18s %s\n" "Redis reads"       "<host>:$(call getenv,PROXY_REDIS_READ_PORT,6380)"; \
+	printf "  %-18s %s\n" "ksqlDB"            "http://<host>:$(call getenv,PROXY_KSQLDB_PORT,8089)"; \
+	printf "  %-18s %s\n" "Debezium Connect"  "http://<host>:$(call getenv,PROXY_DEBEZIUM_PORT,8083)"; \
+	printf "  %-18s %s\n" "ClickHouse HTTP"   "<host>:$(call getenv,PROXY_CH_HTTP_PORT,8123)"; \
+	printf "  %-18s %s\n" "ClickHouse native" "<host>:$(call getenv,PROXY_CH_NATIVE_PORT,9000)"; \
+	printf "  %-18s %s\n" "Grafana"           "http://<host>:$(call getenv,PROXY_GRAFANA_PORT,3000)"; \
+	printf "  %-18s %s\n" "Superset"          "http://<host>:$(call getenv,PROXY_SUPERSET_PORT,8088)"; \
+	printf "  %-18s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,PROXY_STATS_PORT,8404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above. Kafka is the one broker below. A client\n"; \
 	printf "  is handed the address set by $(C)KAFKA_ADVERTISED_HOST$(X)\n"; \

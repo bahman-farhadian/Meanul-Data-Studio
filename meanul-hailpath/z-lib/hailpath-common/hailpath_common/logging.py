@@ -7,8 +7,8 @@ JSON matters because these services produce a lot of lines: searching for
 
 Use it once at start:
 
-    from nus_common.logging import setup_logging, get_logger
-    setup_logging("dispatch-service")
+    from hailpath_common.logging import setup_logging, get_logger
+    setup_logging("hailpath-dispatch")
     log = get_logger(__name__)
     log.info("trip assigned", extra={"trip_id": trip_id, "driver_id": driver_id})
 
