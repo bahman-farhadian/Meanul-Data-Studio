@@ -140,14 +140,14 @@ def test_make_steps_exist_and_demos_are_gone():
     assert missing == [], f"a recipe calls a target that does not exist: {missing}"
     gone = [
         "failover-pg", "failover-redis", "patronictl", "kafka-dirs",
-        "superset-import", "help-all", "config",
+        "superset-import", "help-all", "config", "ch-secrets",
     ]
     still = sorted(name for name in gone if name in targets)
     assert still == [], f"removed make targets are still defined: {still}"
     assert "help-all" not in root
     # Steps make up and make prepare call. pull, build, and preflight too.
     resume = [
-        "volume-perms", "lb-config", "ch-secrets", "ksqldb-secrets",
+        "volume-perms", "lb-config", "ksqldb-secrets",
         "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",
         "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
         "lion-prepare", "zone-demand-prepare", "tiles-prepare", "volume-quotas",
@@ -528,8 +528,13 @@ def test_one_clickhouse_merge_tree():
     assert "ReplicatedMergeTree" not in ddl
     assert "ON CLUSTER" not in ddl
     assert "ENGINE = MergeTree" in ddl
+    apply = (NUS / "e-infra-clickhouse" / "ddl" / "apply-ddl.sh").read_text()
+    assert "nus_cluster" not in apply
+    assert "system.clusters" not in apply
     root = (NUS / "Makefile").read_text()
     assert "PIECE_E  := ch-s1r1" in root
+    assert "ch-secrets" not in root
+    assert "ch-secrets-init" not in compose
 
 
 def test_one_postgres_and_no_patroni():

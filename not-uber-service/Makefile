@@ -197,7 +197,6 @@ up:
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory lb-config
-	@$(MAKE) --no-print-directory ch-secrets
 	@$(MAKE) --no-print-directory ksqldb-secrets
 	$(call say,Starting the infrastructure — pieces a to g)
 	@$(COMPOSE) up -d $(PIECE_D)

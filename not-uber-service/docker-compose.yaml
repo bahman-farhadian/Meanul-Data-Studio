@@ -99,8 +99,7 @@ services:
   # One-shot: renders haproxy.cfg.template into the shared config volume,
   # filling in REDIS_PASSWORD. HAProxy does not expand ${VAR} from its own
   # environment inside a tcp-check string (confirmed, not assumed), so the
-  # password has to be baked into the file before lb-a/lb-b read it — the
-  # same reason ch-secrets-init exists for ClickHouse's cluster credentials.
+  # password has to be baked into the file before lb-a/lb-b read it.
   #
   # Run it BEFORE lb-a/lb-b start, and again any time REDIS_PASSWORD changes.
   haproxy-config-render:

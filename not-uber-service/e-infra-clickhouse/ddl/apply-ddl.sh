@@ -1,5 +1,5 @@
 #!/bin/sh
-# Create the analytics tables on the cluster.
+# Create the analytics tables on the one ClickHouse.
 #
 # Every file in this directory is applied in name order, and every statement
 # uses IF NOT EXISTS, so running this again changes nothing. That makes it
@@ -28,15 +28,9 @@ while [ "$attempt" -le 30 ]; do
     sleep 5
 done
 if [ "$attempt" -gt 30 ]; then
-    echo "ClickHouse never answered - is the cluster up?" >&2
+    echo "ClickHouse never answered at ${CH_HOST}" >&2
     exit 1
 fi
-
-# All four nodes must be visible before ON CLUSTER statements are sent,
-# otherwise the missing node only catches up later and the first checks look
-# wrong for no good reason.
-echo "cluster members ClickHouse can see right now:"
-client --query "SELECT host_name, shard_num, replica_num FROM system.clusters WHERE cluster = 'nus_cluster' FORMAT PrettyCompact"
 
 for file in /ddl/*.sql; do
     echo "applying $(basename "$file") ..."
@@ -44,5 +38,5 @@ for file in /ddl/*.sql; do
 done
 
 echo
-echo "tables now on the cluster:"
+echo "tables now on the server:"
 client --query "SELECT database, name, engine FROM system.tables WHERE database = 'nus' ORDER BY name FORMAT PrettyCompact"

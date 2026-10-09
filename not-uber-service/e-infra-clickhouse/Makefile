@@ -9,11 +9,6 @@
 # ClickHouse
 # =============================================================================
 
-.PHONY: ch-secrets
-ch-secrets:
-	$(call say,ClickHouse cluster credentials)
-	@$(COMPOSE) run --rm ch-secrets-init
-
 .PHONY: ch-ddl
 ch-ddl:
 	$(call say,ClickHouse tables)
