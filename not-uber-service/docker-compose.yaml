@@ -78,10 +78,9 @@ services:
         set -eu
         own() { u="$$1"; shift; for d in "$$@"; do [ -d "/vol/$$d" ] || continue; chown -R "$$u" "/vol/$$d"; done; echo "  $$u  $$*"; }
         echo "handing the data directories to the users that write to them:"
-        # PostgreSQL, Redis and Sentinel all run as uid 999 in their images.
+        # PostgreSQL and Redis run as uid 999 in their images.
         own 999:999 nus-pgdata-1 nus-pgdata-2 nus-pgdata-3 \
-                    nus-redis-data-1 nus-redis-data-2 nus-redis-data-3 \
-                    nus-sentinel-data-1 nus-sentinel-data-2 nus-sentinel-data-3
+                    nus-redis-data-1
         # Kafka's uid is configurable because the image has changed it before.
         own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} nus-kafka-data-1
         # Grafana runs as 472 with group 0; Superset as 1000.

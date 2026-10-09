@@ -513,6 +513,22 @@ def test_minted_id_widths_match_warehouse():
     assert driver_n in text and passenger_n in text and trip_n in text
 
 
+def test_one_redis_and_no_sentinel():
+    """The cache is one process. Clients open that process, not Sentinel."""
+    compose = (NUS / "b-infra-redis" / "docker-compose.yaml").read_text()
+    assert "container_name: nus-redis-1" in compose
+    assert "nus-redis-2" not in compose
+    assert "nus-redis-3" not in compose
+    assert "sentinel" not in compose.lower()
+    client = (NUS / "z-lib" / "nus-common" / "nus_common" / "redis_client.py").read_text()
+    assert "redis.sentinel" not in client
+    assert "REDIS_SENTINELS" not in client
+    assert 'config.optional("REDIS_HOST", "redis-1")' in client
+    root = (NUS / "Makefile").read_text()
+    assert "PIECE_B  := redis-1" in root
+    assert "sentinel-" not in root
+
+
 def test_declared_topics_have_avro_schemas():
     tsv = (NUS / "c-infra-kafka" / "topics" / "topics.tsv").read_text()
     names: list[str] = []

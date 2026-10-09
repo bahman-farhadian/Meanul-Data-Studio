@@ -3,17 +3,13 @@
 Redis is the read path for everything except the components that own the
 data. Nothing here reaches into PostgreSQL.
 
-Sentinel matters for how a connection is made: the primary is elected, so no
-service may remember an address. Instead a service asks Sentinel "who is the
-primary right now" and reconnects when the answer changes. The redis library
-does that for us as long as connections are taken from a Sentinel object,
-which is what this module returns.
+There is one Redis. Clients use REDIS_HOST, or REDIS_URL when a test stack
+sets a direct URL.
 """
 
 import os
 
 from redis import Redis
-from redis.sentinel import Sentinel
 
 from nus_common import config
 from nus_common.logging import get_logger
@@ -105,8 +101,7 @@ HOTSPOT_TTL_SECONDS = 6 * 60 * 60
 # --------------------------------------------------------------------------
 # Which of Redis's 16 numbered logical databases each domain lives in.
 # --------------------------------------------------------------------------
-# Redis Sentinel (unlike Cluster mode) fully supports these, and until now
-# nothing here used more than db0. Splitting by domain makes "how many
+# A single Redis supports numbered databases. Splitting by domain makes "how many
 # drivers are free right now" a `redis-cli -n 1 DBSIZE` instead of a
 # manual scan - exactly what diagnosing dispatch saturation needed earlier
 # in this project and had to do by hand. Worth knowing honestly:
@@ -124,37 +119,8 @@ DB_DEMAND = 4     # hotspot:*, zone:* (reference data, grouped with demand -
 # Connections
 # --------------------------------------------------------------------------
 
-def _sentinel() -> Sentinel:
-    """Build the Sentinel connection from the environment."""
-    hosts = config.optional(
-        "REDIS_SENTINELS",
-        "nus-sentinel-1:26379,nus-sentinel-2:26379,nus-sentinel-3:26379",
-    )
-    pairs = []
-    for entry in hosts.split(","):
-        host, _, port = entry.strip().partition(":")
-        pairs.append((host, int(port or 26379)))
-
-    return Sentinel(
-        pairs,
-        # Short timeouts on purpose: a slow answer from a failing node should
-        # become "ask the next Sentinel", not a stuck service.
-        socket_timeout=2.0,
-        socket_connect_timeout=2.0,
-    )
-
-
-def primary(db: int = DB_SYSTEM) -> Redis:
-    """A connection to whichever Redis node is primary right now, for one
-    numbered database (see the DB_* constants above).
-
-    Use it for writes. After a failover the library asks Sentinel again and
-    reconnects on its own; the caller only sees one failed command.
-
-    REDIS_URL, when set, is a direct connection (no Sentinel). Production
-    compose never sets it; the laptop sample stack does, so a one-node
-    Redis can still exercise the same key names and JSON the services write.
-    """
+def _direct(db: int) -> Redis:
+    """One Redis. REDIS_URL is the sample stack; otherwise REDIS_HOST."""
     url = os.environ.get("REDIS_URL")
     if url:
         return Redis.from_url(
@@ -163,29 +129,22 @@ def primary(db: int = DB_SYSTEM) -> Redis:
             decode_responses=True,
             socket_timeout=2.0,
         )
-    return _sentinel().master_for(
-        config.optional("REDIS_MASTER_NAME", "nus-cache"),
+    return Redis(
+        host=config.optional("REDIS_HOST", "redis-1"),
+        port=int(config.optional("REDIS_PORT", "6379")),
         password=config.required("REDIS_PASSWORD"),
-        # Values come back as text instead of bytes, which is what every
-        # caller in this stack wants.
+        db=db,
         decode_responses=True,
         socket_timeout=2.0,
         health_check_interval=30,
-        db=db,
     )
+
+
+def primary(db: int = DB_SYSTEM) -> Redis:
+    """The one Redis, for one numbered database (see the DB_* constants)."""
+    return _direct(db)
 
 
 def replica(db: int = DB_SYSTEM) -> Redis:
-    """A connection to a replica, for reads that may be a moment behind.
-
-    Replication is fast but not instant, so anything that must see its own
-    write should use primary() instead.
-    """
-    return _sentinel().slave_for(
-        config.optional("REDIS_MASTER_NAME", "nus-cache"),
-        password=config.required("REDIS_PASSWORD"),
-        decode_responses=True,
-        socket_timeout=2.0,
-        health_check_interval=30,
-        db=db,
-    )
+    """Same node as primary(). There is no replica to read from."""
+    return primary(db)

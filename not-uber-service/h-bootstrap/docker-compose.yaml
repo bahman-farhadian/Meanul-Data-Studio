@@ -55,8 +55,6 @@ services:
         condition: service_healthy
       redis-1:
         condition: service_healthy
-      sentinel-1:
-        condition: service_healthy
       kafka-1:
         condition: service_healthy
       schema-registry:
@@ -79,9 +77,8 @@ services:
       # below checks out HISTORY_ROUTING_WORKERS connections at once.
       PG_POOL_SIZE: ${PG_POOL_SIZE:-24}
 
-      # Redis, through Sentinel.
-      REDIS_SENTINELS: ${REDIS_SENTINELS:-nus-sentinel-1:26379,nus-sentinel-2:26379,nus-sentinel-3:26379}
-      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      # Redis.
+      REDIS_HOST: ${REDIS_HOST:-redis-1}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       # ClickHouse, through the entry tier.

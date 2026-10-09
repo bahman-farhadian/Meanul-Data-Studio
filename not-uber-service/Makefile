@@ -74,7 +74,7 @@ ERRORS_WINDOW ?= 15m
 # --- the stack, in the pieces the runbook names -------------------------------
 ENTRY    := lb-a lb-b
 PIECE_A  := etcd-1 etcd-2 etcd-3 pg-1 pg-2 pg-3
-PIECE_B  := redis-1 redis-2 redis-3 sentinel-1 sentinel-2 sentinel-3
+PIECE_B  := redis-1
 PIECE_C  := kafka-1 schema-registry ksqldb-server
 PIECE_D  := debezium-connect
 PIECE_E  := ch-keeper-1 ch-keeper-2 ch-keeper-3 ch-s1r1 ch-s1r2 ch-s2r1 ch-s2r2

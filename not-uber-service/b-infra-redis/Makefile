@@ -12,12 +12,8 @@
 .PHONY: verify-redis
 verify-redis:
 	$(call say,Redis)
-	@for n in redis-1 redis-2 redis-3; do \
-		printf "  %-9s %s\n" "$$n" "$$($(COMPOSE) exec -T $$n redis-cli -a "$$(grep -E '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2-)" --no-auth-warning info replication 2>/dev/null | awk -F: '/^role:/{print $$2}' | tr -d '\r')"; \
-	done
-	@echo
-	@$(COMPOSE) exec -T sentinel-1 redis-cli -p 26379 sentinel ckquorum nus-cache || true
-	@printf "\n  Expect one master, two slaves, and a quorum that can be reached.\n"
+	@$(COMPOSE) exec -T redis-1 redis-cli -a "$$(grep -E '^REDIS_PASSWORD=' $(ENV_FILE) | cut -d= -f2-)" --no-auth-warning ping
+	@printf "\n  One Redis. A PONG is the check.\n"
 
 .PHONY: redis-cli
 redis-cli:

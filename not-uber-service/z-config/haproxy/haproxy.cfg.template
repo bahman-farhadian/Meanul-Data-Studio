@@ -80,17 +80,9 @@ listen pg_read
     server nus-pg-3 nus-pg-3:5432 check port 8008
 
 # Redis (b-infra-redis) --------------------------------------------------------
-# Unlike Postgres, Redis was deliberately NOT proxied for a long time: a naive
-# TCP passthrough would keep routing to a node Sentinel had already demoted.
-# This check is role-aware instead, the same idea as pg_write/pg_read: it
-# authenticates, sends INFO replication, and only routes to a node whose own
-# answer matches the role this backend wants. A demoted node also refuses
-# writes on its own (Redis's replica-read-only default), so the few seconds
-# while a check is catching up after a failover cannot cause a stray write to
-# land on the wrong node — it is rejected there, not silently accepted.
-#
-# REDIS_PASSWORD must not contain whitespace: AUTH is sent as a raw inline
-# Redis command here, which splits on spaces.
+# One Redis. Both host ports are that same node, so an existing read-port
+# client still lands somewhere that answers. REDIS_PASSWORD must not contain
+# whitespace: AUTH is sent as a raw inline Redis command, which splits on spaces.
 
 listen redis_write
     bind :6379
@@ -99,31 +91,22 @@ listen redis_write
     tcp-check expect string +OK
     tcp-check send PING\r\n
     tcp-check expect string +PONG
-    tcp-check send info\ replication\r\n
-    tcp-check expect string role:master
     tcp-check send QUIT\r\n
     tcp-check expect string +OK
     default-server on-marked-down shutdown-sessions
     server nus-redis-1 nus-redis-1:6379 check
-    server nus-redis-2 nus-redis-2:6379 check
-    server nus-redis-3 nus-redis-3:6379 check
 
 listen redis_read
     bind :6380
-    balance roundrobin
     option tcp-check
     tcp-check send AUTH\ __REDIS_PASSWORD__\r\n
     tcp-check expect string +OK
     tcp-check send PING\r\n
     tcp-check expect string +PONG
-    tcp-check send info\ replication\r\n
-    tcp-check expect string role:slave
     tcp-check send QUIT\r\n
     tcp-check expect string +OK
     default-server on-marked-down shutdown-sessions
     server nus-redis-1 nus-redis-1:6379 check
-    server nus-redis-2 nus-redis-2:6379 check
-    server nus-redis-3 nus-redis-3:6379 check
 
 # Kafka (c-infra-kafka) --------------------------------------------------------
 # One broker. A client is told the address baked into advertised.listeners,

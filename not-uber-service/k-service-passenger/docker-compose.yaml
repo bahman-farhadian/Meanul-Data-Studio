@@ -44,8 +44,6 @@ services:
         condition: service_healthy
       redis-1:
         condition: service_healthy
-      sentinel-1:
-        condition: service_healthy
       pg-1:
         condition: service_healthy
     environment:
@@ -57,8 +55,7 @@ services:
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://schema-registry:8081}
       KAFKA_GROUP_ID: ${PASSENGER_GROUP_ID:-passenger-service}
 
-      REDIS_SENTINELS: ${REDIS_SENTINELS:-sentinel-1:26379,sentinel-2:26379,sentinel-3:26379}
-      REDIS_MASTER_NAME: ${REDIS_MASTER_NAME:-nus-cache}
+      REDIS_HOST: ${REDIS_HOST:-redis-1}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       PG_HOST: ${PG_HOST:-lb-a}

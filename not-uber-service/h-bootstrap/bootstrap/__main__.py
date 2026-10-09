@@ -73,7 +73,7 @@ def main() -> int:
     # starts - it lives in DB_SYSTEM, the same db every other service's own
     # wait_for_bootstrap() call now reads explicitly.
     redis = redis_client.primary(redis_client.DB_SYSTEM)
-    wait_for(lambda: redis.ping() is True, "Redis through Sentinel", attempts=60, delay_seconds=5)
+    wait_for(lambda: redis.ping() is True, "Redis", attempts=60, delay_seconds=5)
     wait_for(clickhouse.ping, "ClickHouse through nus-lb-a", attempts=60, delay_seconds=5)
 
     if redis.exists(BOOTSTRAP_DONE_KEY) and not settings.force_reseed:
