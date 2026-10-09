@@ -550,10 +550,10 @@ def test_one_postgres_and_no_patroni():
     assert "nus-pg-3" not in compose
     assert "etcd" not in compose.lower()
     assert "patroni" not in compose.lower()
-    dockerfile = (NUS / "a-infra-postgres" / "Dockerfile").read_text()
-    assert "postgis" in dockerfile
-    assert "pgrouting" in dockerfile
-    assert "patroni" not in dockerfile.lower()
+    assert "pgrouting/pgrouting:18-3.6-3.8.0" in compose
+    assert "\n    build:\n" not in compose
+    assert "./pg_hba.conf:/etc/pg_hba.conf:ro" in compose
+    assert not (NUS / "a-infra-postgres" / "Dockerfile").exists()
     hba = (NUS / "a-infra-postgres" / "pg_hba.conf").read_text()
     assert "host replication postgres" in hba
     root = (NUS / "Makefile").read_text()

@@ -23,8 +23,7 @@ does not match `all`, and the logical slot needs that line.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | `pg-1`. Included by the root compose. |
-| `Dockerfile` | `postgres:18.6` plus PostGIS and pgRouting. |
-| `pg_hba.conf` | Local trust, network scram, replication for `postgres`. |
+| `pg_hba.conf` | Local trust, network scram, replication for `postgres`. Mounted into the container. |
 | `.env.example` | Image pin, database name, superuser password. |
 
 ## Environment
@@ -32,7 +31,7 @@ does not match `all`, and the logical slot needs that line.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone. |
-| `PG_IMAGE` | `postgres:18.6` | Base image for the build. |
+| `PG_IMAGE` | `pgrouting/pgrouting:18-3.6-3.8.0` | Postgres 18 with PostGIS 3.6 and pgRouting 3.8. Pulled, not built. |
 | `PG_DATABASE` | `nus` | Database created on first start. |
 | `PG_SUPERUSER_PASSWORD` | required | `postgres` password. |
 | `PG_CPUS` | `10` | CPU ceiling after bootstrap. |
