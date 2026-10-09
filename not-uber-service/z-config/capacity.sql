@@ -60,12 +60,9 @@ SELECT
     round(t.rows_per_s * t.grows_with, 1)                      AS rows_per_s_full,
     d.ttl_days,
     p.bytes_per_row,
+    -- One server holds every row. This is what the quota has to fit.
     formatReadableSize(p.bytes_per_row * t.rows_per_s * t.grows_with
-                       * d.ttl_days * 86400)                      AS cluster_at_ttl,
-    -- Per NODE, which is what the quota caps: two shards split the rows,
-    -- and each shard's replica holds a full copy of its own shard.
-    formatReadableSize(p.bytes_per_row * t.rows_per_s * t.grows_with
-                       * d.ttl_days * 86400 / 2)                  AS per_node_at_ttl
+                       * d.ttl_days * 86400)                      AS at_ttl
 FROM (
     -- The third column is what each table's volume actually scales with.
     -- 1.0 means it does not grow with the fleet: hotspot_history is 256
@@ -79,18 +76,18 @@ FROM (
     -- A rate of zero means that table's producer was not running when this
     -- was read, NOT that the table is free. rider_positions reads zero
     -- until passenger-service reaches its loop.
-    SELECT 'driver_positions_local' AS table, count() / window_s AS rows_per_s,
+    SELECT 'driver_positions' AS table, count() / window_s AS rows_per_s,
            {scale:Float64} AS grows_with
       FROM nus.driver_positions WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'rider_positions_local', count() / window_s, {scale:Float64}
+    UNION ALL SELECT 'rider_positions', count() / window_s, {scale:Float64}
       FROM nus.rider_positions WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'trip_events_local', count() / window_s, {scale:Float64}
+    UNION ALL SELECT 'trip_events', count() / window_s, {scale:Float64}
       FROM nus.trip_events WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'dispatch_offers_local', count() / window_s, {scale:Float64}
+    UNION ALL SELECT 'dispatch_offers', count() / window_s, {scale:Float64}
       FROM nus.dispatch_offers WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'hotspot_history_local', count() / window_s, 1.0
+    UNION ALL SELECT 'hotspot_history', count() / window_s, 1.0
       FROM nus.hotspot_history WHERE computed_at > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'segment_traffic_history_local', count() / window_s, 1.0
+    UNION ALL SELECT 'segment_traffic_history', count() / window_s, 1.0
       FROM nus.segment_traffic_history WHERE computed_at > now() - toIntervalSecond(window_s)
 ) AS t
 INNER JOIN (
@@ -108,8 +105,7 @@ INNER JOIN (
     FROM system.tables WHERE database = 'nus'
 ) AS d ON d.table = t.table
 WHERE d.ttl_days > 0
-ORDER BY p.bytes_per_row * t.rows_per_s * d.ttl_days DESC
-SETTINGS distributed_product_mode = 'local';
+ORDER BY p.bytes_per_row * t.rows_per_s * d.ttl_days DESC;
 
 SELECT '=== does it fit the quota ===' AS section FORMAT TSVRaw;
 -- Headroom is what is left after the projection. A warehouse planned to
@@ -117,19 +113,19 @@ SELECT '=== does it fit the quota ===' AS section FORMAT TSVRaw;
 -- before it can drop the parts it replaces.
 WITH 300 AS window_s
 SELECT
-    formatReadableSize(sum(per_node))                             AS per_node_projected,
+    formatReadableSize(sum(projected))                            AS projected,
     formatReadableSize({quota_gb:Float64} * 1024 * 1024 * 1024)   AS quota,
-    round(100 * sum(per_node) / ({quota_gb:Float64} * 1024 * 1024 * 1024), 1) AS pct_of_quota,
+    round(100 * sum(projected) / ({quota_gb:Float64} * 1024 * 1024 * 1024), 1) AS pct_of_quota,
     -- A rate of zero projects to zero, which would report ok against a
     -- measurement that never happened - the same false pass Q0 exists to
     -- stop in the quality bars. This is read from a WARM stack or it is
     -- not read at all.
-    multiIf(sum(per_node) = 0, 'NO DATA - run this on a warm stack',
-            sum(per_node) < {quota_gb:Float64} * 1024 * 1024 * 1024 * 0.7,
+    multiIf(sum(projected) = 0, 'NO DATA - run this on a warm stack',
+            sum(projected) < {quota_gb:Float64} * 1024 * 1024 * 1024 * 0.7,
             'ok', 'FAIL')                                         AS verdict,
     '30% headroom, and a non-zero rate' AS pass_line
 FROM (
-    SELECT p.bytes_per_row * t.rows_per_s * t.grows_with * d.ttl_days * 86400 / 2 AS per_node
+    SELECT p.bytes_per_row * t.rows_per_s * t.grows_with * d.ttl_days * 86400 AS projected
     FROM (
     -- The third column is what each table's volume actually scales with.
     -- 1.0 means it does not grow with the fleet: hotspot_history is 256
@@ -143,18 +139,18 @@ FROM (
     -- A rate of zero means that table's producer was not running when this
     -- was read, NOT that the table is free. rider_positions reads zero
     -- until passenger-service reaches its loop.
-    SELECT 'driver_positions_local' AS table, count() / window_s AS rows_per_s,
+    SELECT 'driver_positions' AS table, count() / window_s AS rows_per_s,
            {scale:Float64} AS grows_with
       FROM nus.driver_positions WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'rider_positions_local', count() / window_s, {scale:Float64}
+    UNION ALL SELECT 'rider_positions', count() / window_s, {scale:Float64}
       FROM nus.rider_positions WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'trip_events_local', count() / window_s, {scale:Float64}
+    UNION ALL SELECT 'trip_events', count() / window_s, {scale:Float64}
       FROM nus.trip_events WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'dispatch_offers_local', count() / window_s, {scale:Float64}
+    UNION ALL SELECT 'dispatch_offers', count() / window_s, {scale:Float64}
       FROM nus.dispatch_offers WHERE event_time > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'hotspot_history_local', count() / window_s, 1.0
+    UNION ALL SELECT 'hotspot_history', count() / window_s, 1.0
       FROM nus.hotspot_history WHERE computed_at > now() - toIntervalSecond(window_s)
-    UNION ALL SELECT 'segment_traffic_history_local', count() / window_s, 1.0
+    UNION ALL SELECT 'segment_traffic_history', count() / window_s, 1.0
       FROM nus.segment_traffic_history WHERE computed_at > now() - toIntervalSecond(window_s)
     ) AS t
     INNER JOIN (
@@ -168,8 +164,7 @@ FROM (
         FROM system.tables WHERE database = 'nus'
     ) AS d ON d.table = t.table
     WHERE d.ttl_days > 0
-)
-SETTINGS distributed_product_mode = 'local';
+);
 
 SELECT '=== TTL: is it dropping partitions or deleting rows ===' AS section FORMAT TSVRaw;
 -- A TTL that has to delete inside a monthly part rewrites the whole part.
@@ -184,5 +179,5 @@ SELECT
     round(sum(rows) / uniqExact(partition))               AS rows_per_partition
 FROM system.parts
 WHERE database = 'nus' AND active AND rows > 0
-  AND table IN ('driver_positions_local', 'rider_positions_local', 'trip_events_local')
+  AND table IN ('driver_positions', 'rider_positions', 'trip_events')
 GROUP BY table ORDER BY table;
