@@ -27,12 +27,12 @@ make prepare               # pull every image, build the eleven, prepare LION + 
 
 # --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
-                           #   volume-perms -> lb-config -> certgen
-                           #   -> infrastructure (a-g, including grafana+tiles) -> topics -> ch-ddl
+                           #   volume-perms -> lb-config -> ch-secrets -> ksqldb-secrets
+                           #   -> infrastructure (a-g, including grafana+tiles)
+                           #   -> topics -> schemas -> ksql-ddl -> ch-ddl
                            #   -> superset-init -> bootstrap -> cdc-register
                            #   -> services (i-o)
-make etcd-existing         # once, after the first successful start
-make verify                # prove each layer works (includes /tiles/ through HAProxy)
+make verify                # prove each layer works (includes ksqlDB and /tiles/)
 
 # --- running it -----------------------------------------------------------
 make urls                  # where to point a browser or a client
@@ -69,7 +69,7 @@ are slow to rebuild, and NYC's streets do not change between two test runs.
 re-downloading:
 
 ```bash
-make build && make destroy && make up && make etcd-existing
+make build && make destroy && make up
 ```
 
 Skip `make prepare` unless `routable-graph.dump` or `nyc.mbtiles` is missing.
@@ -156,7 +156,7 @@ on disk. `make destroy` and `make clean` therefore delete the tree
 explicitly — and verify it went, rather than assuming. If files remain
 (containers write as their own users, so root may be needed) they say so and
 exit non-zero, because a leftover tree is picked up by the next bring-up as
-if it were a fresh volume, and a half-initialised PostgreSQL or etcd is far
+if it were a fresh volume, and a half-initialised PostgreSQL is far
 worse than none.
 
 ## Before the first deployment
@@ -173,7 +173,6 @@ answers "will this host actually take the stack" before any image is pulled:
   setting, and defines none of them twice
 - all fourteen components resolve from it
 - every host port the entry tier publishes is free
-- the etcd cluster state matches whether the data volumes already exist
 
 ## What `make up` does, in order
 
@@ -184,16 +183,17 @@ happened, which is the whole reason this is a Makefile and not one
 | Step | Command | Why here |
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
-| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a`/`lb-b` start, the same reason `ch-secrets` exists. |
-| 3 | `make certgen` | etcd needs its TLS material before it starts. |
-| 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until step 9. |
-| 5 | `up` pieces a–g | The rest of the infrastructure (Grafana **and** `nus-tiles`), waited on until every healthcheck passes. |
-| 6 | `make topics` | Auto-creation is off, so topics are made on purpose — after the brokers answer. |
-| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
-| 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
-| 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, a week of history, then the `system:bootstrap:done` marker. |
-| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. |
-| 11 | `up` pieces i–o | The services, which were waiting on the marker. |
+| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `lb-a`/`lb-b` start. |
+| 3 | `make ch-secrets` | Writes the ClickHouse login file the DDL one-shot and the server expect. |
+| 4 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
+| 5 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
+| 6 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `nus-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
+| 7 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
+| 8 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `nus.trip_events`. |
+| 9 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
+| 10 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
+| 11 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `nus-pg-1` through the write port. |
+| 12 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is
@@ -205,22 +205,6 @@ If `bootstrap` fails, the six services stay in standby **on purpose** rather
 than generating trips for drivers that do not exist. That is the design, not
 a hang.
 
-## The one post-bootstrap step
-
-```bash
-make etcd-existing
-```
-
-This flips `ETCD_INITIAL_CLUSTER_STATE` from `new` to `existing` in
-[a-infra-postgres/etcd.env](a-infra-postgres/etcd.env) and recreates the
-three etcd containers; the data volumes persist.
-
-**Never commit that flip.** A fresh clone has to bootstrap from empty
-volumes, so the repository keeps `new`. On a running cluster, `new` would let
-a member that lost its volume bootstrap its own one-node cluster — split
-brain. Reasoning:
-[a-infra-postgres/README.md](a-infra-postgres/README.md#etcd-cluster-lifecycle--new-vs-existing).
-
 ## Verifying it
 
 ```bash
@@ -228,16 +212,18 @@ make verify        # every layer, in order
 ```
 
 or one layer at a time — `verify-pg`, `verify-redis`, `verify-kafka`,
-`verify-cdc`, `verify-ch`, `verify-dash`, `verify-data`. Each prints what a
-healthy answer looks like underneath the output, and each component's own
-README explains the checks in full.
+`verify-ksqldb`, `verify-cdc`, `verify-ch`, `verify-dash`, `verify-data`.
+Each prints what a healthy answer looks like underneath the output, and
+each component's own README explains the checks in full.
+
+`verify-pg` is `pg_isready`. `verify-redis` is a PING. `verify-kafka`
+expects one replica in sync. `verify-ch` lists MergeTree engines.
 
 Two results that look wrong and are not:
 
-- **Red rows on the HAProxy stats page are expected.** The checks ask Patroni
-  which *role* a node holds, so `pg_write` shows 1 UP (the leader) and
-  `pg_read` shows 2 UP (the replicas). A node down in **both** backends is
-  the only real failure signal.
+- **A down server on an HAProxy backend means that one process failed the
+  check.** Ports 5432 and 5433 are both `nus-pg-1`. Ports 6379 and 6380
+  are both `nus-redis-1`.
 - **Empty dashboard panels before bootstrap finishes are fine.** An error is
   not.
 
@@ -265,8 +251,8 @@ because it runs one pgRouting query per trip, so fewer requests is the fix.
 A shell into any of the data stores, through the proxy where there is one:
 
 ```bash
-make psql          # the current leader          make redis-cli
-make psql-read     # the replica pool            make ch-client
+make psql          # port 5432, nus-pg-1         make redis-cli
+make psql-read     # port 5433, same process     make ch-client
 ```
 
 ## Bringing one piece up at a time
@@ -275,11 +261,11 @@ The pieces can still be brought up individually, in the alphabetic build
 order, which is how each was written and tested:
 
 ```bash
-make up-piece PIECE=a   # PostgreSQL (Patroni) + etcd, behind the entry tier
-make up-piece PIECE=b   # Redis + Sentinel
-make up-piece PIECE=c   # Kafka + Schema Registry        (then: make topics)
+make up-piece PIECE=a   # one PostgreSQL, behind the entry tier
+make up-piece PIECE=b   # one Redis
+make up-piece PIECE=c   # one Kafka broker, Schema Registry, ksqlDB
 make up-piece PIECE=d   # Debezium Connect               (register the connector after piece h)
-make up-piece PIECE=e   # ClickHouse + Keeper            (then: make ch-ddl)
+make up-piece PIECE=e   # one ClickHouse                 (then: make ch-ddl)
 make up-piece PIECE=f   # Grafana
 make up-piece PIECE=g   # Superset                       (then: make superset-init)
 make bootstrap
@@ -308,30 +294,26 @@ $EDITOR .env        # Section 1 — all 8 passwords need real values, even
                      # before Docker will start anything at all
 
 # build/pull ONLY piece a's images — not `make prepare`, which does all 14
-docker compose build pg-1                          # nus/patroni-postgres; pg-2/pg-3 share the tag
-docker compose pull etcd-1 etcd-2 etcd-3 lb-a lb-b
+docker compose build pg-1
+docker compose pull lb-a lb-b
 
 # the one-shots piece a needs before its first start
 docker compose run --rm volume-perms          # whole tree, harmless to run unscoped
-docker compose run --rm haproxy-config-render # lb-a/lb-b's config — piece a's ENTRY tier needs this too
-docker compose run --rm etcd-certgen          # piece a's own TLS bootstrap
+docker compose run --rm haproxy-config-render # lb-a/lb-b's config — piece a's entry tier needs this too
 
-# start it — lb-a, lb-b, etcd-1/2/3, pg-1/2/3, nothing else
+# start it — lb-a, lb-b, pg-1, nothing else
 make up-piece PIECE=a
 
-# verify, then the one post-first-start step
 make ps
 make errors
 make verify-pg
-make etcd-existing
 ```
 
-Connect a SQL client through `lb-a` (never a `pg-*` container directly —
-see [Connecting as a DBA](a-infra-postgres/README.md#connecting-as-a-dba)):
-host = this server, port `5432` (writes) or `5433` (reads), database
-`postgres`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. Expect the
-`nus` database not to exist yet — `h-bootstrap` is what creates it (and its
-own `nus` schema), and it runs several pieces later.
+Connect a SQL client through `lb-a`
+(see [Connecting](a-infra-postgres/README.md#connecting)):
+host = this server, port `5432` or `5433` (both are `nus-pg-1`), database
+`nus`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. The `nus`
+schema and its tables arrive with `h-bootstrap`, several pieces later.
 
 Skip `make preflight` and `make prepare` for this: both check readiness of
 all 14 components and will fail on the 13 you have not touched yet. They

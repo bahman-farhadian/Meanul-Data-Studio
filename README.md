@@ -29,20 +29,19 @@ versions over time**; the pattern itself is domain-agnostic:
   database that generators write to. Semi-structured / JSON-like payloads
   are stored natively in PostgreSQL **`JSONB`** columns — no separate
   document database (e.g. MongoDB) is introduced for them.
-- **Cache layer (Redis, Sentinel-managed)** — Sits in front of the OLTP
-  layer as the **read path for everything else**. ClickHouse-feeding
-  consumers and other mimic services must never query the PostgreSQL OLTP
-  cluster directly for joins/lookups — they read from Redis instead. When
-  data in PostgreSQL changes, the change is captured via **CDC (Debezium
-  over Kafka)** and applied to the cache, keeping Redis consistent with
-  the source of truth.
-- **Streaming backbone (Kafka cluster, KRaft mode)** — A sharded,
-  multi-broker Kafka cluster running in KRaft mode (no ZooKeeper).
-  Generators and/or the OLTP layer publish **binary Avro** events onto
-  Kafka topics, with schemas managed by a schema registry.
-- **OLAP layer (ClickHouse, ClickHouse Keeper)** — A sharded/replicated
-  ClickHouse cluster fed from Kafka, coordinated via a ClickHouse Keeper
-  ensemble (no ZooKeeper dependency).
+- **Cache layer (one Redis)** — Sits in front of the OLTP layer as the
+  **read path for everything else**. ClickHouse-feeding consumers and
+  other mimic services must never query PostgreSQL directly for
+  joins/lookups — they read from Redis instead. When data in PostgreSQL
+  changes, the change is captured via **CDC (Debezium over Kafka)** and
+  applied to the cache, keeping Redis consistent with the source of truth.
+- **Streaming backbone (one Kafka broker, KRaft mode)** — One broker that
+  is also its own controller (no ZooKeeper). Generators and the OLTP
+  layer publish **binary Avro** events onto Kafka topics, with schemas
+  managed by a schema registry. Partitions stay, so one key still orders
+  on one partition. A SQL client reads the broker through ksqlDB.
+- **OLAP layer (one ClickHouse)** — One MergeTree server fed from Kafka.
+  The names Grafana and Superset query are the tables.
 - **Dashboards** — [Grafana](https://grafana.com/) for live/operational
   views and [Apache Superset](https://superset.apache.org/) for analytical
   BI dashboards, both backed by ClickHouse.
@@ -62,17 +61,16 @@ graph LR
         PG[("PostgreSQL")]
     end
 
-    subgraph Cache ["Redis (Sentinel-managed)"]
-        R[("Redis Cache")]
+    subgraph Cache ["Redis"]
+        R[("Redis")]
     end
 
-    subgraph Streaming ["Kafka Cluster (KRaft, sharded)"]
-        K[("Kafka Brokers")]
+    subgraph Streaming ["Kafka (one KRaft broker)"]
+        K[("Kafka")]
     end
 
-    subgraph OLAP ["ClickHouse Cluster (ClickHouse Keeper)"]
-        CH[("ClickHouse Shards / Replicas")]
-        KE[("ClickHouse Keeper Ensemble")]
+    subgraph OLAP ["ClickHouse"]
+        CH[("ClickHouse")]
     end
 
     subgraph Dashboards ["Dashboards"]
@@ -90,7 +88,6 @@ graph LR
     R -.->|"lookups and joins for consumers"| K
     K -->|"consumers"| CH
 
-    CH <-.->|"coordination"| KE
     CH --> GF
     CH --> SS
 ```
@@ -114,7 +111,7 @@ The platform is split into one **one-shot init service** and several
 | `passenger-service` | long-running | Simulates the pool of riders. Produces trip requests and rider device location streams. |
 | `dispatch-service` | long-running | Matches trip requests from `passenger-service` to available drivers, computes the route via pgRouting, calculates the fare estimate (base + distance + time, surge-adjusted), and assigns the trip. |
 | `city-service` | long-running | Watches live trip/location traffic, computes per-zone demand "hotspot" scores and per-road-segment congestion factors (refreshing `segment_traffic` used by routing), and publishes hotspots so drivers can be guided toward demand. |
-| `clickhouse-sink` | long-running | Consumes Kafka topics, enriches events via Redis, and writes into the ClickHouse cluster for analytics/dashboards. |
+| `clickhouse-sink` | long-running | Consumes Kafka topics, enriches events via Redis, and writes into ClickHouse for analytics/dashboards. |
 | `cache-updater` | long-running | Consumes the Debezium CDC topics and applies PostgreSQL changes to Redis, keeping the cache in sync with the source of truth. |
 
 Note: in the real world, driver-side and rider-side telemetry are **not**
@@ -127,9 +124,9 @@ Naming: the plain names above (`driver-service`, `cache-updater`, ...) are
 the docker-compose service/container names; the alphabetic directory
 prefixes in [2.8](#28-project-structure) (`j-service-driver`, ...) encode
 build order only. Shared resources carry the **`nus-` prefix — the acronym
-of *n*ot-*u*ber-*s*ervice**: the `nus-backbone` Docker network, the
-`nus-pg` Patroni scope, the `nus-etcd` cluster, and the `nus/` image
-namespace.
+of *n*ot-*u*ber-*s*ervice**: the `nus-backbone` Docker network and the
+`nus/` image namespace. The data processes are `nus-pg-1`, `nus-redis-1`,
+`nus-kafka-1`, and `nus-ch-s1r1`.
 
 #### Load-balancer tier (lb-a / lb-b)
 
@@ -137,15 +134,17 @@ Two HAProxy containers form a single **active-passive** entry tier for the
 whole stack: every client lists both (`lb-a,lb-b`) and fails over
 client-side. The pair routes:
 
-- **5432 / 5433** -> PostgreSQL primary (writes) / replicas (reads),
-  driven by Patroni's REST health endpoints;
-- **8123 / 9000** -> healthy ClickHouse nodes (HTTP / native protocol);
-- **3000 / 8088** -> the Grafana / Superset UIs (single entry point for
-  host ports).
+- **5432 / 5433** -> the one PostgreSQL. Both ports are `nus-pg-1`.
+  Debezium uses 5432;
+- **6379 / 6380** -> the one Redis. Both ports are `nus-redis-1`;
+- **9094 / 9097** -> the one Kafka broker, one port per advertised address;
+- **8089** -> ksqlDB, the SQL reader of that broker;
+- **8123 / 9000** -> the one ClickHouse (HTTP / native);
+- **3000 / 8088** -> Grafana / Superset.
 
-Kafka and Redis are deliberately **not** proxied: both protocols perform
-their own server discovery (advertised listeners, Sentinel) and a TCP load
-balancer in the middle would break it.
+`lb-b` publishes the same processes on the `1xxxx` host ports. HAProxy
+is there so a client keeps a stable port. It does not hide a second data
+process.
 
 #### Trip lifecycle & fares
 
@@ -177,10 +176,10 @@ system:
 `docker-compose up` brings the stack up in a strict order, enforced through
 healthchecks and `depends_on: condition: service_healthy`:
 
-1. **Infrastructure clusters** start first: the HAProxy pair
-   (`lb-a` / `lb-b`), PostgreSQL (Patroni-managed), Redis + Sentinel,
-   Kafka (KRaft) + Schema Registry + Debezium Connect, ClickHouse + Keeper,
-   Grafana, Superset — each with a healthcheck.
+1. **Infrastructure** starts first: the HAProxy pair (`lb-a` / `lb-b`),
+   one PostgreSQL, one Redis, one Kafka broker with Schema Registry and
+   ksqlDB, Debezium Connect, one ClickHouse, Grafana, Superset — each
+   with a healthcheck.
 2. **Long-running app services** (`driver-service`, `passenger-service`,
    `dispatch-service`, `city-service`, `clickhouse-sink`, `cache-updater`)
    start once the infrastructure they depend on is healthy, and wait in
@@ -215,8 +214,8 @@ graph LR
     end
 
     DISP["dispatch-service"]
-    PG[("PostgreSQL<br/>Patroni cluster")]
-    KAFKA[("Kafka<br/>KRaft cluster")]
+    PG[("PostgreSQL")]
+    KAFKA[("Kafka")]
 
     DRV -->|"status writes"| PG
     PSG -->|"trip requests"| PG
@@ -236,7 +235,7 @@ graph LR
     CUPD["cache-updater"]
 
     PG[("PostgreSQL")]
-    REDIS[("Redis<br/>Sentinel set")]
+    REDIS[("Redis")]
     KAFKA[("Kafka")]
 
     BOOT -->|"schema, map, seed, history"| PG
@@ -262,7 +261,7 @@ graph LR
     KAFKA[("Kafka")]
     REDIS[("Redis")]
     SINK["clickhouse-sink"]
-    CH[("ClickHouse<br/>cluster")]
+    CH[("ClickHouse")]
     BOOT["bootstrap"]
     GRAF["Grafana"]
     SUPER["Superset"]
@@ -275,16 +274,11 @@ graph LR
     CH --> SUPER
 ```
 
-### 2.3 PostgreSQL cluster (HLD)
+### 2.3 PostgreSQL (HLD)
 
 PostgreSQL is the system of truth for all transactional/operational state
-and the NYC road network graph. It runs as a real cluster — **one primary +
-two streaming replicas with automatic failover managed by Patroni**, backed
-by **nus-etcd: a 3-node, mutually-TLS-secured etcd cluster** (certificates
-auto-generated for 10 years with per-node SANs). nus-etcd doubles as the
-**stack's shared key-value/DCS store** — any future component that needs
-etcd reuses this cluster rather than deploying its own. The PostgreSQL
-layer relies on three pillars:
+and the NYC road network graph. It is one process, `nus-pg-1`. The
+PostgreSQL layer relies on three pillars:
 
 - **[PostGIS](https://postgis.net/)** — the extension that stores the NYC
   map: road geometries, pickup/drop-off points, and route linestrings live
@@ -298,12 +292,10 @@ layer relies on three pillars:
   columns with GIN indexes where needed — PostgreSQL covers the
   document-store role, so no MongoDB is part of the stack.
 
-**Entry point:** services never hard-code the primary — they connect
-through the stack's HAProxy pair (`lb-a` / `lb-b`, see
-[2.1](#load-balancer-tier-lb-a--lb-b)), which routes by querying Patroni's
-REST API: port **5432** -> current primary (read/write), port **5433** ->
-replicas (read-only pool). On failover Patroni promotes a replica and the
-proxies follow automatically — clients just reconnect.
+**Entry point:** services connect through the HAProxy pair (`lb-a` /
+`lb-b`, see [2.1](#load-balancer-tier-lb-a--lb-b)). Port **5432** and
+port **5433** are both `nus-pg-1`. Debezium uses the write port. `PG_HOST`
+is `nus-lb-a`.
 
 **Migrations** are plain, ordered SQL files
 (`h-bootstrap/migrations/001_*.sql`, `002_*.sql`, ...) applied exactly once
@@ -311,21 +303,10 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 
 ```mermaid
 graph TB
-    HAP["lb-a / lb-b (HAProxy pair)<br/>5432: writes, 5433: reads"]
+    HAP["lb-a / lb-b (HAProxy pair)<br/>5432 and 5433"]
+    PG[("nus-pg-1")]
 
-    subgraph PGCluster ["PostgreSQL Cluster (Patroni + etcd)"]
-        PRIM[("Primary")]
-        REP1[("Replica 1")]
-        REP2[("Replica 2")]
-        ETCD[("nus-etcd<br/>3 nodes, mutual TLS")]
-    end
-
-    HAP -->|"routes via Patroni REST health checks"| PRIM
-    HAP -.->|"read pool"| REP1
-    HAP -.->|"read pool"| REP2
-    PRIM -->|"streaming replication"| REP1
-    PRIM -->|"streaming replication"| REP2
-    ETCD -.->|"leader election / failover"| PRIM
+    HAP --> PG
 ```
 
 ```mermaid
@@ -377,30 +358,19 @@ Core tables (conceptual):
 > schema is settled during development against the running PostgreSQL —
 > additional tables may well be added along the way.
 
-### 2.4 Redis cluster (HLD)
+### 2.4 Redis (HLD)
 
-Redis runs as a Sentinel-managed primary/replica set and is the **only**
-read path for cached reference and hot-path data — generators, dispatch,
-the city service, and the ClickHouse sink read from here, never directly
-from PostgreSQL.
+One Redis, `nus-redis-1`, is the **only** read path for cached reference
+and hot-path data — generators, dispatch, the city service, and the
+ClickHouse sink read from here, never directly from PostgreSQL. HAProxy
+ports 6379 and 6380 are that process. `make verify-redis` is a PING.
 
 ```mermaid
 graph TB
-    subgraph Sentinel ["Redis Sentinel"]
-        S1["Sentinel 1"]
-        S2["Sentinel 2"]
-        S3["Sentinel 3"]
-    end
+    HAP["lb-a / lb-b<br/>6379 and 6380"]
+    R[("nus-redis-1")]
 
-    M[("Redis Primary")]
-    R1[("Replica 1")]
-    R2[("Replica 2")]
-
-    S1 -.->|"monitor / failover"| M
-    S2 -.->|"monitor / failover"| M
-    S3 -.->|"monitor / failover"| M
-    M -->|"replication"| R1
-    M -->|"replication"| R2
+    HAP --> R
 ```
 
 Key spaces (conceptual):
@@ -423,16 +393,17 @@ harmless by construction.
 > final key layout is settled during development against the running
 > Redis — additional key spaces may well be added.
 
-### 2.5 Kafka cluster (HLD)
+### 2.5 Kafka (HLD)
 
-Kafka runs as a sharded, multi-broker cluster in **KRaft mode** (combined
-broker/controller nodes, no ZooKeeper). All events are encoded as **binary
-Avro**: a **Schema Registry** container holds every topic's schema,
-producers register/resolve schemas at startup, and consumers fetch them by
-the schema id embedded in each message. Debezium Connect uses its Avro
-converter, so the `cdc.*` topics share the same encoding. Topics are
-created with **replication factor 3** and `min.insync.replicas = 2`
-across the three brokers.
+Kafka is one broker in **KRaft mode** (broker and controller, no
+ZooKeeper). All events are encoded as **binary Avro**: a **Schema
+Registry** container holds every topic's schema, producers
+register/resolve schemas at startup, and consumers fetch them by the
+schema id embedded in each message. Debezium Connect uses its Avro
+converter, so the `cdc.*` topics share the same encoding. Declared topics
+are created with **replication factor 1** and `min.insync.replicas=1`.
+Partitions stay, so a key still orders on one partition. **ksqlDB** is
+how a SQL client reads this broker. Its own topics are also one replica.
 
 Binary does **not** mean unreadable — every topic stays inspectable and
 queryable (the concrete recipes live in `c-infra-kafka/`'s docs):
@@ -441,113 +412,83 @@ queryable (the concrete recipes live in `c-infra-kafka/`'s docs):
   `kcat -s avro -r http://schema-registry:8081` or
   `kafka-avro-console-consumer` decode messages on the fly through the
   Schema Registry.
-- **SQL directly over a live topic**: ClickHouse's Kafka table engine
-  reads topics with `format = 'AvroConfluent'` +
-  `format_avro_schema_registry_url`, so ad-hoc `SELECT`s can be run
-  against the stream itself — no extra component needed.
+- **SQL directly over a live topic**: ksqlDB (`lb-a` port 8089) answers
+  `SELECT` against the streams in `c-infra-kafka/ksql/`. ClickHouse's
+  Kafka table engine can also read topics with `format = 'AvroConfluent'`
+  and `format_avro_schema_registry_url`.
 - **SQL over the full history**: `clickhouse-sink` lands every event in
   ClickHouse anyway, so anything that ever passed through Kafka is one
   query away in `clickhouse-client`, Grafana, or Superset.
 
 ```mermaid
 graph TB
-    subgraph Kafka ["Kafka Cluster (KRaft)"]
-        B1["Broker 1<br/>broker + controller"]
-        B2["Broker 2<br/>broker + controller"]
-        B3["Broker 3<br/>broker + controller"]
-    end
+    B1["nus-kafka-1<br/>broker + controller"]
+    SR["Schema Registry"]
+    KSQL["ksqlDB"]
 
-    SR["Schema Registry<br/>Avro schemas"]
-    SR -.- B2
-
-    T1[["driver_location<br/>(N partitions)"]]
-    T2[["rider_location<br/>(N partitions)"]]
-    T3[["trip_requests<br/>(N partitions)"]]
-    T4[["trip_lifecycle<br/>(N partitions)"]]
-    T5[["city_hotspots<br/>(N partitions)"]]
-
-    B1 --- T1
-    B1 --- T2
-    B2 --- T3
-    B2 --- T4
-    B3 --- T5
+    B1 --- SR
+    B1 --- KSQL
+    B1 --- T1[["driver_location"]]
+    B1 --- T2[["trip_lifecycle"]]
 ```
 
 | Topic | Partitions | Producer | Consumer(s) |
 | --- | --- | --- | --- |
-| `driver_location` | 6 | `driver-service` | `city-service`, `clickhouse-sink` |
-| `rider_location` | 6 | `passenger-service` | `city-service`, `clickhouse-sink` |
-| `trip_requests` | 3 | `passenger-service` | `dispatch-service`, `clickhouse-sink` |
-| `trip_lifecycle` | 3 | `dispatch-service` | `city-service`, `clickhouse-sink` |
+| `driver_location` | 12 | `driver-service` | `city-service`, `clickhouse-sink` |
+| `rider_location` | 12 | `passenger-service` | `city-service`, `clickhouse-sink` |
+| `trip_requests` | 6 | `passenger-service` | `dispatch-service`, `clickhouse-sink` |
+| `trip_lifecycle` | 6 | `dispatch-service` | `city-service`, `clickhouse-sink` |
+| `dispatch_offers` | 6 | `dispatch-service` | `clickhouse-sink` |
 | `city_hotspots` | 3 | `city-service` | `clickhouse-sink` |
+| `segment_traffic_updates` | 3 | `city-service` | `clickhouse-sink` |
 | `cdc.*` (per table) | 3 | Debezium Connect (from PostgreSQL WAL) | `cache-updater` |
 
-The high-volume location topics get 6 partitions (keyed by driver/rider id
-so per-entity ordering is preserved); everything else gets 3, one per
-broker.
+The source of those partition counts is `c-infra-kafka/topics/topics.tsv`.
+Each topic has a key, so one entity stays on one partition. Replication
+factor is 1.
 
-> **Note:** the topic map above is a conceptual demonstration only. The
-> final topic/partition layout is settled during development against the
-> running Kafka cluster — topics may be added or resized.
+> **Note:** Debezium creates the `cdc.*` topics. They are not in the TSV.
 
-### 2.6 ClickHouse cluster (HLD)
+### 2.6 ClickHouse (HLD)
 
-ClickHouse runs as **2 shards x 2 replicas** coordinated by a **3-node
-ClickHouse Keeper ensemble** (no ZooKeeper) — sharding and replication are
-both demonstrated at a footprint that fits a single host. `clickhouse-sink`
-consumes every Kafka topic above and writes into denormalized analytics
-tables that back Grafana (live/ops) and Superset (BI).
+ClickHouse is one server, `nus-ch-s1r1`. `clickhouse-sink` consumes the
+Kafka topics above and writes the warehouse tables that back Grafana
+(live/ops) and Superset (BI). The names those dashboards query
+(`nus.trip_events`, `nus.driver_positions`, and the rest) are the tables.
+Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or
+`ReplacingMergeTree`. A second copy on this host would not be a second
+machine, so there is no Keeper. See
+`not-uber-service/e-infra-clickhouse/clickhouse-cluster-design.md`.
 
-**Relationship with the Redis cluster:** before inserting, the sink
-enriches events using Redis-cached state — for example, when a completed
-trip arrives it looks up `hotspot:{zone}:{period}` to mark whether it was a
-**hotspot trip**, and compares the actual duration against the predicted
-duration cached on `trip:{id}:active` to flag trips that **took longer than
-predicted** so Grafana can surface them. This keeps all such lookups off
-the PostgreSQL OLTP cluster, per the cache-first rule in Section 1.
+**Relationship with Redis:** before inserting, the sink enriches events
+using Redis — for example, when a completed trip arrives it looks up
+`hotspot:{zone}:{period}` to mark whether it was a **hotspot trip**, and
+compares the actual duration against the predicted duration cached on
+`trip:{id}:active` to flag trips that **took longer than predicted**.
+This keeps those lookups off PostgreSQL, per the cache-first rule in
+Section 1.
 
-**Client entry point:** clients (`clickhouse-sink`, Grafana, Superset)
-reach the cluster through the stack's HAProxy pair (`lb-a` / `lb-b`),
-which balances ports 8123 (HTTP) and 9000 (native) across healthy nodes;
-`Distributed` tables then route queries inside the cluster. `bootstrap`
-bulk-loads the historical week here so dashboards are populated from the
-first minute. Grafana connects through the official ClickHouse datasource
-plugin; Superset connects via `clickhouse-connect` and keeps its own
-application metadata in **SQLite on a named volume** (sufficient for the
-single-user setup — the OLTP cluster stays untouched).
-
-> **Note:** the analytics tables shown are a conceptual demonstration
-> only. The final ClickHouse schema is settled during development against
-> the running cluster — more tables and materialized views may be added.
+**Client entry point:** `clickhouse-sink`, Grafana, and Superset reach
+the server through HAProxy (`lb-a` / `lb-b`) on 8123 (HTTP) and 9000
+(native). Both ports are `nus-ch-s1r1`. `bootstrap` loads history here
+so dashboards have rows after init. Grafana uses the ClickHouse
+datasource plugin. Superset uses `clickhouse-connect` and keeps its own
+metadata in **SQLite on a named volume**.
 
 ```mermaid
 graph TB
-    KAFKA[("Kafka Cluster")]
-    REDIS[("Redis Cluster")]
+    KAFKA[("Kafka")]
+    REDIS[("Redis")]
     SINK["clickhouse-sink"]
-
-    subgraph OLAP ["ClickHouse Cluster"]
-        CH1[("Shard 1<br/>Replicas 1 / 2")]
-        CH2[("Shard 2<br/>Replicas 1 / 2")]
-        KEEPER[("ClickHouse Keeper Ensemble")]
-    end
-
+    CH[("nus-ch-s1r1")]
     GRAF["Grafana"]
     SUPER["Superset"]
 
-    KAFKA -->|"all topics"| SINK
-    REDIS -.->|"enrichment: hotspot scores, predicted durations"| SINK
-
-    SINK -->|"live_driver_positions, live_rider_positions"| CH1
-    SINK -->|"trip_events (hotspot flag, duration delta), hotspot_history"| CH2
-
-    CH1 <-.->|"coordination / replication"| KEEPER
-    CH2 <-.->|"coordination / replication"| KEEPER
-
-    CH1 --> GRAF
-    CH2 --> GRAF
-    CH1 --> SUPER
-    CH2 --> SUPER
+    KAFKA -->|"topics"| SINK
+    REDIS -.->|"enrichment"| SINK
+    SINK --> CH
+    CH --> GRAF
+    CH --> SUPER
 ```
 
 ### 2.7 NYC road network & routing
@@ -613,7 +554,7 @@ Every component lives directly under `not-uber-service/` (no `infra/` /
 encodes a single **alphabetic build/test-order** (`a-`, `b-`, `c-`, ...)
 across the whole stack — sorting the directory alphabetically shows
 exactly the order each piece should be written and tested in. **All
-infrastructure clusters (`infra-*`) come first, as a block, since they are
+infrastructure directories (`infra-*`) come first, as a block, since they are
 the foundation every service is built on; `bootstrap` and the app services
 (`service-*`) follow.** Each component's own design notes live inside its
 own directory rather than in a shared `docs/`. See
@@ -631,12 +572,12 @@ meanul-data-studio/
     ├── docker-compose.yaml           # root file: lb-a/lb-b + include of every component compose
     ├── .env.example                  # template for the untracked .env — the MASTER settings file
     │                                 #   for the whole stack (every include resolves from it)
-    ├── a-infra-postgres/             # Patroni (primary + 2 replicas) + etcd config
+    ├── a-infra-postgres/             # one PostgreSQL (PostGIS, pgRouting)
     │   └── docker-compose.yaml       # component compose (every component dir has one)
-    ├── b-infra-redis/                # nus-cache: 3 data nodes + 3 Sentinels, config templates
-    ├── c-infra-kafka/                # KRaft brokers, Schema Registry, topic list, Avro schemas
+    ├── b-infra-redis/                # one Redis
+    ├── c-infra-kafka/                # one KRaft broker, Schema Registry, ksqlDB, Avro schemas
     ├── d-infra-debezium/             # Kafka Connect + Avro converter, PostgreSQL CDC connector
-    ├── e-infra-clickhouse/           # 2x2 cluster + Keeper config, table DDL, clickhouse-cluster-design.md
+    ├── e-infra-clickhouse/           # one ClickHouse, table DDL, clickhouse-cluster-design.md
     ├── f-infra-grafana/              # provisioned ClickHouse datasource + live dashboard
     ├── g-infra-superset/             # Superset + ClickHouse driver, init one-shot
     ├── h-bootstrap/                  # one-shot init service (starts last, runs once, exits)
@@ -679,11 +620,11 @@ tested in isolation before the next depends on it:
 
 | Step | Component | Why this point in the sequence |
 | --- | --- | --- |
-| `a-` | `a-infra-postgres` | Foundation: schema, PostGIS/pgRouting extensions, Patroni cluster — testable standalone with raw SQL. |
-| `b-` | `b-infra-redis` | Sentinel cache cluster — testable standalone (set/get, failover). |
-| `c-` | `c-infra-kafka` | Streaming backbone — testable standalone (produce/consume) before any producer/consumer exists. |
+| `a-` | `a-infra-postgres` | Foundation: schema, PostGIS/pgRouting — testable standalone with raw SQL. |
+| `b-` | `b-infra-redis` | One Redis — testable standalone (PING, set/get). |
+| `c-` | `c-infra-kafka` | One broker, Schema Registry, ksqlDB — testable standalone before any producer exists. |
 | `d-` | `d-infra-debezium` | Needs `a` + `c`: CDC connector turning Postgres WAL into Kafka `cdc.*` topics. |
-| `e-` | `e-infra-clickhouse` | OLAP cluster — testable standalone (DDL, inserts, replication); includes the cluster topology design notes. |
+| `e-` | `e-infra-clickhouse` | One ClickHouse — testable standalone (DDL, inserts); the design note says why it is one process. |
 | `f-` | `f-infra-grafana` | Datasource/provisioning against `e`; dashboards populate once services produce data. |
 | `g-` | `g-infra-superset` | Datasource/provisioning against `e`; dashboards populate once services produce data. |
 | `h-` | `h-bootstrap` | Needs `a` + `b` running: migrations, OSM import/topology build, seed data, historical week, cache preload. |
@@ -697,9 +638,11 @@ tested in isolation before the next depends on it:
 ### 2.9 Resource allocation
 
 The stack targets a dedicated Docker server with **20 CPU cores, 120 GB
-RAM, and NVMe storage**. The complete topology has many stateful
-containers, JVM services, and OLAP nodes, so the project is documented and
-sized for that server class only.
+RAM, and NVMe storage**. Each store is one process. The figures below are
+container ceilings from `not-uber-service/.env.example` (tiles uses the
+compose default, because that file does not set `TILES_*`). A ceiling is
+not a reserved core. The CPU ceilings sum above 20. A process uses what
+its work needs, up to its cap.
 
 Resource limits are declared directly in each component's Compose file.
 Explicit limits are mandatory: the JVM-based components (Kafka, Debezium
@@ -730,43 +673,41 @@ Storage is not expected to be the first constraint: at the default
 moderate pacing, ClickHouse produces low single-digit GB per day and Kafka
 retention is bounded.
 
-| Component | Containers | CPU each | Mem each | Mem subtotal |
-| --- | --- | --- | --- | --- |
-| PostgreSQL nodes (Patroni — identical limits, leader elected) | 3 | 1.6 | 9 GB | 27 GB |
-| HAProxy pair (`lb-a` / `lb-b`) | 2 | 0.1 | 128 MB | 0.25 GB |
-| nus-etcd cluster (shared DCS/KV, TLS) | 3 | 0.15 | 384 MB | 1.13 GB |
-| Redis nodes (Sentinel — identical limits, primary elected) | 3 | 0.5 | 4 GB | 12 GB |
-| Redis Sentinel | 3 | 0.1 | 192 MB | 0.56 GB |
-| Kafka brokers | 3 | 1.2 | 5.5 GB (3.5 GB heap) | 16.5 GB |
-| Schema Registry | 1 | 0.2 | 1 GB | 1 GB |
-| Debezium Connect | 1 | 0.4 | 2 GB | 2 GB |
-| ClickHouse nodes (2x2) | 4 | 1.3 | 8 GB | 32 GB |
-| ClickHouse Keeper | 3 | 0.1 | 1 GB | 3 GB |
-| Grafana | 1 | 0.2 | 1 GB | 1 GB |
-| Superset (single user, single worker, SQLite metadata) | 1 | 0.6 | 3 GB | 3 GB |
-| App services (driver, passenger, dispatch, city, sink, cache-updater) | 6 | 0.15 | 768 MB | 4.5 GB |
-| **Steady-state total** | **34** | **~18.65 (of 20, no overcommit)** | | **~104 GB** |
-| `bootstrap` (transient, exits after init) | 1 | 1.25 | 24 GB | peak ~128 GB |
+| Component | Containers | CPU ceiling | Memory ceiling |
+| --- | --- | --- | --- |
+| PostgreSQL (`nus-pg-1`, `shared_buffers` 4 GB) | 1 | 10 | 16 GB |
+| HAProxy (`lb-a` / `lb-b`) | 2 | 0.5 | 128 MB |
+| Redis (`nus-redis-1`) | 1 | 0.5 | 4 GB |
+| Kafka (`nus-kafka-1`, heap 3.5 GB) | 1 | 1.2 | 5.5 GB |
+| Schema Registry | 1 | 0.2 | 1 GB |
+| ksqlDB | 1 | 0.5 | 1.5 GB |
+| Debezium Connect | 1 | 0.4 | 2 GB |
+| ClickHouse (`nus-ch-s1r1`) | 1 | 1.3 | 8 GB |
+| Grafana | 1 | 0.2 | 1 GB |
+| Tiles (`nus-tiles`) | 1 | 1.0 | 3 GB |
+| Superset | 1 | 0.6 | 3 GB |
+| `cache-updater` | 1 | 1.5 | 1536 MB |
+| `driver-service` | 1 | 2 | 2048 MB |
+| `passenger-service` | 1 | 1.5 | 1536 MB |
+| `dispatch-service` | 1 | 1.5 | 1024 MB |
+| `city-service` | 1 | 1 | 1024 MB |
+| `clickhouse-sink` | 1 | 2.5 | 2048 MB |
+| `archiver-service` | 1 | 0.5 | 512 MB |
+| `bootstrap` (one-shot, then it exits) | 1 | 20 | 48 GB |
 
-The steady-state budget leaves roughly **16 GB** for the host OS and
-operational headroom on a 120 GB server. The transient `bootstrap` gets
-**24 GB** (`BOOTSTRAP_MEM`): `osm2pgrouting` holds the street graph in memory
-while it builds the routing topology, and 8 GB was not enough for the NYC
-extract — the kernel killed it. That figure is affordable because it is
-transient and because the six app services have not started yet; bootstrap's
-1.25 CPU fits inside the 20-core ceiling for the same reason. Lower it if
-your extract is smaller, raise it if the import is killed again.
+Those long-running ceilings are about **27 CPU** and about **55 GB**.
+Memory fits a 120 GB host with room for the OS. The CPU sum is above 20
+because the numbers are caps. PostgreSQL's 10-core cap is the wall during
+a tick; it is not 10 cores reserved all day. Do not set `PG_MEM` below
+16 GB.
 
-**CPU, not RAM, is what bounds the topology.** With no overcommit the 20
-cores are the scarce resource: ClickHouse at 2 shards x 2 replicas already
-takes 5.2 of them, so doubling the shard count would blow the CPU budget long
-before the memory one. The headroom on a 120 GB host is therefore spent
-deepening the existing nodes — PostgreSQL 9 GB, Kafka 5.5 GB, ClickHouse
-8 GB — rather than adding more of them.
+`bootstrap` is the one-shot that builds the street graph. `.env.example`
+sets `BOOTSTRAP_MEM=48g` and `BOOTSTRAP_CPUS=20`. It exits when init
+finishes. The compose fallback, if that variable is unset, is 24 GB.
 
-Key tuning that makes the budget fit: `KAFKA_HEAP_OPTS` capped per
+Key tuning that makes the budget fit: `KAFKA_HEAP_OPTS` capped on the
 broker, ClickHouse `max_server_memory_usage` set below its container
-limit, PostgreSQL `shared_buffers`/`work_mem` sized to its limit, and
+limit, PostgreSQL `shared_buffers` at 4 GB inside the 16 GB cap, and
 Superset running in single-worker mode with SQLite metadata.
 
 #### No-swap policy
@@ -789,7 +730,7 @@ hoped for:
   per container — any OOM kill means that component's limit or the pacing
   config must come down.
 - **Pipeline health**: Kafka consumer-group lag (must stay bounded),
-  ClickHouse ingestion delay, and Patroni/Sentinel/Keeper health checks.
+  ClickHouse ingestion delay, and `make verify` on each store.
 - **Soak test**: after `bootstrap` completes, run the stack at target
   pacing for several hours and confirm all of the above stay flat. The
   pacing config is the relief valve — volumes are turned down in config,

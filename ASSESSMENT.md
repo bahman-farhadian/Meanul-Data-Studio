@@ -55,7 +55,7 @@ version:
 | Empty last-window immediately after bring-up | Generators have not finished a cycle. Zero rows in a one-hour window is “not yet”, not a pass. |
 | Cache empty in a domain that only live coordinators write | History is not required there. Version 1 Redis db 3 (live trips) is this class at `up`. |
 | OLTP row count << seeded history after the archiver’s first ticks | Seeded history is older than retention. The warehouse keeps it. |
-| HAProxy / Patroni role noise on a node that is still in one of the two pools | A node down in **both** write and read is the failure. |
+| HAProxy stats for a backend whose one server is down | The process behind that port is down. |
 
 ---
 
@@ -68,18 +68,18 @@ roles. A version profile states the directory that fills each role.
 
 | Role | Responsibility |
 | --- | --- |
-| `oltp` | PostgreSQL cluster. Operational source of truth. Generators and coordinators write durable entity state here. |
-| `cache` | Sentinel-managed Redis. The read path for every service that is not the OLTP owner. |
-| `broker` | Kafka in KRaft mode, Schema Registry, binary Avro. Cross-process events. |
+| `oltp` | One PostgreSQL. Operational source of truth. Generators and coordinators write durable entity state here. |
+| `cache` | One Redis. The read path for every service that is not the OLTP owner. |
+| `broker` | One Kafka broker in KRaft mode, Schema Registry, ksqlDB, binary Avro. Cross-process events. |
 | `cdc` | Debezium. PostgreSQL WAL → `cdc.*` topics. The only path from OLTP to cache. |
-| `warehouse` | ClickHouse cluster. Analytics. Grafana and Superset query this, nothing else. |
-| `live-ui` | Grafana. Operational views on warehouse Distributed tables. |
+| `warehouse` | One ClickHouse. Analytics. Grafana and Superset query this, nothing else. |
+| `live-ui` | Grafana. Operational views on the warehouse tables. |
 | `analytic-ui` | Superset. Analytical BI on the same warehouse. Empty panels before data are fine; an HTTP error is not. |
 | `bootstrap` | One-shot: migrations, reference data, history, warehouse backfill, bootstrap-done marker. Then it exits. |
 | `cache-updater` | Applies `cdc.*` to Redis. Idempotent last-write-wins. Does **not** wait for bootstrap. |
 | `generator` | Long-running Faker service. One process, many simulated entities. Writes profiles/state to OLTP and high-frequency events to the broker. |
 | `coordinator` | Matches, assigns, prices, or scores using cache + broker. May write OLTP. Must not become the read path for other services. |
-| `warehouse-sink` | Broker → cache enrich → warehouse Distributed tables. Lookups from Redis, never from OLTP. |
+| `warehouse-sink` | Broker → cache enrich → warehouse tables. Lookups from Redis, never from OLTP. |
 | `archiver` | Deletes aged operational rows from OLTP. Analytics remain in the warehouse. |
 | `stack-config` | Load balancer, assessment SQL, stack-wide templates. |
 | `shared-lib` | Id minting, clients, clocks, geometry/helpers. One mint, one key name, one client. |
@@ -119,11 +119,11 @@ even if each store is internally consistent.
 
 | # | Bar | Pass | Fail | Instrument kind |
 | --- | --- | --- | --- | --- |
-| S11 | Client names | Services and dashboards query Distributed table names, never `*_local`, never Kafka, never Redis, never OLTP | Grafana SQL on `*_local` or on a `cdc.*` topic | Version dashboard check |
+| S11 | Client names | Services and dashboards query the warehouse table names (`nus.trip_events`, `nus.driver_positions`, …), never `*_local`, never Kafka, never Redis, never OLTP | Grafana SQL on `*_local` or on a `cdc.*` topic | Version dashboard check |
 | S12 | Minted id type | Warehouse columns for minted ids are `FixedString(N)` where `N` is the mint width in `shared-lib` | `FixedString` reject at insert; or `String` for a mint this codebase controls | Warehouse DDL; `shared-lib` |
 | S13 | Closed-set type | Warehouse columns for S4 sets are `Enum8` with the same symbols, same spelling | A new category silently accepted as a string | Warehouse DDL vs Avro vs `CHECK` |
 | S14 | Event time | Event timestamps are `DateTime64(3, 'UTC')` (or equivalent UTC DateTime64) | Timezone-less DateTime, or a non-UTC timezone | Warehouse DDL |
-| S15 | Cluster | Declared shard × replica members present; `absolute_delay` at or near 0 | Member missing; delay only growing | Version `verify-ch` |
+| S15 | One server | The one ClickHouse answers, and its tables use a MergeTree engine | Server down, or a queried table missing | Version `verify-ch` |
 | S16 | TTL | High-volume playhead tables declare a TTL. Business-event tables keep a longer TTL than playhead | Unbounded playhead growth | Warehouse DDL |
 
 ### 4.3 Alignment
@@ -145,14 +145,14 @@ interpret a message, is a fail.
 | --- | --- | --- | --- | --- |
 | B1 | Encoding | Every declared (non-CDC) topic has a `.avsc` in the broker piece. Producers use the shared Avro producer (`acks=all`, idempotent) | JSON/plaintext on a declared topic; fire-and-forget producer | Broker `schemas/` vs `topics.tsv`; `shared-lib` Kafka client |
 | B2 | Topic inventory | Declared topics live in one TSV (or equivalent) the create-topics one-shot reads. `cdc.*` are **not** in that list — Debezium creates them | Hand-created `cdc.*` in the TSV; a producer topic with no `.avsc` | `topics.tsv`; CDC connector |
-| B3 | Durability | Declared topics replication factor 3. Live ISR = 3 on a healthy cluster. Write quorum `min.insync.replicas=2` | ISR < 3 on a declared topic while all brokers are up | Version `verify-kafka`; create-topics script |
+| B3 | Durability | Declared topics replication factor 1. The one replica is in sync. Write quorum `min.insync.replicas=1` | A declared topic missing, or its replica not in sync, while the broker is up | Version `verify-kafka`; create-topics script |
 | B4 | Entity keys | The TSV `key` column is the entity id. All messages about one entity keep order on one partition | Unkeyed high-volume stream; key that is not the entity | `topics.tsv` |
 | B5 | CDC | Connector and task `RUNNING`. Replication slot active, `wal_status` `reserved`. One compact `cdc.<table>` topic per included table | Slot missing or inactive (PostgreSQL keeps WAL forever). Connector RUNNING with task FAILED | Version `verify-cdc` |
 | B6 | No OLTP reads on the consume path | Consumers of broker events look up enrichment in Redis. They do not `SELECT` OLTP for joins | Sink or coordinator querying Postgres per event | Sink / coordinator source |
 | B7 | Cache before announce | If a consumer of an event needs cache state the producer owns, that write happens **before** the produce | Event arrives, cache key empty, generator skips the real path | Coordinator source order; live simulation bars |
 | B8 | `cdc.*` vs declared | `cdc.*` carry OLTP row images for the cache. Declared topics carry domain events for coordinators and the warehouse. A generator does not publish a domain event by writing OLTP and hoping CDC fans it out to the warehouse | Warehouse fed only from CDC row images for a high-frequency stream | Connector `table.include.list`; warehouse-sink subscriptions |
 
-Patroni physical slots (`*_pg_*`) are replica slots. They are not bar B5.
+The replication slot this bar scores is `nus_debezium`.
 
 ---
 
@@ -219,8 +219,8 @@ for reading rather than for passing.
 
 Bytes per row is the number that transfers between scales; a current
 total does not. The projection multiplies it by full-scale
-`SEED_DRIVERS` over the value actually in use, halves it for the two
-shards, and must leave **30% headroom** against the per-node quota — a
+`SEED_DRIVERS` over the value actually in use, and must leave **30%
+headroom** against the one server's quota — a
 warehouse planned to exactly fill its disk cannot merge, because a merge
 needs room for the new part before it can drop the old ones.
 
@@ -258,7 +258,7 @@ must see that walk. A dashboard is not the proof.
 | M3 | Side-effect order | Durable OLTP write and the cache write a consumer needs both happen before the broker announce (B7) | Announce first → empty cache → generator falls off the constraint surface | Coordinator source; M1 live |
 | M4 | Empty window is not a pass | A last-window count of 0 means wait and re-run. Off-network = 0 with trips = 0 is not a pass | Treating a silent window as green | Version profile |
 | M5 | Playhead on the broker | High-frequency telemetry is Avro on a declared topic → warehouse. OLTP last-known is a timer, not the stream | Per-tick OLTP inserts | S9; warehouse freshness |
-| M6 | Dashboards are not the score | Live-ui / analytic-ui health is process + HTTP + “queries Distributed tables”. Generation quality is G* and M* | Screenshot of Grafana | Version `grafana-health` / dashboard check |
+| M6 | Dashboards are not the score | Live-ui / analytic-ui health is process + HTTP + “queries the warehouse tables”. Generation quality is G* and M* | Screenshot of Grafana | Version `grafana-health` / dashboard check |
 
 A version that has a map additionally scores same-origin tiles (HTTP 200
 `image/png` through the load balancer, no third-party tile CDN). A version
@@ -301,10 +301,10 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | S8 | Compose `TZ=UTC`, `SIM_TIMEZONE`; `nus_common/geo.py` |
 | S9, M5 | No `driver_positions` table in `h-bootstrap/migrations/`; ticks on `driver_location` → `nus.driver_positions` |
 | S10 | `d-infra-debezium/connectors/nus-pg.json` `column.exclude.list` includes `nus.trips.route` |
-| S11 | `make grafana-check` (uid `nus-clickhouse`, Distributed names, no `maptiler`) |
-| S15 | `make verify-ch` (four members, `absolute_delay` ~ 0) |
+| S11 | `make grafana-check` (uid `nus-clickhouse`, warehouse table names, no `maptiler`) |
+| S15 | `make verify-ch` (one server, MergeTree engines) |
 | B1, B2, B4 | `c-infra-kafka/topics/topics.tsv` + `c-infra-kafka/schemas/*.avsc` |
-| B3 | `make verify-kafka`; `create-topics.sh` `--replication-factor 3` `min.insync.replicas=2` |
+| B3 | `make verify-kafka`; `create-topics.sh` `--replication-factor 1` `min.insync.replicas=1` |
 | B5 | `make verify-cdc` (connector `nus-pg`, slot `nus_debezium`, plugin `pgoutput`, `wal_status` `reserved`) |
 | B7, M3 | `l-service-dispatch/dispatch_service/__main__.py`: `store_live_state` then `announce` |
 | C3 | `nus_common/redis_client.py` DB 0–4 |
@@ -327,17 +327,16 @@ bar (S15 / n-service-clickhouse-sink).
 
 #### `a-infra-postgres`
 
-Patroni PostgreSQL (one Leader, two Replicas) and etcd.
+One PostgreSQL (`nus-pg-1`). HAProxy `5432` and `5433` are that process. Debezium uses the write port.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| Cluster shape | Exactly one Leader, two Replicas, lag at or near 0 MB | Two leaders, zero leaders, or replica lag growing | `make verify-pg` |
-| Write path | Clients use HAProxy `5432` (write) / `5433` (read), never a `pg-*` hostname | Direct `pg-*` in a service’s `PG_HOST` | compose `PG_HOST` is `nus-lb-a` / `lb-a` |
-| etcd after first start | Local `ETCD_INITIAL_CLUSTER_STATE=existing`; file not committed | `existing` committed to git | `a-infra-postgres/etcd.env` stays `new` in git |
+| Process | `pg_isready` on `nus-pg-1` | not accepting connections | `make verify-pg` |
+| Write path | Clients use HAProxy `5432` and `5433`. Both are `nus-pg-1`. `PG_HOST` is `nus-lb-a` | A service `PG_HOST` set to a `pg-*` hostname | compose `PG_HOST` is `nus-lb-a` / `lb-a` |
 
 #### `b-infra-redis`
 
-Sentinel-managed cache. Logical DBs are fixed in `z-lib/nus-common/nus_common/redis_client.py`:
+One Redis (`nus-redis-1`). `make verify-redis` is a PING. Logical DBs are fixed in `z-lib/nus-common/nus_common/redis_client.py`:
 
 | DB | Constant | Keys |
 | --- | --- | --- |
@@ -349,18 +348,16 @@ Sentinel-managed cache. Logical DBs are fixed in `z-lib/nus-common/nus_common/re
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| Roles | One master, two slaves; Sentinel quorum reachable | Two masters, no quorum | `make verify-redis` |
+| Process | `PONG` from `nus-redis-1` | no reply | `make verify-redis` |
 | Cache fill after CDC | db 1 non-zero (drivers+vehicles); db 2 equals seeded passengers once snapshot has drained | db 1 still 0 after CDC | `make verify-data` Redis dbsize line |
 
 #### `c-infra-kafka`
 
-KRaft brokers, Schema Registry, Avro under `c-infra-kafka/schemas/`, topics in
-`c-infra-kafka/topics/topics.tsv`. `cdc.*` are created by Debezium, not that
-TSV.
+One KRaft broker (`nus-kafka-1`), Schema Registry, and ksqlDB. Avro is under `c-infra-kafka/schemas/`. Topics are in `c-infra-kafka/topics/topics.tsv`. `cdc.*` are created by Debezium, not that TSV. Declared topics use replication factor 1. Partitions stay, so a key still orders on one partition. ksqlDB is how a SQL client reads that broker. Its topic replicas are 1.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| Brokers and RF | Three brokers; declared topics RF 3, ISR 3 | ISR < 3 on a declared topic | `make verify-kafka` |
+| Broker and RF | One broker; declared topics RF 1, ISR 1 | A declared topic missing, or its replica not in sync | `make verify-kafka` |
 | ksqlDB | Every stream and table in `c-infra-kafka/ksql/*.sql` is registered, and every persistent query is RUNNING. Names and client settings are §9.6 | A declared object is missing, or a query is not RUNNING | `make verify-ksqldb` |
 
 Version-1 declared topics: `driver_location`, `rider_location`,
@@ -391,19 +388,15 @@ Connector `nus-pg`, slot `nus_debezium`, plugin `pgoutput`.
 | Geometry | `nus.trips.route` is in `column.exclude.list` | Geometry on a CDC topic (Debezium `DataException`) | `d-infra-debezium/connectors/nus-pg.json` |
 | Topics | `cdc.drivers`, `cdc.passengers`, `cdc.trips`, `cdc.city_zones`, `cdc.vehicles`, `cdc.trip_ratings`, `cdc.driver_sessions` | `no cdc.* topics yet` after `make up` has finished `cdc-register` | `make verify-cdc` |
 
-Patroni physical slots (`nus_pg_*`) are replica slots, not this bar.
+The slot this section scores is `nus_debezium`. Debezium opens it on the same Postgres that takes writes.
 
 #### `e-infra-clickhouse`
 
-Cluster `nus` / `nus_cluster`: 2 shards × 2 replicas. Services and dashboards
-query Distributed names (`nus.trip_events`, `nus.driver_positions`, …), never
-`*_local`.
+One server, `nus-ch-s1r1`. Services and dashboards query the table names (`nus.trip_events`, `nus.driver_positions`, …). Those names are the tables. Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or `ReplacingMergeTree`. There is no `*_local` table.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| Members | Four rows in `system.clusters` for `nus_cluster` | Fewer than four | `make verify-ch` |
-| Tables | `nus` database lists Distributed + `*_local` + MVs from `e-infra-clickhouse/ddl/` | Missing `trip_events` or `driver_positions` | `make verify-ch` |
-| Replication | `absolute_delay` at or near 0 | Delay only growing | `make verify-ch` |
+| Tables | `system.tables` lists a MergeTree engine for each `nus` table, including `trip_events` and `driver_positions` | A missing table, or an engine outside the MergeTree family | `make verify-ch` |
 
 #### `f-infra-grafana`
 
@@ -415,7 +408,7 @@ Grafana plus `nus-tiles` (piece f is both). Same-origin OSM at `/tiles/`.
 | Tiles file | `nyc.mbtiles` non-empty under `NUS_VOLUME_ROOT/nus-tiles-data` | Missing file | `make tiles-health` |
 | Tiles container | `nus-tiles` health `healthy` | not running / unhealthy (HAProxy 503 HTML) | `make tiles-health` |
 | Tiles HTTP | `GET /tiles/styles.json` → 200; `GET /tiles/styles/nus/11/602/768.png` → 200 `image/png` | 503 HTML, 404, or non-PNG | `make tiles-health` |
-| Dashboards | Geomap URL contains `/tiles/styles/nus/` and `"type": "xyz"`; no `maptiler` / `cartocdn.com`; panels use uid `nus-clickhouse` and Distributed tables | Third-party tile CDN or `*_local` | `make grafana-check` |
+| Dashboards | Geomap URL contains `/tiles/styles/nus/` and `"type": "xyz"`; no `maptiler` / `cartocdn.com`; panels use uid `nus-clickhouse` and the warehouse tables | Third-party tile CDN or `*_local` | `make grafana-check` |
 
 `make up` starts `grafana` and `tiles` (`PIECE_F`). `make destroy` keeps
 `nus-tiles-data`. `make nuke` is what deletes the MBTiles.
@@ -494,7 +487,7 @@ Hotspots and `segment_traffic` updates.
 
 #### `n-service-clickhouse-sink`
 
-Kafka → Redis enrich → ClickHouse Distributed tables.
+Kafka → Redis enrich → ClickHouse tables.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |

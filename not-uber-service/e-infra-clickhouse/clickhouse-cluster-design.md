@@ -1,84 +1,47 @@
-# ClickHouse cluster design (e-infra-clickhouse)
+# ClickHouse on one host
 
-Design notes for the OLAP layer: a **sharded and replicated ClickHouse
-cluster (2 shards x 2 replicas)** coordinated by a **3-node ClickHouse
-Keeper ensemble** (Raft — no ZooKeeper anywhere in the stack). Both
-sharding and replication are demonstrated at a footprint that still fits
-one host. Clients enter through the stack-wide HAProxy pair
-(`lb-a` / `lb-b`) defined in the root compose file.
+One ClickHouse process, `ch-s1r1` / `nus-ch-s1r1`. Grafana, Superset,
+and `clickhouse-sink` query it through HAProxy on 8123 (HTTP) and 9000
+(native). Both ports are that process. `lb-a` and `lb-b` are two
+published addresses for the same server.
 
-The numbers here are the same ones budgeted in the main
-[README](../../README.md) section 2.9 — if one changes, both change.
+The numbers match the root [README](../../README.md) section 2.9.
 
-## Components
+## Why one process
 
-| Layer | Containers | CPU each | Mem each | Notes |
-| --- | --- | --- | --- | --- |
-| ClickHouse data nodes | 4 (`ch-s1r1`, `ch-s1r2`, `ch-s2r1`, `ch-s2r2`) | 1.3 | 8 GB | `max_server_memory_usage` set **below** the container limit |
-| ClickHouse Keeper | 3 (`ch-keeper-1/2/3`) | 0.1 | 1 GB | Raft quorum; tolerates one loss |
-| Entry tier | 2 (`lb-a` / `lb-b`) | 0.1 | 128 MB | stack-wide, defined in the root compose file |
+| Layer | Containers | CPU | Memory |
+| --- | --- | --- | --- |
+| ClickHouse | 1 (`ch-s1r1`) | 1.3 | 8 GB |
+| Entry tier | 2 (`lb-a`, `lb-b`) | 0.5 each | 128 MB each |
 
-ClickHouse subtotal: **5.2 CPU / 32 GB**, plus **0.3 CPU / 3 GB** for
-Keeper.
+A second data copy on this host is not a second machine. It dies when
+the host dies, and it spends CPU and disk on a copy that does not
+survive the failure you would be buying it for. Keeper exists to
+coordinate replicas across machines. With one process there is nothing
+for it to coordinate.
 
-## Why 2 shards x 2 replicas
+The service name stays `ch-s1r1`. `make ch-client`, Compose
+`depends_on`, and the HAProxy server line already use it.
 
-CPU, not RAM, is the binding constraint on a 20-core host with no
-overcommit (README section 2.9). Four data nodes already consume 5.2 cores
-— more than any other component — so a wider cluster would have to shrink
-every node's CPU below what an OLAP engine can usefully do with it. Two
-shards prove the `Distributed` fan-out and two replicas prove
-Keeper-coordinated replication and failover; that is the full lesson,
-and buying more shards would cost the parts of the stack that generate
-the data.
+## Tables
 
-## Table layout
+The names services and dashboards query are the tables. `nus.trip_events`
+and `nus.driver_positions` store the rows. There is no `*_local` table
+and no `Distributed` wrapper in front of them.
 
-- Local tables are `ReplicatedMergeTree` with the standard
-  `/clickhouse/tables/{shard}/{table}` + `{replica}` path, where `{shard}`
-  and `{replica}` come from each node's `macros` config.
-- A `Distributed` table over each local table is the query entry point;
-  the sharding key is the event's entity id (driver / rider / trip), so a
-  single entity's history lands on one shard.
-- DDL is applied once with `ON CLUSTER` from a one-shot init container, so
-  every node gets the same schema regardless of start order.
-- `bootstrap` bulk-loads the seeded historical week; `clickhouse-sink`
-  streams everything after that.
+Raw streams use `MergeTree`. Rollups use `SummingMergeTree`,
+`AggregatingMergeTree`, or `ReplacingMergeTree(event_time)`, which is
+what those tables were doing when the engine name also said replicated.
+DDL is plain `CREATE TABLE` in `ddl/`. `ch-ddl-init` applies it once
+against `nus-ch-s1r1`.
 
-## Failover
+`max_server_memory_usage` is 6.5 GB inside the 8 GB container limit, so
+a heavy query fails with a memory error instead of the cgroup killing
+the process.
 
-- **Inside the cluster**: replicas are equal peers. If one node of a shard
-  is lost, Keeper keeps the surviving replica authoritative and the
-  returning node catches up from the replication log.
-- **At the entry tier**: HAProxy balances healthy nodes on 8123 (HTTP) and
-  9000 (native); clients list **both** proxies and fail over client-side,
-  e.g. `jdbc:clickhouse://lb-a:8123,lb-b:8123`.
-- Losing a *whole* shard means losing that shard's data range until it
-  returns — a deliberate accepted limit at this footprint, not an
-  oversight.
+## Loss
 
-## Architecture
-
-```mermaid
-graph TD
-    App(("Clients: clickhouse-sink, Grafana, Superset"))
-
-    subgraph Entry ["Entry tier — active/passive"]
-        LB1["lb-a: HAProxy"]
-        LB2["lb-b: HAProxy"]
-    end
-
-    subgraph Data ["Data nodes — 2 shards x 2 replicas"]
-        S1R1["ch-s1r1"] <--> S1R2["ch-s1r2"]
-        S2R1["ch-s2r1"] <--> S2R2["ch-s2r2"]
-    end
-
-    subgraph Coord ["ClickHouse Keeper — Raft quorum"]
-        K1["keeper-1"] --- K2["keeper-2"] --- K3["keeper-3"] --- K1
-    end
-
-    App ==>|"lists lb-a,lb-b"| LB1
-    App -.->|"client-side failover"| LB2
-    LB1 & LB2 ==>|"8123 / 9000"| Data
-    Data -.->|"coordination / replication"| Coord
-```
+There is one copy. Losing the process loses the warehouse until the
+volume is back and the server starts. That is the trade for not
+pretending two containers on one disk are a cluster. HAProxy does not
+hide a second member. It keeps the host ports stable.

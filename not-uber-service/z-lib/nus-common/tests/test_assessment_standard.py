@@ -595,8 +595,8 @@ def test_declared_topics_have_avro_schemas():
     create = (NUS / "c-infra-kafka" / "topics" / "create-topics.sh").read_text()
     assert "--replication-factor 1" in create
     assert "min.insync.replicas=1" in create
-    assert "replication-factor 3" in text
-    assert "min.insync.replicas=2" in text
+    assert "replication-factor 1" in text
+    assert "min.insync.replicas=1" in text
 
 
 def test_cdc_excludes_oltp_geometry():
