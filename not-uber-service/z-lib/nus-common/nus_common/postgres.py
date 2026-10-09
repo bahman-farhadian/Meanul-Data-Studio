@@ -2,10 +2,9 @@
 
 Two rules the whole stack follows:
 
-1. **Never connect to a pg-* container by name.** The leader is elected and
-   moves on failover; only the proxies know where it is. Writes go to
-   nus-lb-a:5432 (the current leader) and reads to nus-lb-a:5433 (the
-   replicas).
+1. Clients use the proxy, not the container name. There is one PostgreSQL.
+   The write port and the read port are that same process. Debezium uses
+   the write port.
 2. **Only the components that own data come here at all.** Everything else
    reads from Redis. See section 1 of the main README.
 

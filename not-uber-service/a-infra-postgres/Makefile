@@ -9,33 +9,13 @@
 # Postgres
 # =============================================================================
 
-.PHONY: certgen
-certgen:
-	$(call say,etcd TLS certificates)
-	@$(COMPOSE) run --rm etcd-certgen
-
-.PHONY: etcd-existing
-etcd-existing:
-	$(call say,Flipping the etcd cluster state to existing)
-	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=new$$/ETCD_INITIAL_CLUSTER_STATE=existing/' $(ETCD_ENV)
-	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
-	@$(COMPOSE) up -d --wait --wait-timeout 120 etcd-1 etcd-2 etcd-3
-	$(call ok,etcd recreated; the data volumes were kept)
-	@printf "  $(Y)Do not commit $(ETCD_ENV).$(X) A fresh clone must bootstrap from 'new';\n"
-	@printf "  on a live cluster 'new' would let a member with a lost volume start its own.\n"
-
-.PHONY: etcd-new
-etcd-new:
-	@sed -i 's/^ETCD_INITIAL_CLUSTER_STATE=existing$$/ETCD_INITIAL_CLUSTER_STATE=new/' $(ETCD_ENV)
-	@grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | sed 's/^/  now: /'
-
 .PHONY: pg-cpus-bootstrap
 pg-cpus-bootstrap:
 	$(call say,Raising PG_CPUS for bootstrap's routing burst)
 	@sed -i "s/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_BOOTSTRAP,10)/" $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
-	$(call ok,pg-1/2/3 recreated with the higher ceiling)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1
+	$(call ok,pg-1 recreated with the higher ceiling)
 	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: pg-cpus-normal
@@ -43,38 +23,27 @@ pg-cpus-normal:
 	$(call say,Returning PG_CPUS to its steady-state value)
 	@sed -i 's/^PG_CPUS=.*/PG_CPUS=$(call getenv,PG_CPUS_STEADY,10)/' $(ENV_FILE)
 	@grep -E '^PG_CPUS=' $(ENV_FILE) | sed 's/^/  now: /'
-	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1 pg-2 pg-3
-	$(call ok,pg-1/2/3 recreated at the steady-state ceiling)
+	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) pg-1
+	$(call ok,pg-1 recreated at the steady-state ceiling)
 	@$(MAKE) --no-print-directory _wait-haproxy-pg-settled
 
 .PHONY: _wait-haproxy-pg-settled
 _wait-haproxy-pg-settled:
-	@printf "  waiting for HAProxy's own health checks to settle: recreating\n"
-	@printf "  pg-1/2/3 together causes a burst of Docker DNS churn that can flap a\n"
-	@printf "  backend down for a moment, and haproxy.cfg.template deliberately kills\n"
-	@printf "  whatever is mid-query on a backend the instant it is marked down\n"
-	@printf "  (default-server on-marked-down shutdown-sessions - correct behaviour\n"
-	@printf "  for a real demotion, but it also fires on a transient flap). pg-1/2/3\n"
-	@printf "  answering their own healthcheck does not mean HAProxy has caught up.\n"
-# The stats page is read through nus-backbone, not a host address. This read
-# localhost:LB_A_STATS_PORT from the host and only worked because localhost
-# resolves to ::1 here - the same request to 127.0.0.1 returns an empty reply
-# on this host (published-port DNAT cannot reach a loopback destination while
-# route_localnet is 0). On a host whose localhost resolves to 127.0.0.1 first,
-# this loop would have read an empty CSV 30 times and failed the bootstrap it
-# is supposed to protect. See f-infra-grafana's tiles-health for the incident.
+	@printf "  waiting for HAProxy's health checks to settle after pg-1 is recreated\n"
+# The stats page is read through nus-backbone, not a host address. A host
+# loopback read fails when localhost is 127.0.0.1 and route_localnet is 0.
 	@stable=0; write_up=0; read_up=0; \
 	for i in $$(seq 1 30); do \
 		csv=$$($(COMPOSE) exec -T grafana wget -qO- "http://nus-lb-a:8404/stats;csv" 2>/dev/null || true); \
 		write_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_write" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
 		read_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_read" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
-		if [ "$$write_up" = "1" ] && [ "$$read_up" = "2" ]; then \
+		if [ "$$write_up" = "1" ] && [ "$$read_up" = "1" ]; then \
 			stable=$$((stable + 1)); \
 		else \
 			stable=0; \
 		fi; \
 		if [ "$$stable" -ge 3 ]; then \
-			printf "  $(G)ok$(X)      HAProxy stable: pg_write 1 up, pg_read 2 up\n"; \
+			printf "  $(G)ok$(X)      HAProxy stable: pg_write 1 up, pg_read 1 up\n"; \
 			exit 0; \
 		fi; \
 		sleep 1; \
@@ -85,29 +54,20 @@ _wait-haproxy-pg-settled:
 
 .PHONY: pg-allow-cdc
 pg-allow-cdc:
-	$(call say,Patroni pg_hba: replication for postgres)
-	@$(COMPOSE) exec -T pg-1 curl -sfS \
-		-u "$(call getenv,PATRONI_REST_USER,patroni):$(call getenv,PATRONI_REST_PASSWORD)" \
-		-X PATCH -H "Content-Type: application/json" \
-		--data-raw '{"postgresql":{"pg_hba":["local all all trust","host all all 0.0.0.0/0 scram-sha-256","host replication replicator 0.0.0.0/0 scram-sha-256","host replication postgres 0.0.0.0/0 scram-sha-256"]}}' \
-		http://localhost:8008/config >/dev/null
-	@$(COMPOSE) exec -T pg-1 patronictl -c /etc/patroni/patroni.yml reload nus-pg --force >/dev/null
-	$(call ok,pg_hba reloaded — postgres may open a logical replication slot)
+	$(call say,PostgreSQL pg_hba: replication for Debezium)
+	@row=$$($(COMPOSE) exec -T pg-1 psql -U postgres -d postgres -tA -c \
+		"SELECT count(*) FROM pg_hba_file_rules WHERE 'replication' = ANY(database) AND 'postgres' = ANY(user_name)"); \
+	if [ "$$row" = "0" ] || [ -z "$$row" ]; then \
+		printf "  $(R)FAIL$(X)    pg_hba has no replication line for postgres\n"; \
+		exit 1; \
+	fi
+	$(call ok,pg_hba allows the postgres user to open a logical replication slot)
 
 .PHONY: verify-pg
 verify-pg:
 	$(call say,PostgreSQL)
-	@$(COMPOSE) exec -T etcd-1 etcdctl \
-		--endpoints=https://nus-etcd-1:2379,https://nus-etcd-2:2379,https://nus-etcd-3:2379 \
-		--cacert=/certs/ca.crt --cert=/certs/client.crt --key=/certs/client.key \
-		endpoint health || true
-	@echo
-	@$(COMPOSE) exec -T pg-1 patronictl -c /etc/patroni/patroni.yml list || true
-	@printf "\n  Expect exactly one Leader and two Replicas, with lag at or near 0.\n"
-	@printf "  HAProxy view: http://localhost:$(call getenv,LB_A_STATS_PORT,8404)/stats\n"
-	@printf "  Red rows there are $(B)expected$(X): the checks ask which ROLE a node holds,\n"
-	@printf "  so pg_write shows 1 UP and pg_read shows 2 UP. A node down in BOTH is the\n"
-	@printf "  only real failure signal.\n"
+	@$(COMPOSE) exec -T pg-1 pg_isready -U postgres -d "$(call getenv,PG_DATABASE,nus)"
+	@printf "\n  One PostgreSQL. Debezium reads this same database.\n"
 
 .PHONY: psql psql-read
 psql:

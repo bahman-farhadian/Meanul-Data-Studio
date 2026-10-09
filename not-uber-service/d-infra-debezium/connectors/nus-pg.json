@@ -31,9 +31,9 @@
     "transforms.route.replacement": "cdc.$1",
 
     "topic.creation.enable": "true",
-    "topic.creation.default.replication.factor": "3",
+    "topic.creation.default.replication.factor": "1",
     "topic.creation.default.partitions": "3",
-    "topic.creation.default.min.insync.replicas": "2",
+    "topic.creation.default.min.insync.replicas": "1",
     "topic.creation.default.cleanup.policy": "compact"
   }
 }

@@ -147,7 +147,7 @@ def test_make_steps_exist_and_demos_are_gone():
     assert "help-all" not in root
     # Steps make up and make prepare call. pull, build, and preflight too.
     resume = [
-        "volume-perms", "lb-config", "certgen", "ch-secrets", "ksqldb-secrets",
+        "volume-perms", "lb-config", "ch-secrets", "ksqldb-secrets",
         "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",
         "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
         "lion-prepare", "zone-demand-prepare", "tiles-prepare", "volume-quotas",
@@ -511,6 +511,30 @@ def test_minted_id_widths_match_warehouse():
     text = _standard()
     assert "FixedString" in text
     assert driver_n in text and passenger_n in text and trip_n in text
+
+
+def test_one_postgres_and_no_patroni():
+    """The database is one process. Debezium tails that process."""
+    compose = (NUS / "a-infra-postgres" / "docker-compose.yaml").read_text()
+    assert "container_name: nus-pg-1" in compose
+    assert "nus-pg-2" not in compose
+    assert "nus-pg-3" not in compose
+    assert "etcd" not in compose.lower()
+    assert "patroni" not in compose.lower()
+    dockerfile = (NUS / "a-infra-postgres" / "Dockerfile").read_text()
+    assert "postgis" in dockerfile
+    assert "pgrouting" in dockerfile
+    assert "patroni" not in dockerfile.lower()
+    hba = (NUS / "a-infra-postgres" / "pg_hba.conf").read_text()
+    assert "host replication postgres" in hba
+    root = (NUS / "Makefile").read_text()
+    assert "PIECE_A  := pg-1" in root
+    assert "etcd" not in root.lower()
+    debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
+    assert "CDC_PG_HOST" in debezium or "PG_HOST" in debezium
+    connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text())
+    assert connector["config"]["topic.creation.default.replication.factor"] == "1"
+    assert connector["config"]["database.user"] == "filled in by register.py"
 
 
 def test_one_redis_and_no_sentinel():

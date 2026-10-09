@@ -35,7 +35,7 @@ preflight:
 			fail=1; \
 		else printf "  $(G)ok$(X)      no change-me placeholders left\n"; fi; \
 		missing=""; \
-		for v in PG_SUPERUSER_PASSWORD PG_REPLICATION_PASSWORD PATRONI_REST_PASSWORD REDIS_PASSWORD \
+		for v in PG_SUPERUSER_PASSWORD REDIS_PASSWORD \
 		         CH_PASSWORD GRAFANA_ADMIN_PASSWORD SUPERSET_ADMIN_PASSWORD SUPERSET_SECRET_KEY \
 		         KAFKA_CLUSTER_ID KSQLDB_ADMIN_PASSWORD; do \
 			grep -qE "^$$v=.+" $(ENV_FILE) || missing="$$missing $$v"; done; \
@@ -174,14 +174,6 @@ preflight:
 		else \
 			printf "  $(G)ok$(X)      every published host port is free\n"; \
 		fi; \
-	fi; \
-	state=$$(grep -E '^ETCD_INITIAL_CLUSTER_STATE=' $(ETCD_ENV) | cut -d= -f2); \
-	if docker volume inspect nus-etcd-data-1 >/dev/null 2>&1; then \
-		[ "$$state" = existing ] && printf "  $(G)ok$(X)      etcd state 'existing' and the data volumes are there\n" \
-			|| printf "  $(Y)warn$(X)    etcd volumes exist but state is '$$state' — run 'make etcd-existing' after this bring-up\n"; \
-	else \
-		[ "$$state" = new ] && printf "  $(G)ok$(X)      etcd state 'new' for a first bootstrap\n" \
-			|| { printf "  $(R)FAIL$(X)    etcd state is '$$state' but there are no data volumes; it must be 'new' to bootstrap\n"; fail=1; }; \
 	fi; \
 	echo; \
 	if [ "$$fail" -ne 0 ]; then printf "$(R)$(B)preflight failed — fix the above before deploying.$(X)\n\n"; exit 1; \

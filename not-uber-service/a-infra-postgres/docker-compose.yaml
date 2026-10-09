@@ -1,225 +1,67 @@
-# a-infra-postgres — Patroni-managed PostgreSQL cluster (3 identical nodes,
-# leader elected) backed by the stack's shared 3-node TLS etcd cluster
-# (nus-etcd — reused by any future component that needs etcd; never deploy
-# a second one). Node naming starts at 1: nus-etcd-1/2/3, nus-pg-1/2/3 — every
-# container in the stack carries the nus- prefix so it stays identifiable on
-# a host running other, unrelated services.
-#
-# Standalone test:
-#   docker network create nus-backbone   (once, shared by the whole stack)
-#   cp .env.example .env                 (edit the passwords)
-#   docker compose run --rm etcd-certgen (one-shot TLS bootstrap, removes itself)
-#   docker compose up -d --build
-#   ... then flip ETCD_INITIAL_CLUSTER_STATE to 'existing' in etcd.env.
-#
-# In the full stack this file is include'd by the root docker-compose.yaml;
-# writes/reads enter through the lb-a/lb-b HAProxy pair (5432/5433).
-# Full-stack runbook: ../README.md
+# a-infra-postgres — one PostgreSQL. Writes and reads are this process.
+# HAProxy publishes it on the host ports so clients keep a stable address.
+# Debezium tails this same database.
 
 name: a-infra-postgres
 
-x-etcd-node: &etcd-node
-  image: ${ETCD_IMAGE:-quay.io/coreos/etcd:v3.6.12}
-  restart: unless-stopped
-  cpus: ${ETCD_CPUS:-0.15}
-  mem_limit: ${ETCD_MEM:-384m}
-  memswap_limit: ${ETCD_MEM:-384m}
-  env_file: etcd.env
-  healthcheck:
-    test:
-      - CMD
-      - etcdctl
-      - --endpoints=https://localhost:2379
-      - --cacert=/certs/ca.crt
-      - --cert=/certs/client.crt
-      - --key=/certs/client.key
-      - endpoint
-      - health
-    interval: 10s
-    timeout: 5s
-    retries: 5
-    start_period: 15s
-  networks:
-    - backbone
-
-x-pg-node: &pg-node
-  build:
-    # Builds install packages, which needs egress from the build container.
-    # Defaults to the host's own network: a tunnel between here and this
-    # host usually cannot see a build's forwarded container traffic, even
-    # while the host's own connections work fine. Set BUILD_NETWORK=default
-    # if this host has no such gap.
-    network: ${BUILD_NETWORK:-host}
-    context: .
-    args:
-      PG_IMAGE: ${PG_IMAGE:-postgres:18.6}
-      PATRONI_VERSION: ${PATRONI_VERSION:-4.0.11}
-      PSYCOPG_VERSION: ${PSYCOPG_VERSION:-3.3.4}
-  image: nus/patroni-postgres:${NUS_VERSION:-0.1.0}
-  restart: unless-stopped
-  cpus: ${PG_CPUS:-10}
-  mem_limit: ${PG_MEM:-9g}
-  memswap_limit: ${PG_MEM:-9g}
-  depends_on:
-    etcd-1:
-      condition: service_healthy
-    etcd-2:
-      condition: service_healthy
-    etcd-3:
-      condition: service_healthy
-  healthcheck:
-    test: ["CMD-SHELL", "curl -fsS http://localhost:8008/health || exit 1"]
-    interval: 10s
-    timeout: 5s
-    retries: 5
-    start_period: 30s
-  networks:
-    - backbone
-
-x-pg-env: &pg-env
-  TZ: ${TZ:-UTC}
-  PATRONI_SCOPE: ${PATRONI_SCOPE:-nus-pg}
-  PATRONI_ETCD3_PROTOCOL: https
-  PATRONI_ETCD3_HOSTS: nus-etcd-1:2379,nus-etcd-2:2379,nus-etcd-3:2379
-  PATRONI_ETCD3_CACERT: /certs/ca.crt
-  PATRONI_ETCD3_CERT: /certs/client.crt
-  PATRONI_ETCD3_KEY: /certs/client.key
-  PATRONI_RESTAPI_USERNAME: ${PATRONI_REST_USER:-patroni}
-  PATRONI_RESTAPI_PASSWORD: ${PATRONI_REST_PASSWORD:?set it in a-infra-postgres/.env}
-  PATRONI_SUPERUSER_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set it in a-infra-postgres/.env}
-  PATRONI_REPLICATION_PASSWORD: ${PG_REPLICATION_PASSWORD:?set it in a-infra-postgres/.env}
-
 services:
-  # One-shot TLS bootstrap: generates the etcd CA + server/peer + client
-  # certificates (10-year validity, SANs for etcd-1/2/3) into the
-  # etcd-certs volume. Lives behind the "init" profile so `up` never
-  # starts it — run it explicitly and it removes itself on exit:
-  #   docker compose run --rm etcd-certgen
-  etcd-certgen:
-    image: ${OPENSSL_IMAGE:-alpine/openssl:3.5.6}
-    profiles: ["init"]
-    cpus: ${ETCD_CERTGEN_CPUS:-0.25}
-    mem_limit: ${ETCD_CERTGEN_MEM:-64m}
-    memswap_limit: ${ETCD_CERTGEN_MEM:-64m}
-    entrypoint: ["/bin/sh", "/gen-certs.sh"]
+  pg-1:
+    build:
+      # Package installs need egress from the build container. Defaults to
+      # the host network: a tunnel usually cannot see a build's forwarded
+      # container traffic. Set BUILD_NETWORK=default if this host has no gap.
+      network: ${BUILD_NETWORK:-host}
+      context: .
+      args:
+        PG_IMAGE: ${PG_IMAGE:-postgres:18.6}
+    image: nus/postgres:${NUS_VERSION:-0.1.0}
+    container_name: nus-pg-1
+    hostname: nus-pg-1
+    restart: unless-stopped
+    cpus: ${PG_CPUS:-10}
+    mem_limit: ${PG_MEM:-9g}
+    memswap_limit: ${PG_MEM:-9g}
+    environment:
+      TZ: ${TZ:-UTC}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PG_SUPERUSER_PASSWORD:?set it in a-infra-postgres/.env}
+      POSTGRES_DB: ${PG_DATABASE:-nus}
+      PGDATA: /var/lib/postgresql/data
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
+      # logical WAL is what Debezium's pgoutput slot reads
+      - -c
+      - wal_level=logical
+      - -c
+      - max_connections=200
+      # A quarter of the 16g container ceiling. The 128MB default left
+      # street search on the page cache and the cgroup OOM-killed the process.
+      - -c
+      - shared_buffers=4GB
+      - -c
+      - max_wal_senders=10
+      - -c
+      - max_replication_slots=10
+      - -c
+      - password_encryption=scram-sha-256
+      - -c
+      - timezone=UTC
+      - -c
+      - log_timezone=UTC
     volumes:
-      - ./certs/gen-certs.sh:/gen-certs.sh:ro
-      - etcd-certs:/certs
+      - pgdata-1:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${PG_DATABASE:-nus}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - backbone
 
-  etcd-1:
-    <<: *etcd-node
-    container_name: nus-etcd-1
-    hostname: nus-etcd-1
-    environment:
-      TZ: ${TZ:-UTC}
-      ETCD_NAME: nus-etcd-1
-      ETCD_ADVERTISE_CLIENT_URLS: https://nus-etcd-1:2379
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: https://nus-etcd-1:2380
-    volumes:
-      - etcd-data-1:/etcd-data
-      - etcd-certs:/certs:ro
-
-  etcd-2:
-    <<: *etcd-node
-    container_name: nus-etcd-2
-    hostname: nus-etcd-2
-    environment:
-      TZ: ${TZ:-UTC}
-      ETCD_NAME: nus-etcd-2
-      ETCD_ADVERTISE_CLIENT_URLS: https://nus-etcd-2:2379
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: https://nus-etcd-2:2380
-    volumes:
-      - etcd-data-2:/etcd-data
-      - etcd-certs:/certs:ro
-
-  etcd-3:
-    <<: *etcd-node
-    container_name: nus-etcd-3
-    hostname: nus-etcd-3
-    environment:
-      TZ: ${TZ:-UTC}
-      ETCD_NAME: nus-etcd-3
-      ETCD_ADVERTISE_CLIENT_URLS: https://nus-etcd-3:2379
-      ETCD_INITIAL_ADVERTISE_PEER_URLS: https://nus-etcd-3:2380
-    volumes:
-      - etcd-data-3:/etcd-data
-      - etcd-certs:/certs:ro
-
-  pg-1:
-    <<: *pg-node
-    container_name: nus-pg-1
-    hostname: nus-pg-1
-    environment:
-      <<: *pg-env
-      PATRONI_NAME: nus-pg-1
-      PATRONI_RESTAPI_CONNECT_ADDRESS: nus-pg-1:8008
-      PATRONI_POSTGRESQL_CONNECT_ADDRESS: nus-pg-1:5432
-    volumes:
-      - pgdata-1:/var/lib/postgresql
-      - etcd-certs:/certs:ro
-
-  pg-2:
-    <<: *pg-node
-    container_name: nus-pg-2
-    hostname: nus-pg-2
-    environment:
-      <<: *pg-env
-      PATRONI_NAME: nus-pg-2
-      PATRONI_RESTAPI_CONNECT_ADDRESS: nus-pg-2:8008
-      PATRONI_POSTGRESQL_CONNECT_ADDRESS: nus-pg-2:5432
-    volumes:
-      - pgdata-2:/var/lib/postgresql
-      - etcd-certs:/certs:ro
-
-  pg-3:
-    <<: *pg-node
-    container_name: nus-pg-3
-    hostname: nus-pg-3
-    environment:
-      <<: *pg-env
-      PATRONI_NAME: nus-pg-3
-      PATRONI_RESTAPI_CONNECT_ADDRESS: nus-pg-3:8008
-      PATRONI_POSTGRESQL_CONNECT_ADDRESS: nus-pg-3:5432
-    volumes:
-      - pgdata-3:/var/lib/postgresql
-      - etcd-certs:/certs:ro
-
-# Fixed volume names (no project prefix): the same volumes are used whether
-# this file runs standalone (project a-infra-postgres) or include'd by the
-# root compose (project not-uber-service) — otherwise the certs generated
-# by a standalone `run --rm etcd-certgen` would land in a different volume
-# than the one the full stack mounts.
 volumes:
-  etcd-certs:
-    name: nus-etcd-certs
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-certs
-  etcd-data-1:
-    name: nus-etcd-data-1
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-data-1
-  etcd-data-2:
-    name: nus-etcd-data-2
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-data-2
-  etcd-data-3:
-    name: nus-etcd-data-3
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-etcd-data-3
   pgdata-1:
     name: nus-pgdata-1
     driver: local
@@ -227,20 +69,6 @@ volumes:
       type: none
       o: bind
       device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-pgdata-1
-  pgdata-2:
-    name: nus-pgdata-2
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-pgdata-2
-  pgdata-3:
-    name: nus-pgdata-3
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${NUS_VOLUME_ROOT:?set it in not-uber-service/.env}/nus-pgdata-3
 
 networks:
   backbone:

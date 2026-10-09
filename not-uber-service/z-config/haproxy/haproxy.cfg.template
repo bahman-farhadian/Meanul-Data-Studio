@@ -45,39 +45,18 @@ listen stats
     stats refresh 10s
 
 # PostgreSQL (a-infra-postgres) ----------------------------------------------
-# Patroni's REST API (port 8008) answers 200 on /primary only on the current
-# leader and 200 on /replica only on healthy replicas, so HAProxy always
-# routes writes to the leader and reads to the replica pool — across
-# failovers, automatically.
-#
-# The checks use OPTIONS (as in Patroni's official HAProxy template), not
-# GET: Patroni answers OPTIONS with the status line only, so HAProxy's
-# early socket close cannot interrupt a body write — with GET, every probe
-# spams the Patroni logs with ConnectionResetError tracebacks.
-# on-marked-down shutdown-sessions kills connections pinned to a
-# demoted leader the moment its check fails, forcing clients to reconnect
-# to the new one.
+# One database. Both ports are that process, so a client that still uses
+# the read port reaches the writer. Debezium uses the write port.
 
 listen pg_write
     bind :5432
-    option httpchk
-    http-check send meth OPTIONS uri /primary
-    http-check expect status 200
-    default-server on-marked-down shutdown-sessions
-    server nus-pg-1 nus-pg-1:5432 check port 8008
-    server nus-pg-2 nus-pg-2:5432 check port 8008
-    server nus-pg-3 nus-pg-3:5432 check port 8008
+    option tcp-check
+    server nus-pg-1 nus-pg-1:5432 check
 
 listen pg_read
     bind :5433
-    balance roundrobin
-    option httpchk
-    http-check send meth OPTIONS uri /replica
-    http-check expect status 200
-    default-server on-marked-down shutdown-sessions
-    server nus-pg-1 nus-pg-1:5432 check port 8008
-    server nus-pg-2 nus-pg-2:5432 check port 8008
-    server nus-pg-3 nus-pg-3:5432 check port 8008
+    option tcp-check
+    server nus-pg-1 nus-pg-1:5432 check
 
 # Redis (b-infra-redis) --------------------------------------------------------
 # One Redis. Both host ports are that same node, so an existing read-port

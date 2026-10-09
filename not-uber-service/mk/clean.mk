@@ -1,7 +1,7 @@
 # The volumes are bind mounts, so `docker compose down -v` removes the volume
 # entries and leaves every byte on disk. Nothing else deletes them, and a
 # leftover tree is picked up by the next bring-up as if it were a fresh
-# volume — a half-initialised PostgreSQL or etcd is far worse than none.
+# volume — a half-initialised PostgreSQL is far worse than none.
 .PHONY: _rm-data-tree
 _rm-data-tree:
 	@root=$$(grep -E '^NUS_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
@@ -58,7 +58,7 @@ clean:
 	@printf "    (databases, cache, topics, warehouse, and the downloaded street map)\n"
 	@printf "  - every image it built and pulled\n"
 	@printf "  - the $(NETWORK) network\n"
-	@printf "  - your local .env, and the etcd state goes back to 'new'\n"
+	@printf "  - your local .env\n"
 	@printf "\n  The repository itself is untouched, and nothing outside Docker is.\n\n"
 	@read -r -p "Type 'clean' to confirm: " a; [ "$$a" = clean ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) --profile init down -v --remove-orphans 2>/dev/null || true
@@ -67,8 +67,6 @@ clean:
 	@$(MAKE) --no-print-directory clean-images
 	@docker network rm $(NETWORK) >/dev/null 2>&1 && printf "  $(G)removed$(X) network $(NETWORK)\n" \
 		|| printf "  $(Y)skipped$(X) network $(NETWORK) (already gone, or still in use)\n"
-	@$(MAKE) --no-print-directory etcd-new >/dev/null
-	$(call ok,etcd state back to 'new')
 	@if [ -f $(ENV_FILE) ]; then mv $(ENV_FILE) $(ENV_FILE).removed; \
 		printf "  $(G)moved$(X)   $(ENV_FILE) -> $(ENV_FILE).removed (your passwords, kept just in case)\n"; fi
 	@printf "\n$(G)$(B)Clean.$(X) The host is as it was. 'make init' starts again from nothing.\n"

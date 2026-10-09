@@ -333,7 +333,7 @@ Patroni PostgreSQL (one Leader, two Replicas) and etcd.
 | --- | --- | --- | --- |
 | Cluster shape | Exactly one Leader, two Replicas, lag at or near 0 MB | Two leaders, zero leaders, or replica lag growing | `make verify-pg` |
 | Write path | Clients use HAProxy `5432` (write) / `5433` (read), never a `pg-*` hostname | Direct `pg-*` in a service’s `PG_HOST` | compose `PG_HOST` is `nus-lb-a` / `lb-a` |
-| etcd after first start | Local `ETCD_INITIAL_CLUSTER_STATE=existing`; file not committed | `existing` committed to git | `a-infra-postgres/etcd.env` stays `new` in git; `make etcd-existing` is local |
+| etcd after first start | Local `ETCD_INITIAL_CLUSTER_STATE=existing`; file not committed | `existing` committed to git | `a-infra-postgres/etcd.env` stays `new` in git |
 
 #### `b-infra-redis`
 

@@ -29,7 +29,7 @@ export COMPOSE_DOCKER_CLI_BUILD := 1
 NETWORK  := nus-backbone
 ENV_FILE := .env
 EXAMPLE  := .env.example
-ETCD_ENV := a-infra-postgres/etcd.env
+
 
 # Pieces that have their own checks or one-shots. Order follows the build
 # order. The services (i-o) have no Makefile of their own.
@@ -73,7 +73,7 @@ ERRORS_WINDOW ?= 15m
 
 # --- the stack, in the pieces the runbook names -------------------------------
 ENTRY    := lb-a lb-b
-PIECE_A  := etcd-1 etcd-2 etcd-3 pg-1 pg-2 pg-3
+PIECE_A  := pg-1
 PIECE_B  := redis-1
 PIECE_C  := kafka-1 schema-registry ksqldb-server
 PIECE_D  := debezium-connect
@@ -122,12 +122,11 @@ help:
 	@printf "    $(C)make init$(X)        create .env and the shared network\n"
 	@printf "    edit .env                set the passwords in section 1\n"
 	@printf "    $(C)make prepare$(X)     pull images, build, fetch the map. Needs the network\n"
-	@printf "    $(C)make up$(X)          start the stack, in order\n"
-	@printf "    $(C)make etcd-existing$(X)  local only. Do not commit etcd.env\n\n"
+	@printf "    $(C)make up$(X)          start the stack, in order\n\n"
 	@printf "  Code change, keep the data:\n"
 	@printf "    $(C)make build && make reload SVC=driver-service$(X)\n\n"
 	@printf "  Code change, empty databases:\n"
-	@printf "    $(C)make build && make destroy && make up && make etcd-existing$(X)\n"
+	@printf "    $(C)make build && make destroy && make up$(X)\n"
 	@printf "    $(C)make up$(X) does not rebuild. Skip $(C)make prepare$(X) unless the map files are missing.\n\n"
 	@printf "  Look:\n"
 	@printf "    $(C)make ps$(X)          what is running\n"
@@ -141,8 +140,8 @@ help:
 	@printf "    $(C)make lag$(X)         consumer lag\n"
 	@printf "    $(C)make verify-quality$(X)\n\n"
 	@printf "  Shell:\n"
-	@printf "    $(C)make psql$(X)        the leader          $(C)make redis-cli$(X)\n"
-	@printf "    $(C)make psql-read$(X)   the replicas        $(C)make ch-client$(X)\n\n"
+	@printf "    $(C)make psql$(X)        the database        $(C)make redis-cli$(X)\n"
+	@printf "    $(C)make psql-read$(X)   the read port       $(C)make ch-client$(X)\n\n"
 	@printf "  Stop:\n"
 	@printf "    $(C)make stop$(X)        stop, keep data\n"
 	@printf "    $(C)make down$(X)        remove containers, keep data\n"
@@ -198,7 +197,6 @@ up:
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory lb-config
-	@$(MAKE) --no-print-directory certgen
 	@$(MAKE) --no-print-directory ch-secrets
 	@$(MAKE) --no-print-directory ksqldb-secrets
 	$(call say,Starting the infrastructure — pieces a to g)
@@ -217,11 +215,8 @@ up:
 	@printf "\n$(G)$(B)The stack is up.$(X)\n\n"
 	@printf "  Grafana maps are same-origin OSM at /tiles/ (nus-tiles). No MapTiler key.\n"
 	@printf "  $(C)make up$(X) does not rebuild images — that was $(C)make build$(X).\n\n"
-	@printf "  One step is left, and it is $(B)local state you must never commit$(X):\n"
-	@printf "    $(C)make etcd-existing$(X)   flip the etcd cluster out of bootstrap mode\n\n"
 	@printf "  Then: $(C)make verify$(X) (includes tiles through HAProxy), $(C)make urls$(X), $(C)make lag$(X)\n"
-	@printf "  After a few minutes of live trips: $(C)make verify-positions$(X)\n"
-	@printf "  Do not commit $(ETCD_ENV).\n\n"
+	@printf "  After a few minutes of live trips: $(C)make verify-positions$(X)\n\n"
 
 .PHONY: up-piece
 up-piece:
@@ -400,9 +395,8 @@ destroy:
 	@read -r -p "Type 'destroy' to confirm: " a; [ "$$a" = destroy ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) down -v
 	@$(MAKE) --no-print-directory _rm-data-tree
-	@$(MAKE) --no-print-directory etcd-new
-	@printf "\n  Volumes gone and etcd put back to 'new'. LION and OSM tiles were kept.\n"
-	@printf "  Next, without re-downloading: $(C)make build && make up && make etcd-existing$(X)\n"
+	@printf "\n  Volumes gone. LION and OSM tiles were kept.\n"
+	@printf "  Next, without re-downloading: $(C)make build && make up$(X)\n"
 	@printf "  Skip $(C)make prepare$(X) unless the graph or nyc.mbtiles is missing.\n"
 
 .PHONY: nuke
