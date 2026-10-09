@@ -48,14 +48,14 @@ services:
       BOOTSTRAP_SERVERS: nus-kafka-1:9092
       GROUP_ID: nus-connect
       # Connect keeps its own state in Kafka: which connectors exist, how far
-      # each one has read, and whether they are running. Three copies each,
-      # so a broker can be lost without losing the read position.
+      # each one has read, and whether they are running. One broker, so
+      # each of these topics has one copy.
       CONFIG_STORAGE_TOPIC: connect_configs
       OFFSET_STORAGE_TOPIC: connect_offsets
       STATUS_STORAGE_TOPIC: connect_statuses
-      CONFIG_STORAGE_REPLICATION_FACTOR: "3"
-      OFFSET_STORAGE_REPLICATION_FACTOR: "3"
-      STATUS_STORAGE_REPLICATION_FACTOR: "3"
+      CONFIG_STORAGE_REPLICATION_FACTOR: "1"
+      OFFSET_STORAGE_REPLICATION_FACTOR: "1"
+      STATUS_STORAGE_REPLICATION_FACTOR: "1"
       # Same encoding as every other topic in the stack: binary Avro, with
       # the schema kept in the Schema Registry.
       KEY_CONVERTER: io.confluent.connect.avro.AvroConverter

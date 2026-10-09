@@ -559,6 +559,12 @@ def test_one_postgres_and_no_patroni():
     assert not (NUS / "a-infra-postgres" / "etcd.env").exists()
     debezium = (NUS / "d-infra-debezium" / "docker-compose.yaml").read_text()
     assert "CDC_PG_HOST" in debezium or "PG_HOST" in debezium
+    for key in (
+        "CONFIG_STORAGE_REPLICATION_FACTOR",
+        "OFFSET_STORAGE_REPLICATION_FACTOR",
+        "STATUS_STORAGE_REPLICATION_FACTOR",
+    ):
+        assert f'{key}: "1"' in debezium
     connector = json.loads((NUS / "d-infra-debezium" / "connectors" / "nus-pg.json").read_text())
     assert connector["config"]["topic.creation.default.replication.factor"] == "1"
     assert connector["config"]["database.user"] == "filled in by register.py"
