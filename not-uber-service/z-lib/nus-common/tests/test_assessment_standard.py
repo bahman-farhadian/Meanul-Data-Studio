@@ -160,6 +160,9 @@ def test_make_steps_exist_and_demos_are_gone():
     trips = (NUS / "h-bootstrap" / "Makefile").read_text()
     assert "fhvhv_tripdata_{month}" not in trips
     assert "s/{month}/" in trips
+    lion = (NUS / "h-bootstrap" / "lion-prepare" / "Dockerfile").read_text()
+    assert "postgresql-client" not in lion
+    assert "COPY --from=pgclient /usr/lib/postgresql/18/bin/pg_dump" in lion
 
 
 def test_live_walk_and_tile_terms_are_in_the_sources():
