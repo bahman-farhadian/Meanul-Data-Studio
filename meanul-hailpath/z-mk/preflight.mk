@@ -169,7 +169,7 @@ preflight:
 		ours=$$(docker ps --filter "label=com.docker.compose.project=meanul-hailpath" \
 			--format '{{.Ports}}' 2>/dev/null | grep -oE '[0-9]+->' | tr -d '>-' | sort -u || true); \
 		busy=""; mine=""; \
-		for p in $$(grep -oE '^LB_[AB]_[A-Z_]+PORT=[0-9]+' $(ENV_FILE) 2>/dev/null | cut -d= -f2); do \
+		for p in $$(grep -oE '^PROXY_[A-Z_]+PORT=[0-9]+' $(ENV_FILE) 2>/dev/null | cut -d= -f2); do \
 			echo "$$listening" | grep -qE "[:.]$$p\$$" || continue; \
 			if echo "$$ours" | grep -qx "$$p"; then mine="$$mine $$p"; else busy="$$busy $$p"; fi; done; \
 		if [ -n "$$busy" ]; then \
@@ -183,7 +183,7 @@ preflight:
 				else label="something this user cannot see — retry: sudo ss -ltnp | grep :$$p"; fi; \
 				printf "            %-6s held by %s\n" "$$p" "$$label"; \
 			done; \
-			printf "            Either stop that, or change the LB_* port in $(ENV_FILE).\n"; \
+			printf "            Either stop that, or change the PROXY_* port in $(ENV_FILE).\n"; \
 		elif [ -n "$$mine" ]; then \
 			printf "  $(G)ok$(X)      published ports are held by this stack's own containers (already up)\n"; \
 		else \

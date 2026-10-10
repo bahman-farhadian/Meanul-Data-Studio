@@ -19,7 +19,7 @@ support, not a step in the build order.
 | `config.py` | Reads settings from the environment, with clear errors for anything missing. |
 | `logging.py` | One JSON line per log record, so logs can be searched instead of read. |
 | `lifecycle.py` | Waits for the bootstrap marker, and turns Docker's stop signal into a clean shutdown. |
-| `postgres.py` | Connections through `hailpath-proxy`: writes on 5432, reads on 5433. |
+| `postgres.py` | Connections through `hailpath-proxy` on 5432. |
 | `redis_client.py` | Opens the one Redis and builds the key names the stack agreed on. |
 | `kafka.py` | Avro producer and consumer, with schemas loaded from the files in `c-infra-kafka/schemas/`. |
 | `clickhouse.py` | Batched inserts through the entry tier. |

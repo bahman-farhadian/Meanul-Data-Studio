@@ -14,10 +14,8 @@ urls:
 	done; fi; \
 	printf "\n  Substitute one of those for $(C)<host>$(X) below — every port is the same\n"; \
 	printf "  regardless of which address you reach it on.\n\n"; \
-	printf "  %-18s %s\n" "PostgreSQL writes" "<host>:$(call getenv,PROXY_PG_WRITE_PORT,5432)"; \
-	printf "  %-18s %s\n" "PostgreSQL reads"  "<host>:$(call getenv,PROXY_PG_READ_PORT,5433)"; \
-	printf "  %-18s %s\n" "Redis writes"      "<host>:$(call getenv,PROXY_REDIS_WRITE_PORT,6379)"; \
-	printf "  %-18s %s\n" "Redis reads"       "<host>:$(call getenv,PROXY_REDIS_READ_PORT,6380)"; \
+	printf "  %-18s %s\n" "PostgreSQL"        "<host>:$(call getenv,PROXY_PG_PORT,5432)"; \
+	printf "  %-18s %s\n" "Redis"             "<host>:$(call getenv,PROXY_REDIS_PORT,6379)"; \
 	printf "  %-18s %s\n" "ksqlDB"            "http://<host>:$(call getenv,PROXY_KSQLDB_PORT,8089)"; \
 	printf "  %-18s %s\n" "Debezium Connect"  "http://<host>:$(call getenv,PROXY_DEBEZIUM_PORT,8083)"; \
 	printf "  %-18s %s\n" "ClickHouse HTTP"   "<host>:$(call getenv,PROXY_CH_HTTP_PORT,8123)"; \

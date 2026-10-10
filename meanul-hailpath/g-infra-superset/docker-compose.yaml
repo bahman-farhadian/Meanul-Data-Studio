@@ -51,7 +51,7 @@ x-superset-env: &superset-env
   # same process as the write port. allow_dml on this connection stays off,
   # so SQL Lab cannot change the rows the platform writes.
   PG_HOST: ${PG_HOST:-hailpath-proxy}
-  PG_READ_PORT: ${PG_READ_PORT:-5433}
+  PG_READ_PORT: ${PG_READ_PORT:-5432}
   PG_DATABASE: ${PG_DATABASE:-hailpath}
   PG_USER: ${PG_USER:-postgres}
   PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}

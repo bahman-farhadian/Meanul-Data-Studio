@@ -633,9 +633,21 @@ def test_one_haproxy():
     assert "container_name: hailpath-proxy" in compose
     assert "nus-lb-b" not in compose
     assert "\n  lb-b:" not in compose
+    assert "5433:5433" not in compose
+    assert "6380:6380" not in compose
+    haproxy = (HAILPATH / "z-config" / "haproxy" / "haproxy.cfg.template").read_text()
+    assert "\nlisten pg\n" in haproxy
+    assert "\nlisten redis\n" in haproxy
+    assert "listen pg_read" not in haproxy
+    assert "listen redis_read" not in haproxy
+    assert "bind :5433" not in haproxy
+    assert "bind :6380" not in haproxy
+    pg = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "postgres.py").read_text()
+    assert 'config.integer("PG_READ_PORT", 5432)' in pg
     root = (HAILPATH / "Makefile").read_text()
     assert "ENTRY    := hailpath-proxy\n" in root
     assert "lb-b" not in root
+    assert "psql-read" not in root
 
 
 def test_declared_topics_have_avro_schemas():

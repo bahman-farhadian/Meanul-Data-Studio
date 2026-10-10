@@ -8,8 +8,7 @@ driver geo index here. They do not query PostgreSQL for those lookups.
 One process, `hailpath-redis` / `hailpath-redis`. Clients use `REDIS_HOST`
 (default `hailpath-redis`, `hailpath-redis` in the root example).
 
-HAProxy publishes that process on **6379** and **6380**. Both ports are
-`hailpath-redis`. `make verify-redis`
+HAProxy publishes that process on **6379**. `make verify-redis`
 is a PING.
 
 Logical databases are fixed in

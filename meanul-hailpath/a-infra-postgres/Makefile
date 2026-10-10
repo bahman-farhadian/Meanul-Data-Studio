@@ -32,23 +32,22 @@ _wait-haproxy-pg-settled:
 	@printf "  waiting for HAProxy's health checks to settle after hailpath-postgres is recreated\n"
 # The stats page is read through hailpath-net, not a host address. A host
 # loopback read fails when localhost is 127.0.0.1 and route_localnet is 0.
-	@stable=0; write_up=0; read_up=0; \
+	@stable=0; pg_up=0; \
 	for i in $$(seq 1 30); do \
 		csv=$$($(COMPOSE) exec -T hailpath-grafana wget -qO- "http://hailpath-proxy:8404/stats;csv" 2>/dev/null || true); \
-		write_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_write" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
-		read_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg_read" && $$2 ~ /^nus-pg-/ && $$18=="UP"' | wc -l); \
-		if [ "$$write_up" = "1" ] && [ "$$read_up" = "1" ]; then \
+		pg_up=$$(printf '%s\n' "$$csv" | awk -F, '$$1=="pg" && $$2=="hailpath-postgres" && $$18=="UP"' | wc -l); \
+		if [ "$$pg_up" = "1" ]; then \
 			stable=$$((stable + 1)); \
 		else \
 			stable=0; \
 		fi; \
 		if [ "$$stable" -ge 3 ]; then \
-			printf "  $(G)ok$(X)      HAProxy stable: pg_write 1 up, pg_read 1 up\n"; \
+			printf "  $(G)ok$(X)      HAProxy stable: pg hailpath-postgres UP\n"; \
 			exit 0; \
 		fi; \
 		sleep 1; \
 	done; \
-	printf "  $(R)FAIL$(X)    HAProxy never settled after 30s (last seen: pg_write=%s pg_read=%s)\n" "$$write_up" "$$read_up"; \
+	printf "  $(R)FAIL$(X)    HAProxy never settled after 30s (last seen: pg=%s)\n" "$$pg_up"; \
 	printf "              check manually: make verify-pg\n"; \
 	exit 1
 
@@ -69,8 +68,6 @@ verify-pg:
 	@$(COMPOSE) exec -T hailpath-postgres pg_isready -U postgres -d "$(call getenv,PG_DATABASE,hailpath)"
 	@printf "\n  One PostgreSQL. Debezium reads this same database.\n"
 
-.PHONY: psql psql-read
+.PHONY: psql
 psql:
 	@$(COMPOSE) exec hailpath-postgres psql "host=hailpath-proxy port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,hailpath)"
-psql-read:
-	@$(COMPOSE) exec hailpath-postgres psql "host=hailpath-proxy port=5433 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,hailpath)"

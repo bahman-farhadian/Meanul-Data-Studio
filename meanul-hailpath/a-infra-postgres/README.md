@@ -11,8 +11,8 @@ Debezium can open a `pgoutput` slot. Timestamps are UTC.
 `shared_buffers` is 4 GB. `.env.example` sets `PG_MEM=16g` for that
 process. A 9 GB cap was not enough: the process was killed near 8.3 GB.
 
-Clients use `PG_HOST=hailpath-proxy`. Port **5432** and port **5433** are both
-`hailpath-postgres`. Debezium uses 5432.
+Clients use `PG_HOST=hailpath-proxy`. Port **5432** is
+`hailpath-postgres`. Debezium uses that port.
 
 `pg_hba.conf` allows local sockets, scram-sha-256 for network logins,
 and a replication line for the `postgres` user. A replication connection
@@ -32,7 +32,7 @@ does not match `all`, and the logical slot needs that line.
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone. |
 | `PG_IMAGE` | `pgrouting/pgrouting:18-3.6-3.8.0` | Postgres 18 with PostGIS 3.6 and pgRouting 3.8. Pulled, not built. |
-| `PG_DATABASE` | `nus` | Database created on first start. |
+| `PG_DATABASE` | `hailpath` | Database created on first start. |
 | `PG_SUPERUSER_PASSWORD` | required | `postgres` password. |
 | `PG_CPUS` | `10` | CPU ceiling after bootstrap. |
 | `PG_MEM` | `16g` in the root example | Memory ceiling. Do not set this below 16 GB. |
@@ -52,26 +52,20 @@ That runs `pg_isready` on `hailpath-postgres`.
 
 ## Connecting
 
-In the full stack, connect through HAProxy. Both ports are the one
-process.
+In the full stack, connect through HAProxy. One listen.
 
 | Port | What it is |
 | --- | --- |
-| `5432` | Write port. Debezium uses this one. |
-| `5433` | The same process. |
+| `5432` | The one PostgreSQL. Debezium uses this port. |
 
-User `postgres`, database `nus`, password `PG_SUPERUSER_PASSWORD`.
+User `postgres`, database `hailpath`, password `PG_SUPERUSER_PASSWORD`.
 
 ```bash
 make psql
-make psql-read
 ```
 
-`make psql` uses port 5432. `make psql-read` uses port 5433. Both land
-on `hailpath-postgres`.
-
-HAProxy stats: <http://localhost:8404/stats>. A down server on `pg_write`
-or `pg_read` means `hailpath-postgres` failed that check.
+HAProxy stats: <http://localhost:8404/stats>. A down server on `pg`
+means `hailpath-postgres` failed that check.
 
 For this directory alone, with no proxy:
 

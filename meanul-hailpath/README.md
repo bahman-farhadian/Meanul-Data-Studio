@@ -221,12 +221,15 @@ expects one replica in sync. `verify-ch` lists MergeTree engines.
 Two results that look wrong and are not:
 
 - **A down server on an HAProxy backend means that one process failed the
-  check.** Ports 5432 and 5433 are both `hailpath-postgres`. Ports 6379 and 6380
-  are both `hailpath-redis`.
+  check.** Port 5432 is `hailpath-postgres`. Port 6379 is `hailpath-redis`.
 - **Empty dashboard panels before bootstrap finishes are fine.** An error is
   not.
 
 ## Running it
+
+`make urls` lists every store on the host. That is a lab choice so a
+laptop can use DBeaver. Production would publish Grafana (`3000`) and
+Superset (`8088`) only.
 
 ```bash
 make urls          # where to point a browser or a client
@@ -251,7 +254,7 @@ A shell into any of the data stores, through the proxy where there is one:
 
 ```bash
 make psql          # port 5432, hailpath-postgres         make redis-cli
-make psql-read     # port 5433, same process     make ch-client
+make ch-client
 ```
 
 ## Bringing one piece up at a time
@@ -310,9 +313,9 @@ make verify-pg
 
 Connect a SQL client through `hailpath-proxy`
 (see [Connecting](a-infra-postgres/README.md#connecting)):
-host = this server, port `5432` or `5433` (both are `hailpath-postgres`), database
-`nus`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. The `nus`
-schema and its tables arrive with `h-bootstrap`, several pieces later.
+host = this server, port `5432` (`hailpath-postgres`), database
+`hailpath`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. The
+`hailpath` schema and its tables arrive with `h-bootstrap`, several pieces later.
 
 Skip `make preflight` and `make prepare` for this: both check readiness of
 all 14 components and will fail on the 13 you have not touched yet. They

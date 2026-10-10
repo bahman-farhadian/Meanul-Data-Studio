@@ -125,15 +125,17 @@ only. Built images are `hailpath/<job>`. The Docker network is
 
 #### Load-balancer tier (hailpath-proxy)
 
-One HAProxy publishes a stable host port for each store:
+One HAProxy publishes a stable host port for each store. This is a lab:
+the stores are on the host so a laptop can use DBeaver. Production would
+publish Grafana (`3000`) and Superset (`8088`) only.
 
-- **5432 / 5433** -> the one PostgreSQL. Both ports are `hailpath-postgres`.
-  Debezium uses 5432;
-- **6379 / 6380** -> the one Redis. Both ports are `hailpath-redis`;
+- **5432** -> the one PostgreSQL. Debezium uses this port;
+- **6379** -> the one Redis;
 - **9094** -> the one Kafka broker;
 - **8089** -> ksqlDB, the SQL reader of that broker;
 - **8123 / 9000** -> the one ClickHouse (HTTP / native);
-- **3000 / 8088** -> Grafana / Superset.
+- **3000 / 8088** -> Grafana / Superset;
+- **8404** -> HAProxy stats.
 
 HAProxy is there so a client keeps a stable port. Each port is the one
 process behind it.
@@ -285,8 +287,8 @@ PostgreSQL layer relies on three pillars:
   document-store role, so no MongoDB is part of the stack.
 
 **Entry point:** services connect through HAProxy (`hailpath-proxy`, see
-[2.1](#load-balancer-tier-lb-a)). Port **5432** and
-port **5433** are both `hailpath-postgres`. Debezium uses the write port. `PG_HOST`
+[2.1](#load-balancer-tier-hailpath-proxy)). Port **5432** is
+`hailpath-postgres`. Debezium uses that port. `PG_HOST`
 is `hailpath-proxy`.
 
 **Migrations** are plain, ordered SQL files
@@ -295,7 +297,7 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 
 ```mermaid
 graph TB
-    HAP["hailpath-proxy<br/>5432 and 5433"]
+    HAP["hailpath-proxy<br/>5432"]
     PG[("hailpath-postgres")]
 
     HAP --> PG
@@ -355,11 +357,11 @@ Core tables (conceptual):
 One Redis, `hailpath-redis`, is the **only** read path for cached reference
 and hot-path data — generators, dispatch, the city service, and the
 ClickHouse sink read from here, never directly from PostgreSQL. HAProxy
-ports 6379 and 6380 are that process. `make verify-redis` is a PING.
+port 6379 is that process. `make verify-redis` is a PING.
 
 ```mermaid
 graph TB
-    HAP["hailpath-proxy<br/>6379 and 6380"]
+    HAP["hailpath-proxy<br/>6379"]
     R[("hailpath-redis")]
 
     HAP --> R

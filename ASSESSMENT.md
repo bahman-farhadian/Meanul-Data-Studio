@@ -327,12 +327,12 @@ bar (S15 / n-service-clickhouse-sink).
 
 #### `a-infra-postgres`
 
-One PostgreSQL (`nus-pg-1`). HAProxy `5432` and `5433` are that process. Debezium uses the write port.
+One PostgreSQL (`hailpath-postgres`). HAProxy `5432` is that process. Debezium uses that port.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Process | `pg_isready` on `nus-pg-1` | not accepting connections | `make verify-pg` |
-| Write path | Clients use HAProxy `5432` and `5433`. Both are `nus-pg-1`. `PG_HOST` is `hailpath-proxy` | A service `PG_HOST` set to a `pg-*` hostname | compose `PG_HOST` is `hailpath-proxy` / `hailpath-proxy` |
+| Write path | Clients use HAProxy `5432`. That is `hailpath-postgres`. `PG_HOST` is `hailpath-proxy` | A service `PG_HOST` set to a `pg-*` hostname | compose `PG_HOST` is `hailpath-proxy` |
 
 #### `b-infra-redis`
 

@@ -74,7 +74,7 @@ services:
       # PostgreSQL, through the entry tier - never a pg-* container by name.
       PG_HOST: ${PG_HOST:-hailpath-proxy}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
-      PG_READ_PORT: ${PG_READ_PORT:-5433}
+      PG_READ_PORT: ${PG_READ_PORT:-5432}
       PG_DATABASE: ${PG_DATABASE:-hailpath}
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}

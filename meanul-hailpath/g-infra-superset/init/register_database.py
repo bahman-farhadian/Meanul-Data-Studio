@@ -13,8 +13,8 @@ Two connections are registered:
   ClickHouse (hailpath)              the warehouse every chart reads
   PostgreSQL (hailpath, read-only)   the OLTP source, for exploration only
 
-The PostgreSQL one points at port 5433, the same process as the write
-port, and refuses DML. Dashboards read the warehouse; this is here so the
+The PostgreSQL one points at the same listen as the platform (5432)
+and refuses DML. Dashboards read the warehouse; this is here so the
 road network, the zones and the traffic factors can be looked at in SQL
 Lab without a query from a browser changing the rows the platform writes.
 
@@ -64,16 +64,15 @@ def clickhouse_uri() -> str:
 
 
 def postgres_uri() -> str:
-    """The OLTP source, through the read port.
+    """The OLTP source, through the one PostgreSQL listen.
 
-    5433 is the same PostgreSQL as the write port. SQL Lab uses it so an
-    exploratory query is a separate connection from the one the platform
-    writes on. allow_dml on this connection stays off.
+    SQL Lab uses a separate connection from the one the platform writes
+    on. allow_dml on this connection stays off.
     """
     user = os.environ.get("PG_USER", "postgres")
     password = os.environ["PG_PASSWORD"]
     host = os.environ.get("PG_HOST", "hailpath-proxy")
-    port = os.environ.get("PG_READ_PORT", "5433")
+    port = os.environ.get("PG_READ_PORT", "5432")
     database = os.environ.get("PG_DATABASE", "postgres")
     return f"postgresql+psycopg2://{quote(user, safe='')}:{quote(password, safe='')}@{host}:{port}/{database}"
 

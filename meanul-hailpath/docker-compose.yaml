@@ -134,10 +134,8 @@ services:
     volumes:
       - hailpath-haproxy-config:/usr/local/etc/haproxy:ro
     ports:
-      - "${PROXY_PG_WRITE_PORT:-5432}:5432"
-      - "${PROXY_PG_READ_PORT:-5433}:5433"
-      - "${PROXY_REDIS_WRITE_PORT:-6379}:6379"
-      - "${PROXY_REDIS_READ_PORT:-6380}:6380"
+      - "${PROXY_PG_PORT:-5432}:5432"
+      - "${PROXY_REDIS_PORT:-6379}:6379"
       - "${PROXY_STATS_PORT:-8404}:8404"
       - "${PROXY_CH_HTTP_PORT:-8123}:8123"
       - "${PROXY_CH_NATIVE_PORT:-9000}:9000"

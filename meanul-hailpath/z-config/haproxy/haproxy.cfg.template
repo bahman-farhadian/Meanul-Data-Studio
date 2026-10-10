@@ -1,7 +1,9 @@
-# hailpath-proxy — one HAProxy. It publishes a stable host port for each store.
-# Each backend is the one process behind that port. Backends resolve through
-# Docker's embedded DNS (127.0.0.11) with init-addr none, so HAProxy starts
-# cleanly even while a backend's container does not exist yet.
+# hailpath-proxy — one HAProxy. It is the stable address on hailpath-net
+# and, in this lab, the host publish of every store. Production would
+# publish Grafana and Superset only. Each backend is the one process
+# behind that port. Backends resolve through Docker's embedded DNS
+# (127.0.0.11) with init-addr none, so HAProxy starts cleanly even while
+# a backend's container does not exist yet.
 #
 # THIS IS A TEMPLATE, not the file HAProxy reads. __REDIS_PASSWORD__ below
 # is filled in by the render-haproxy-config one-shot before hailpath-proxy starts
@@ -44,38 +46,19 @@ listen stats
     stats refresh 10s
 
 # PostgreSQL (a-infra-postgres) ----------------------------------------------
-# One database. Both ports are that process, so a client that still uses
-# the read port reaches the writer. Debezium uses the write port.
+# One database, one listen. Debezium uses this port.
 
-listen pg_write
+listen pg
     bind :5432
     option tcp-check
     server hailpath-postgres hailpath-postgres:5432 check
 
-listen pg_read
-    bind :5433
-    option tcp-check
-    server hailpath-postgres hailpath-postgres:5432 check
-
 # Redis (b-infra-redis) --------------------------------------------------------
-# One Redis. Both host ports are that same node, so an existing read-port
-# client still lands somewhere that answers. REDIS_PASSWORD must not contain
-# whitespace: AUTH is sent as a raw inline Redis command, which splits on spaces.
+# One Redis, one listen. REDIS_PASSWORD must not contain whitespace: AUTH
+# is sent as a raw inline Redis command, which splits on spaces.
 
-listen redis_write
+listen redis
     bind :6379
-    option tcp-check
-    tcp-check send AUTH\ __REDIS_PASSWORD__\r\n
-    tcp-check expect string +OK
-    tcp-check send PING\r\n
-    tcp-check expect string +PONG
-    tcp-check send QUIT\r\n
-    tcp-check expect string +OK
-    default-server on-marked-down shutdown-sessions
-    server hailpath-redis hailpath-redis:6379 check
-
-listen redis_read
-    bind :6380
     option tcp-check
     tcp-check send AUTH\ __REDIS_PASSWORD__\r\n
     tcp-check expect string +OK

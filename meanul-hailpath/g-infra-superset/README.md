@@ -56,7 +56,7 @@ run so the credential stays current:
 | Connection | Points at | Why |
 | --- | --- | --- |
 | `ClickHouse (hailpath)` | `hailpath-proxy:8123` | The warehouse every chart would read. |
-| `PostgreSQL (hailpath, read-only)` | `hailpath-proxy:5433` | The OLTP source, for exploration in SQL Lab only. Port 5433 is the same PostgreSQL as the write port. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
+| `PostgreSQL (hailpath, read-only)` | `hailpath-proxy:5432` | The OLTP source, for exploration in SQL Lab only. Same listen as the platform. DML stays off, so an exploratory query from a browser cannot change the rows the platform writes. |
 
 **Dataset, chart and dashboard provisioning is not part of this piece.** A
 full bundle — 20 charts, 5 datasets, one 6-section analytics dashboard —

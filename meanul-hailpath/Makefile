@@ -141,7 +141,7 @@ help:
 	@printf "    $(C)make verify-quality$(X)\n\n"
 	@printf "  Shell:\n"
 	@printf "    $(C)make psql$(X)        the database        $(C)make redis-cli$(X)\n"
-	@printf "    $(C)make psql-read$(X)   the read port       $(C)make ch-client$(X)\n\n"
+	@printf "    $(C)make ch-client$(X)\n\n"
 	@printf "  Stop:\n"
 	@printf "    $(C)make stop$(X)        stop, keep data\n"
 	@printf "    $(C)make down$(X)        remove containers, keep data\n"

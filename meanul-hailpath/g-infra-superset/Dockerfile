@@ -49,7 +49,7 @@ RUN uv pip install --python /app/.venv/bin/python --no-cache \
  && python -c "import clickhouse_connect, clickhouse_connect.cc_sqlalchemy, psycopg2; \
 import sqlalchemy; \
 sqlalchemy.create_engine('clickhousedb://u:p@h:8123/d'); \
-sqlalchemy.create_engine('postgresql+psycopg2://u:p@h:5433/d'); \
+sqlalchemy.create_engine('postgresql+psycopg2://u:p@h:5432/d'); \
 print('drivers importable by Superset: clickhouse-connect', clickhouse_connect.__version__, '/ psycopg2', psycopg2.__version__.split()[0])"
 
 USER superset

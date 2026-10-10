@@ -2,9 +2,8 @@
 
 Two rules the whole stack follows:
 
-1. Clients use the proxy, not the container name. There is one PostgreSQL.
-   The write port and the read port are that same process. Debezium uses
-   the write port.
+1. Clients use the proxy, not the container name. There is one PostgreSQL
+   and one listen. Debezium uses that port.
 2. **Only the components that own data come here at all.** Everything else
    reads from Redis. See section 1 of the main README.
 
@@ -98,14 +97,14 @@ def write_connection():
 
 @contextmanager
 def read_connection():
-    """A connection on the read port.
+    """A connection that should not be the one that just wrote.
 
-    Both ports are the same PostgreSQL. Use write_connection to read a
-    row inside the transaction that wrote it.
+    Same PostgreSQL, same listen. Use write_connection to read a row
+    inside the transaction that wrote it.
     """
     global _read_pool
     if _read_pool is None:
-        port = config.integer("PG_READ_PORT", 5433)
+        port = config.integer("PG_READ_PORT", 5432)
         _read_pool = _pool(port, config.integer("PG_POOL_SIZE", 5))
         log.info("postgres read pool ready", extra={"port": port})
 
