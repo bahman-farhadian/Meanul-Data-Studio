@@ -195,9 +195,16 @@ prepare:
 	@$(MAKE) --no-print-directory tlc-trips-fetch
 	@$(MAKE) --no-print-directory lion-prepare
 	@$(MAKE) --no-print-directory zone-demand-prepare
-	@$(MAKE) --no-print-directory tiles-prepare
 	@$(MAKE) --no-print-directory grafana-plugin-prepare
 	@$(MAKE) --no-print-directory avro-converter-prepare
+# Tiles go last because they are the one step that can fail for a reason
+# outside this repository. osmdata.openstreetmap.de was refusing HTTPS on
+# 2026-10-23 and there is no mirror for water-polygons-split-3857.zip, so
+# the fetch burned its six retries and took the plugin and the converter
+# jars down with it - two cheap, unrelated downloads that would otherwise
+# already be on disk. Ordered this way, an outage there leaves exactly one
+# preflight failure to retry instead of three.
+	@$(MAKE) --no-print-directory tiles-prepare
 	@printf "\n$(G)$(B)Ready.$(X) Run $(C)make up$(X) — it needs no network access.\n"
 	@printf "  Images, the LION graph, and nyc.mbtiles are on disk. make destroy keeps the last two.\n\n"
 
