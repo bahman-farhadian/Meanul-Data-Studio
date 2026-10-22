@@ -79,7 +79,7 @@ containers.
 
 ```bash
 # positions arriving, decoded from Avro
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic driver_location --max-messages 3

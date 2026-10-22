@@ -103,10 +103,10 @@ docker compose run --rm superset-init
 
 ```bash
 # the web server answers
-docker compose exec superset curl -fsS http://localhost:8088/health
+docker compose exec hailpath-superset curl -fsS http://localhost:8088/health
 
 # the ClickHouse connection was registered
-docker compose exec superset superset shell -c \
+docker compose exec hailpath-superset superset shell -c \
   "from superset.models.core import Database; print([d.database_name for d in Database.query.all()])"
 ```
 

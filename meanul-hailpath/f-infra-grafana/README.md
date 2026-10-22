@@ -92,10 +92,10 @@ on port 3000.
 
 ```bash
 # Grafana is up
-docker compose exec grafana wget -qO- http://localhost:3000/api/health
+docker compose exec hailpath-grafana wget -qO- http://localhost:3000/api/health
 
 # the data source was provisioned and can reach ClickHouse
-docker compose exec grafana wget -qO- \
+docker compose exec hailpath-grafana wget -qO- \
   --header="Content-Type: application/json" \
   --http-user="${GRAFANA_ADMIN_USER}" --http-password="${GRAFANA_ADMIN_PASSWORD}" \
   http://localhost:3000/api/datasources

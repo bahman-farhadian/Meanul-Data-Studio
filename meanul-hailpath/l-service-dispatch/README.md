@@ -103,7 +103,7 @@ docker compose exec hailpath-postgres psql -U postgres -c \
     ORDER BY requested_at DESC LIMIT 5;"
 
 # the lifecycle stream
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic trip_lifecycle --max-messages 5

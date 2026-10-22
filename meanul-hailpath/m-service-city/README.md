@@ -104,7 +104,7 @@ docker compose exec hailpath-redis redis-cli get hotspot:z-03-03:morning
 docker compose exec hailpath-redis redis-cli ttl hotspot:z-03-03:morning
 
 # the same scores as history
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic city_hotspots --max-messages 3

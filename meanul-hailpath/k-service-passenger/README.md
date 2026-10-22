@@ -68,7 +68,7 @@ will make dispatch fall behind first.
 
 ```bash
 # requests arriving
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic trip_requests --max-messages 3
@@ -80,7 +80,7 @@ docker compose exec hailpath-postgres psql -U postgres -c \
     GROUP BY status ORDER BY 2 DESC;"
 
 # rider positions, which only exist while trips are in progress
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic rider_location --max-messages 3

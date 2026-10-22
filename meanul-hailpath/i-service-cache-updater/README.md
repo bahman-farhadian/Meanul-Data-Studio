@@ -98,7 +98,7 @@ If the value in Redis does not change, check the connector first — this
 service can only apply what Debezium sends:
 
 ```bash
-docker compose exec debezium-connect curl -s http://localhost:8083/connectors/hailpath-pg/status
+docker compose exec hailpath-debezium curl -s http://localhost:8083/connectors/hailpath-pg/status
 ```
 
 ## Rebuilding the cache from scratch
@@ -109,11 +109,11 @@ database at all:
 
 ```bash
 # stop the service, forget its position, start it again
-docker compose stop cache-updater
+docker compose stop hailpath-cache-updater
 docker compose exec hailpath-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
   --bootstrap-server hailpath-kafka:9092 --group cache-updater --reset-offsets \
   --to-earliest --all-topics --execute
-docker compose start cache-updater
+docker compose start hailpath-cache-updater
 ```
 
 It reads everything again and writes the same keys with the same values.

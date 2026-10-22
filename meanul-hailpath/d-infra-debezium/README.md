@@ -129,7 +129,7 @@ gate nothing that isn't already open one layer down.
 
 ```bash
 # the connector exists and is RUNNING, and so is its task
-docker compose exec debezium-connect curl -s http://localhost:8083/connectors/hailpath-pg/status
+docker compose exec hailpath-debezium curl -s http://localhost:8083/connectors/hailpath-pg/status
 
 # the cdc.* topics Debezium created
 docker compose exec hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
@@ -139,7 +139,7 @@ docker compose exec hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
 docker compose exec hailpath-postgres psql -U postgres -c \
   "update drivers set status = 'idle' where driver_id = (select driver_id from drivers limit 1);"
 
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic cdc.drivers --max-messages 1
@@ -170,7 +170,7 @@ keep journal files for a reader that never returns:
 
 ```bash
 # 1. delete the connector so it cannot recreate the slot
-docker compose exec debezium-connect curl -X DELETE http://localhost:8083/connectors/hailpath-pg
+docker compose exec hailpath-debezium curl -X DELETE http://localhost:8083/connectors/hailpath-pg
 
 # 2. drop the slot and the publication in PostgreSQL
 docker compose exec hailpath-postgres psql -U postgres -c "select pg_drop_replication_slot('hailpath_debezium');"

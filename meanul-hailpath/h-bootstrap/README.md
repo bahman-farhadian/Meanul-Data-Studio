@@ -116,7 +116,7 @@ cannot connect and the stack stays waiting.
 
 ```bash
 # follow it; the map import is the long quiet part
-docker compose logs -f bootstrap
+docker compose logs -f hailpath-bootstrap
 
 # it exited - did it succeed?
 docker inspect --format '{{.State.ExitCode}}' hailpath-bootstrap
@@ -152,10 +152,10 @@ Then open Grafana: the dashboard should already show a week of trips.
 
 ```bash
 # normally does nothing, because the marker is set
-docker compose up bootstrap
+docker compose up hailpath-bootstrap
 
 # actually re-run the steps (existing rows are still kept)
-FORCE_RESEED=true docker compose up bootstrap
+FORCE_RESEED=true docker compose up hailpath-bootstrap
 ```
 
 To start completely fresh, remove the data volumes with

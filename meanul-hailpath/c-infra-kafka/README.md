@@ -53,7 +53,7 @@ Compatibility is `backward`. The files in `schemas/` are the source.
 One `.avsc` per declared topic.
 
 ```bash
-docker compose exec schema-registry kafka-avro-console-consumer \
+docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
   --property schema.registry.url=http://hailpath-schema-registry:8081 \
   --topic driver_location --from-beginning --max-messages 5

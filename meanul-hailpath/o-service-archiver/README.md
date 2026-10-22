@@ -77,9 +77,9 @@ docker compose exec hailpath-postgres psql -U postgres -d nus -c \
 
 # confirm nothing prunable is left after a tick, and nothing under
 # retention or still active got touched
-docker compose logs archiver-service --since 20m
+docker compose logs hailpath-archiver --since 20m
 ```
 
 If `prunable` never reaches zero, check `ARCHIVER_MAX_BATCHES_PER_TICK` isn't
 too low for the real backlog, or that the service is actually running
-(`docker compose ps archiver-service`).
+(`docker compose ps hailpath-archiver`).
