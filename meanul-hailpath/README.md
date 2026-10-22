@@ -80,6 +80,55 @@ Every step of `make up` is also a target of its own, and every one is
 idempotent, so a failed run is resumed by fixing the cause and running that
 step again rather than starting over.
 
+## `make prepare`, one step at a time
+
+`make prepare` is ten targets in a row, and every one of them is a target of
+its own, idempotent, and safe to run alone. That matters because each of the
+download steps reaches a different third party, and any of them can be down
+on the day you deploy. When that happens, run the remaining steps by hand
+instead of re-running `make prepare` and waiting through everything that
+already succeeded.
+
+```bash
+make pull                      # every pinned image
+make build                     # the eleven images this repository defines
+make lion-fetch                # NYC DCP: lion.zip
+make tlc-zones-fetch           # NYC TLC: taxi-zones.geojson
+make tlc-trips-fetch           # NYC TLC: one month of real trip records
+make lion-prepare              # the routable graph — the slow one on a first run
+make zone-demand-prepare       # demand calibration from those trip records
+make grafana-plugin-prepare    # the Grafana ClickHouse plugin
+make avro-converter-prepare    # the Debezium Avro converter jars
+make tiles-prepare             # OSM extract -> nyc.mbtiles for the Grafana basemap
+```
+
+That is the same order `make prepare` uses, and running `make prepare`
+afterwards is still correct — each step sees its own output already on disk
+and says so.
+
+The hosts are not interchangeable and they do not fail together:
+
+| Step | Reaches | Settings in `.env` |
+| --- | --- | --- |
+| `pull` | the registry each image is pinned to | the `*_IMAGE` keys |
+| `lion-fetch` | `data.cityofnewyork.us` | `LION_URL` |
+| `tlc-zones-fetch` | `data.cityofnewyork.us` | `TLC_ZONES_URL` |
+| `tlc-trips-fetch` | TLC's CloudFront distribution | `TLC_TRIP_DATA_URL_TEMPLATE`, `TLC_TRIP_DATA_MONTH` |
+| `grafana-plugin-prepare` | grafana.com, through `grafana cli` in the Grafana image | `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` |
+| `avro-converter-prepare` | `hub-downloads.confluent.io` | `AVRO_CONVERTER_VERSION` |
+| `tiles-prepare` | geofabrik.de, github.com, naciscdn.org, **osmdata.openstreetmap.de** | `GEOFABRIK_NY_PBF_URL`, `PLANETILER_JAR_URL`, `NATURAL_EARTH_URL`, `LAKE_CENTERLINES_URL`, `WATER_POLYGONS_URL` |
+
+The last two take a version, not a URL — the download address is built from
+it in `plugin-prepare.sh` and `converter-prepare.sh`. Everything else can be
+pointed somewhere else without touching code.
+
+`osmdata.openstreetmap.de` is the weak link: it is the only source for
+`water-polygons-split-3857.zip` and it has no mirror. It was refusing HTTPS
+on 2026-10-23 and `tiles-prepare` failed on it after six retries. Nothing
+else in the stack depends on that file — only the Grafana basemap does — so
+if it is down, everything above it still runs and only `make tiles-prepare`
+is left to retry.
+
 ## Deploying without outside network
 
 `make prepare` is the only step that reaches the internet: it pulls the
