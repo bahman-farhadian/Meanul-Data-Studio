@@ -61,9 +61,10 @@ data, never from an earlier run.
 
 ## Working blocks
 
-The thirteen steps are worked in four blocks, not one at a time. Steps
-that read the same stack are verified on one bring-up rather than on one
-each - eight remaining steps become four cycles.
+The thirteen steps are worked in blocks, not one at a time. Steps that
+read the same stack are verified on one bring-up rather than on one each.
+Step 12c was added after the fact, when the one-process refactor landed
+without a bring-up behind it.
 
 | Block | Steps | Where | Status | Why they combine |
 | --- | --- | --- | --- | --- |
@@ -71,7 +72,8 @@ each - eight remaining steps become four cycles.
 | B | 8 + 9 + 10 | Dionysus, one bring-up | **DONE 2026-10-02** | ksqlDB, Grafana and Superset all read the same warehouse tables - build all three, verify once |
 | D1 | 12 | Dionysus, two bring-ups | **RECORDED 2026-10-08** | The 50% bring-up is the record. The ~10% stop was not run. The 2026-10-06 image is not the pass |
 | C | 11 | Local | **DONE 2026-10-08** | Contract and documentation. No server time |
-| D2 | 13 | Dionysus, one bring-up | last | The full-scale final run |
+| D2a | 12c | Dionysus, one bring-up | next | The one-process stack has never started. Shake it down at a tenth of the scale before the seven-day bootstrap |
+| D2b | 13 | Dionysus, one bring-up | last | The full-scale final run |
 
 **Re-ordered 2026-10-03: step 12 now runs BEFORE step 11.** The original
 order was A, B, C, D with 11 sitting between B and D. Three reasons it
@@ -1199,7 +1201,7 @@ DONE — 2026-09-26, Dionysus. `check-dashboards.py` passes on all six
 dashboards, and `make verify-grafana` runs **all 46 panel queries against
 the live warehouse**: every one valid, every rollup panel returning rows.
 
-`nus-marketplace` (14 panels) covers all six: fulfilment and cancellation
+`hailpath-marketplace` (14 panels) covers all six: fulfilment and cancellation
 rate, cancellation reasons, rider wait and time to match, take rate, the
 matching funnel (acceptance rate, offers per match, ETA offered against ETA
 accepted), surge against acceptance by band, duration error p50/p90, and
@@ -1301,7 +1303,7 @@ are the spec that run closed.
 DONE — 2026-10-08, workstation. The decision is to label the panels and
 not to seed idle positions. `driver_positions` is already the heaviest
 table in the stack, and a week of idle ticks for the whole fleet is the
-write step 13 should not take. Grafana nus-history panel 6, hailpath-driver
+write step 13 should not take. Grafana hailpath-history panel 6, hailpath-driver
 panel 5, and Superset "Driver utilization" now say the seeded window is
 on_trip only, so a reading of 100% there is the seam, not a collapse.
 
@@ -1312,7 +1314,7 @@ there is no idle or en_route_pickup telemetry anywhere in the seeded week.
 So every metric whose denominator is "time online" reads 100% across the
 whole historical window and then falls to the real figure (~9%) the moment
 live traffic starts. `driver_utilization_hourly` is the one that shows it,
-on three panels: Grafana nus-history 6, hailpath-driver 5, and Superset's
+on three panels: Grafana hailpath-history 6, hailpath-driver 5, and Superset's
 "Driver utilization". The charts are honest; the history has no
 denominator.
 
@@ -1580,7 +1582,103 @@ and neither the seed ratio nor the 0.6 surge threshold moves.
 
 ---
 
+## Step 12c — Shake down the one-process stack
+
+The stack step 12 measured no longer exists. Between 2026-10-09 and
+2026-10-10 every store became one process and every name became
+`hailpath-*`:
+
+| Change | Commits |
+| --- | --- |
+| Three Postgres + Patroni + etcd to one PostgreSQL | `6b9d3fc`, `2c64582` |
+| Three Redis + Sentinel to one Redis | `0221270` |
+| Three Kafka brokers to one KRaft broker | `811dcab` |
+| Four ClickHouse + three keepers to one MergeTree server | `bc1a533`, `38bc4e8`, `d7789ac` |
+| `lb-a` and `lb-b` to one `hailpath-proxy` | `a09273a`, `5626ce2` |
+| `nus-*` to `hailpath-*`, official images, no local Postgres build | `8598397`, `f4904ac`, `79bb6b0`, `7c338bb` |
+| The 50-second driver tick | `84c9a69`, `e4fc7ae`, `a710088` |
+
+**None of it has been through a bring-up.** The newest run on Dionysus is
+the 2026-10-08 50% record under step 12, taken on the three-node design.
+
+So step 13 would be two unknowns at once: a stack that has never started,
+at a scale that has never been reached, with a seven-day bootstrap in
+front of any error. This step separates them.
+
+**This is a shakedown, not a measurement rung.** Step 12 decided a 10%
+stop would not predict full scale, and that still holds - nothing here
+re-opens the seed ratio, the 0.6 surge threshold, the `trips` partition
+question, or the Kafka quota. What it proves is that the renamed
+one-process stack starts, wires up, and carries a trip end to end.
+
+Local checks ran first, on `092088e`:
+
+| Check | Reading |
+| --- | --- |
+| `make verify-walk` | 123 passed |
+| `make verify-sample` | 8 passed, against a real Postgres, pgRouting, Redis, Kafka, Schema Registry and ClickHouse |
+| `docker compose --profile init config` | all 15 component files parse and interpolate |
+| ASSESSMENT.md §10 targets | 30 of 30 exist |
+
+Five defects came out of those checks, all of them from the rename, all
+of them reading as working code: the sample stack named an image nothing
+builds any more and logged into ClickHouse as `nus`, `verify-kafka`
+grepped for `nus-kafka-[0-9]` so its broker listing could only pass,
+`_mk-data-tree` never created the LION directory, and twenty-one runbook
+commands named compose services that no longer exist.
+`test_the_old_project_name_is_gone` now fails on the next one.
+
+### Seed
+
+One tenth of full scale, holding the supply ratio step 12 settled, so
+this run is a smaller copy of the same marketplace rather than a
+different one:
+
+| Key | Value | Full scale |
+| --- | --- | --- |
+| `SEED_DRIVERS` | 10600 | 106000 |
+| `SEED_PASSENGERS` | 150000 | 1500000 |
+| `HISTORY_DAYS` | 1 | 7 |
+| `HISTORY_TRIPS_PER_DAY` | 65500 | 655000 |
+| `TRIP_REQUESTS_PER_MINUTE` | 45.5 | 455.0 |
+
+10600 / 45.5 is 232.97 drivers per request per minute, the same figure as
+53000 / 227.5 and 106000 / 455.
+
+### Done when
+
+Structural only. Nothing distributional, for the reason the working-blocks
+section already gives.
+
+| # | Bar | Pass |
+| --- | --- | --- |
+| 1 | The stack starts | `make up` returns, `make ps` shows every long-running container up |
+| 2 | Nothing is restarting | `make health` restarts 0 and `oom=false` on all of them |
+| 3 | Each layer answers | `make verify` exits 0, and `verify-kafka` prints a broker line now that the grep is fixed |
+| 4 | The renamed Avro registered | 7 of 7 subjects, namespace `hailpath.events` |
+| 5 | ksqlDB rebuilt its topics under the new prefix | `make verify-ksqldb` exits 0, 7 streams and 1 table |
+| 6 | CDC runs | connector and task RUNNING, Redis db 1 and db 2 filled |
+| 7 | Trips reach the warehouse on street geometry | `make verify-positions`: last-hour trips > 0, off-network 0, long two-point 0 |
+| 8 | Quality is structural-clean | `make verify-quality` Q0-Q14 all measured 0 |
+| 9 | Dashboards return rows | `make grafana-check` all panels, `make verify-superset` 20 charts / 6 datasets / 1 dashboard, `make tiles-health` 200 |
+| 10 | The driver tick is near 3 s | `make logs SVC=hailpath-driver` tick spacing single-digit seconds, not 35-50 |
+| 11 | Consumers are not wedging | `make lag` moving, dispatch not in the tens of thousands |
+
+Bar 10 is the one step 12 left open and `84c9a69` claims to fix. It is
+cheap to read here and expensive to read at full scale.
+
+**Test:** DIONYSUS - one cycle, at the seed above.
+
+**Done when:** all eleven bars above are true, recorded with the output
+that proved them.
+
+---
+
 ## Step 13 — Full-scale final run
+
+**Runs after step 12c passes.** Not before: a seven-day bootstrap in
+front of a stack that has never started puts hours between a rename
+defect and the message about it.
 
 The target agreed at the start of the project: **7 days of history at real
 New York City scale** — `SEED_DRIVERS=106000`, `SEED_PASSENGERS=1500000`,
@@ -1588,13 +1686,31 @@ New York City scale** — `SEED_DRIVERS=106000`, `SEED_PASSENGERS=1500000`,
 `TRIP_REQUESTS_PER_MINUTE=455.0`, `SKIP_MAP_IMPORT=false` — the values
 already in `.env.example`.
 
-Before starting, restore the live `.env` from the dev seed to those values
-(they are existing keys; `make init` will not change them — edit them).
+Before starting, restore the live `.env` from the step-12c seed to those
+values (they are existing keys; `make init` will not change them — edit
+them).
 
 Then the full suite: `make verify`, `make verify-walk`,
 `make verify-positions` (last-hour trips > 0), `make tiles-health`,
 `make grafana-check`, `make profile`, `make lag`, plus the step-7 quality
 bars and the step-10 Superset check.
+
+### What this run owes that step 12c cannot
+
+Four readings are scale-dependent, and this is the only run that settles
+them. Each is a number step 12 or step 6 left open.
+
+| Reading | What is open | Command |
+| --- | --- | --- |
+| Warehouse disk | The 112 GiB quota is now one disk, not four. Step 12's capacity sample read a position rate of 0, so the projection it produced does not include a live tick | `make capacity` on a warm stack |
+| PostgreSQL disk | **Never measured.** Step 6's `du` returned nothing, because Patroni kept its data elsewhere. The official image uses `/var/lib/postgresql/data`, so the 24 GiB quota can finally be checked against a seven-day seed before the archiver prunes it | `sudo xfs_quota -x -c 'report -p' <mount>` |
+| Kafka disk | 842 MB per broker at dev scale, roughly 22 GB projected, against 96 GB on one broker now instead of three | same quota report |
+| City-service lag | 2,976 behind at 800 drivers said nothing about 106,000. One 50% sample was 3,042. Still one process, by decision | `make lag` across the run |
+
+The archiver is the other thing only this run shows: a seven-day seed is
+seven days of catch-up at the same 100,000-row ceiling, which step 12
+projected as hours rather than a stuck delete. That projection is tested
+here.
 
 **Test:** DIONYSUS.
 
@@ -1618,7 +1734,7 @@ Plan and code had been contradicting each other since, which is the real
 reason this is being written down rather than left implied.
 
 Dropped because the warehouse already answers the live questions. The
-`nus-live-ops` dashboard runs nine panels - open trips by status, events
+`hailpath-live-ops` dashboard runs nine panels - open trips by status, events
 and positions per minute, the last two minutes of fleet position and
 status - and `make profile` measured `driver_positions` and `trip_events`
 at **0 minutes behind** with `hotspot_history` at 1. A Geomap of the last
@@ -1654,4 +1770,4 @@ bytecode. Measured on the same run: 0.13% CPU each. One process is enough
 at this seed. Revisit only if step 12 shows either pegged.
 
 **Connector note.** `hailpath.trips.route` stays excluded from Debezium (PostGIS
-geometry Debezium cannot serialize) — already in `nus-pg.json`.
+geometry Debezium cannot serialize) — already in `hailpath-pg.json`.
