@@ -8,7 +8,7 @@ history, then sets a marker in Redis that releases the six services.
 
 | Step | What happens | Safe to repeat because |
 | --- | --- | --- |
-| 0 | Create the `nus` database and schema, if not already there | idempotent checks before each `CREATE` |
+| 0 | Create the `hailpath` database and schema, if not already there | idempotent checks before each `CREATE` |
 | 1 | Wait for PostgreSQL, Redis and ClickHouse to answer | it only waits |
 | 2 | Apply the SQL files in `migrations/` | applied files are recorded in `schema_migrations` |
 | 3 | Restore the routable street graph, already prepared by `make lion-prepare` | a populated `ways` table is detected and skipped |
@@ -142,7 +142,7 @@ docker compose exec hailpath-postgres psql -U postgres -c \
 docker compose exec hailpath-postgres psql -U postgres -c "SELECT count(*) FROM ways;"
 
 # the same week in the warehouse
-docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec hailpath-clickhouse clickhouse-client --user hailpath --password "$CH_PASSWORD" \
   --query "SELECT count() FROM hailpath.trip_events"
 ```
 

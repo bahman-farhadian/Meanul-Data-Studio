@@ -21,17 +21,18 @@ ClickHouse password is read from the environment at start (`$CH_PASSWORD`
 in the data source file), so no password is written into any file in this
 repository.
 
-Queries go only to the `nus` ClickHouse database (datasource uid
+Queries go only to the `hailpath` ClickHouse database (datasource uid
 `hailpath-clickhouse`). They use the warehouse table names, never Kafka, Redis,
 or Postgres.
 
 | Dashboard | uid | What it shows |
 | --- | --- | --- |
-| Live operations | `nus-live-ops` | Open trips, ingest, last driver map, freshness |
+| Live operations | `hailpath-live-ops` | Open trips, ingest, last driver map, freshness |
 | Driver inspector | `hailpath-driver` | One `driver_id`: trail, status, utilization |
-| Trip inspector | `nus-trip` | One `trip_id`: status walk, rider trail, fares |
+| Trip inspector | `hailpath-trip` | One `trip_id`: status walk, rider trail, fares |
 | City now | `hailpath-city` | Zone demand, surge, congestion |
-| ClickHouse history | `nus-history` | Hourly/daily rollups, percentiles, utilization |
+| ClickHouse history | `hailpath-history` | Hourly/daily rollups, percentiles, utilization |
+| Marketplace | `hailpath-marketplace` | Fulfilment, cancellation, offers per match, surge |
 
 `python3 f-infra-grafana/check-dashboards.py` (or `make grafana-check`)
 asserts every panel uses that datasource and only names tables declared

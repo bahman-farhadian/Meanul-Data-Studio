@@ -80,7 +80,7 @@ HAProxy **8123** (HTTP) and **9000** (native) both go to
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone. |
 | `CH_SERVER_IMAGE` | `clickhouse/clickhouse-server:26.8.2.7` | Server image, also used by the DDL one-shot. |
-| `CH_USER` | `nus` | Login every client uses. |
+| `CH_USER` | `hailpath` | Login every client uses. |
 | `CH_PASSWORD` | required | Created by the image on first start. |
 | `CH_CPUS` | `1.3` | CPU ceiling. Set in the root `.env`. |
 | `CH_MEM` | `8g` | Memory ceiling. |
@@ -91,7 +91,7 @@ HAProxy **8123** (HTTP) and **9000** (native) both go to
 make verify-ch
 ```
 
-That lists `name, engine` from `system.tables` for the `nus` database
+That lists `name, engine` from `system.tables` for the `hailpath` database
 where the engine is a MergeTree. The line under it is: one ClickHouse.
 The engines are MergeTree.
 
@@ -102,7 +102,7 @@ docker network create hailpath-net
 cp .env.example .env
 docker compose up -d
 docker compose run --rm ch-ddl-init
-docker compose exec hailpath-clickhouse clickhouse-client --user nus --password "$CH_PASSWORD" \
+docker compose exec hailpath-clickhouse clickhouse-client --user hailpath --password "$CH_PASSWORD" \
   --query "SELECT name, engine FROM system.tables WHERE database='hailpath' AND engine LIKE '%MergeTree' ORDER BY name"
 ```
 
