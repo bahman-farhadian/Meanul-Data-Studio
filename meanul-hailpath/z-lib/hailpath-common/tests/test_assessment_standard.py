@@ -1244,45 +1244,74 @@ def _buildable_services() -> dict[str, dict]:
     return out
 
 
-def test_build_covers_every_image_it_claims_to():
-    """make build reaches the init profile, and bake gets host networking.
+def _all_makefiles() -> dict[str, str]:
+    out = {"Makefile": (HAILPATH / "Makefile").read_text()}
+    for path in sorted(HAILPATH.glob("*/Makefile")) + sorted(HAILPATH.glob("z-mk/*.mk")):
+        out[str(path.relative_to(HAILPATH))] = path.read_text()
+    return out
 
-    Two regressions the rename introduced, both of which left the stack
-    unbuildable while every file still looked right.
 
-    hailpath-bootstrap gained `profiles: ["init"]`, and compose builds
-    only what the active profiles select - so `compose build` produced
-    eight of nine images, and preflight then asked for a `make prepare`
-    that could never supply the ninth.
+def test_every_build_goes_through_the_bake_macro():
+    """One way to build, because `compose build` cannot grant host networking.
 
-    Separately, buildx treats `network: host` as a privilege a build must
-    be granted. `docker compose build` has no flag that grants it, so the
-    build has to go through `bake --allow=network.host`.
+    Buildx treats `network: host` as an entitlement a build must be
+    granted, and `docker compose build` has no flag that grants it -
+    `--allow` belongs to bake. So every build here goes through the
+    bake_build macro, which grants it off the printed plan.
+
+    This is a whole-tree assertion rather than one about the `build`
+    target, because the first fix covered that target and missed the two
+    `up --build` calls in h-bootstrap - lion-prepare and
+    zone-demand-prepare, both of which also build on the host network.
+    The same error came back one step further into `make prepare`.
+    """
+    files = _all_makefiles()
+    root = files["Makefile"]
+
+    macro = re.search(r"^define bake_build\n(.*?)^endef", root, re.M | re.S)
+    assert macro, "no bake_build macro in the root Makefile"
+    body = macro.group(1)
+    assert "buildx bake" in body, body
+    assert "--allow=network.host" in body, body
+    # Granted off the printed plan, not off .env: the compose files
+    # default to host when BUILD_NETWORK is absent, so reading .env
+    # would under-grant, and granting unconditionally would over-grant.
+    assert "build --print" in body, body
+    assert '"network"' in body, body
+
+    callers = {
+        name: text.count("$(call bake_build")
+        for name, text in files.items()
+        if "$(call bake_build" in text
+    }
+    assert callers == {"Makefile": 1, "h-bootstrap/Makefile": 2}, callers
+
+    # Nothing may build any other way. `up --build` is the shape that
+    # slipped through, so it is named explicitly.
+    for name, text in files.items():
+        recipes = "\n".join(
+            line for line in text.splitlines() if line.startswith("\t")
+        )
+        assert "up --build" not in recipes, f"{name}: builds outside the macro"
+        for line in recipes.splitlines():
+            if "buildx bake" in line:
+                continue
+            assert not re.search(r"\$\(COMPOSE\)[^;|]*\bbuild\b(?! --print)", line), \
+                f"{name}: {line.strip()}"
+
+
+def test_build_reaches_the_init_profile():
+    """make build covers hailpath/bootstrap, which only a profile selects.
+
+    hailpath-bootstrap gained profiles: ["init"] in 79bb6b0, and compose
+    builds only what the active profiles select - so make build produced
+    eight of nine images and preflight then asked for a make prepare
+    that could never supply the ninth. make pull already had the flag.
     """
     root = (HAILPATH / "Makefile").read_text()
     build = re.search(r"^build:\n((?:\t.*\n|\n)*)", root, re.M)
     assert build, "no build target in the root Makefile"
-    recipe = build.group(1)
-
-    assert "--profile init" in recipe, recipe
-    assert "buildx bake" in recipe, recipe
-    assert "--allow=network.host" in recipe, recipe
-    # compose build cannot grant the entitlement, so it must not be the
-    # thing that runs the build - only the thing that prints the plan.
-    assert not re.search(r"\$\(COMPOSE\) build\b", recipe), recipe
-
-    # Anything init-profiled that builds has to be inside that profile
-    # sweep, which is what --profile init buys. Assert the one that bit.
-    bootstrap = (HAILPATH / "h-bootstrap" / "docker-compose.yaml").read_text()
-    assert 'profiles: ["init"]' in bootstrap
-    assert "hailpath/bootstrap:" in bootstrap
-
-    # Host networking is what needs the entitlement. If no build asks for
-    # it any more, the --allow above is dead weight and should come out.
-    networks = re.findall(r"^      network: (\S+)", "".join(
-        c.read_text() for c in sorted(HAILPATH.glob("*/docker-compose.yaml"))
-    ), re.M)
-    assert any("BUILD_NETWORK" in n for n in networks), networks
+    assert "--profile init" in build.group(1), build.group(1)
 
     services = _buildable_services()
     # Eleven services build, but superset-init and superset-verify reuse
