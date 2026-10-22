@@ -14,6 +14,16 @@ image="$(val GRAFANA_IMAGE)"
 image="${image:-grafana/grafana:12.4.10}"
 ver="$(val GRAFANA_CLICKHOUSE_PLUGIN_VERSION)"
 ver="${ver:-4.21.2}"
+# Every other download in this repository runs on the host: lion-fetch,
+# tlc-*-fetch, tiles/prepare.sh and converter-prepare.sh all use host curl,
+# and the image builds already default to BUILD_NETWORK=host. This one
+# downloads from inside a container, so on the bridge it gets whatever
+# resolver the daemon hands it - 8.8.8.8 when the host's resolv.conf names
+# a loopback stub. Dionysus refuses outbound DNS to 8.8.8.8, so the plugin
+# lookup failed there while the host's own network was fine. Same setting,
+# same reason as the builds.
+net="$(val BUILD_NETWORK)"
+net="${net:-host}"
 
 if [ -z "$root" ]; then
   printf '  FAIL    HAILPATH_VOLUME_ROOT is not set in %s\n' "${env_file}" >&2
@@ -30,7 +40,7 @@ if [ -d "$plugin" ]; then
 fi
 
 printf '  from    grafana cli grafana-clickhouse-datasource %s\n' "$ver"
-docker run --rm --user 0:0 --entrypoint grafana \
+docker run --rm --user 0:0 --network "$net" --entrypoint grafana \
   -v "${dir}:/var/lib/grafana/plugins" \
   "$image" \
   cli --pluginsDir /var/lib/grafana/plugins plugins install grafana-clickhouse-datasource "$ver"
