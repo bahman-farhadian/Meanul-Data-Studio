@@ -180,13 +180,36 @@ pull:
 	$(call say,Pulling pinned images)
 	@$(COMPOSE) --profile init pull --ignore-buildable
 
+# Builds go through `bake` explicitly rather than through `compose build`,
+# for one reason: BUILD_NETWORK=host. Buildx treats host networking as a
+# privilege a build has to be granted, and `docker compose build` has no
+# flag to grant it (`--allow` is a bake flag, not a compose one), so on
+# buildx 0.38 / compose 5.6 it stops at "additional privileges requested:
+# pass --allow=network.host" before the first layer.
+#
+# The entitlement is read off the bake file instead of off BUILD_NETWORK,
+# so what gets granted is exactly what the build asked for. The compose
+# files default to host when the setting is absent from .env, which a
+# grep of .env alone would miss.
+#
+# --profile init for the same reason make pull has it: hailpath-bootstrap
+# is init-profiled, and compose builds only what the active profiles
+# select. Without it this target built eight of the nine images and left
+# preflight asking for a prepare that could never supply the ninth.
 .PHONY: build
 build:
 	$(call say,Building images)
 	@printf "  Layer cache is the contract: lockfiles first, source after.\n"
 	@printf "  Never --no-cache, never --pull — $(C)make pull$(X) is the registry step.\n"
 	@printf "  $(C)make up$(X) does not rebuild. Run this before destroy+up when Python or routing changed.\n"
-	@$(COMPOSE) build
+	@plan=$$(mktemp); trap 'rm -f "$$plan"' EXIT; \
+	$(COMPOSE) --profile init build --print > "$$plan"; \
+	allow=""; \
+	if grep -q '"network": *"host"' "$$plan"; then \
+		allow="--allow=network.host"; \
+		printf "  Builds run on the host network, so bake is granted network.host.\n"; \
+	fi; \
+	docker buildx bake $$allow -f "$$plan"
 	$(call ok,images rebuilt — the next make up will run these, not the previous tags)
 
 # =============================================================================
