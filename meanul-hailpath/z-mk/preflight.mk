@@ -198,11 +198,17 @@ preflight:
 # Both init and up call this. After make destroy the tree is gone, and
 # requiring a manual make init in between would be a trap: the error would
 # arrive from preflight, several steps away from the cause.
+#
+# --profile init, because compose config omits a volume no active-profile
+# service mounts - and hailpath-lion-data is mounted only by graph-restore,
+# which is init-profiled. Without it that one directory never gets made
+# here, and a local bind volume whose device does not exist fails the mount
+# rather than creating it.
 .PHONY: _mk-data-tree
 _mk-data-tree:
 	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
 	[ -n "$$root" ] || exit 0; \
-	for d in $$($(COMPOSE) config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
+	for d in $$($(COMPOSE) --profile init config 2>/dev/null | grep -oE 'device: .+' | cut -d' ' -f2- || true); do \
 		mkdir -p "$$d"; done; \
 	made=$$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'hailpath-*' 2>/dev/null | wc -l); \
 	free=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
