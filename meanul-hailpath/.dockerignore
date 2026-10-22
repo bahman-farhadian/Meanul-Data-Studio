@@ -1,6 +1,6 @@
 # Build context for h-bootstrap and the six services. Their context is this
 # whole directory, because each image needs the shared package in
-# z-lib/nus-common and the Avro schemas in c-infra-kafka/schemas as well as
+# z-lib/hailpath-common and the Avro schemas in c-infra-kafka/schemas as well as
 # its own code.
 #
 # The reason this file exists is secrets. Without it every .env in this tree

@@ -70,7 +70,7 @@ init:
 		printf "  $(R)FAIL$(X)    HAILPATH_VOLUME_ROOT is not set in $(ENV_FILE)\n"; exit 1; \
 	elif ! mkdir -p "$$root" 2>/dev/null; then \
 		printf "  $(R)FAIL$(X)    cannot create %s\n" "$$root"; \
-		printf "              This is where all 26 data volumes live, set as HAILPATH_VOLUME_ROOT\n"; \
+		printf "              This is where every data volume lives, set as HAILPATH_VOLUME_ROOT\n"; \
 		printf "              in $(ENV_FILE). Either the parent directory does not exist, or\n"; \
 		printf "              you do not have permission to write there. Fix one of:\n"; \
 		printf "                $(C)sudo mkdir -p %s && sudo chown $$(id -un) %s$(X)\n" "$$root" "$$root"; \
