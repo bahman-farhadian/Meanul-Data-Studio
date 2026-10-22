@@ -119,7 +119,9 @@ lion-prepare:
 		printf "  This is the slow step - filtering, cost computation and topology-\n"; \
 		printf "  building over the whole LION dataset. It runs once; every bring-up\n"; \
 		printf "  after this one restores the cached result instead.\n\n"; \
-		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from lion-prepare; \
+		export HAILPATH_LION_DATA_DIR="$$dir"; \
+		$(call bake_build,-f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE)); \
+		$(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --exit-code-from lion-prepare; \
 		status=$$?; \
 		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v; \
 		if [ "$$status" -ne 0 ] || [ ! -s "$$dump" ]; then \
@@ -143,7 +145,9 @@ zone-demand-prepare:
 		printf "  Reads the trip records tlc-trips-fetch already downloaded to the\n"; \
 		printf "  host, column-projected, and reduces them to two small calibration\n"; \
 		printf "  tables. Takes several minutes; runs once.\n\n"; \
-		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --build --exit-code-from zone-demand-prepare; \
+		export HAILPATH_LION_DATA_DIR="$$dir"; \
+		$(call bake_build,-f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE)); \
+		$(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) up --exit-code-from zone-demand-prepare; \
 		status=$$?; \
 		HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/zone-demand-prepare/docker-compose.yaml --env-file $(ENV_FILE) down; \
 		if [ "$$status" -ne 0 ] || [ ! -s "$$zone_out" ] || [ ! -s "$$od_out" ]; then \

@@ -21,6 +21,34 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 COMPOSE  := docker compose
+
+# Build through `bake`, because `compose build` cannot grant the one
+# privilege every build here needs.
+#
+# The compose files set `network: ${BUILD_NETWORK:-host}` on purpose (see
+# any service's build block for why). Buildx treats host networking as an
+# entitlement a build must be granted, and `docker compose build` has no
+# flag that grants it — `--allow` belongs to bake, not to compose. On
+# buildx 0.38 / compose 5.6 the build stops before the first layer with
+# "additional privileges requested: pass --allow=network.host".
+#
+# So compose prints the plan and bake runs it. The entitlement is read
+# off the plan rather than off BUILD_NETWORK in .env, because the compose
+# files default to host when that setting is absent — a grep of .env
+# alone would miss it, and granting it unconditionally would hand every
+# build a privilege it may not have asked for.
+#
+# $(1) is the compose arguments that select what to build. Used by three
+# targets: build, lion-prepare and zone-demand-prepare. They are the only
+# places in this repository that build an image.
+define bake_build
+plan=$$(mktemp); \
+$(COMPOSE) $(1) build --print > "$$plan" || { rm -f "$$plan"; exit 1; }; \
+allow=""; \
+if grep -q '"network": *"host"' "$$plan"; then allow="--allow=network.host"; fi; \
+docker buildx bake $$allow -f "$$plan" || { rm -f "$$plan"; exit 1; }; \
+rm -f "$$plan"
+endef
 # Required for RUN --mount=type=cache in the Python Dockerfiles. Compose v2
 # uses BuildKit by default; this makes the contract explicit so a host that
 # has DOCKER_BUILDKIT=0 in its environment cannot silently drop the cache.
@@ -180,18 +208,6 @@ pull:
 	$(call say,Pulling pinned images)
 	@$(COMPOSE) --profile init pull --ignore-buildable
 
-# Builds go through `bake` explicitly rather than through `compose build`,
-# for one reason: BUILD_NETWORK=host. Buildx treats host networking as a
-# privilege a build has to be granted, and `docker compose build` has no
-# flag to grant it (`--allow` is a bake flag, not a compose one), so on
-# buildx 0.38 / compose 5.6 it stops at "additional privileges requested:
-# pass --allow=network.host" before the first layer.
-#
-# The entitlement is read off the bake file instead of off BUILD_NETWORK,
-# so what gets granted is exactly what the build asked for. The compose
-# files default to host when the setting is absent from .env, which a
-# grep of .env alone would miss.
-#
 # --profile init for the same reason make pull has it: hailpath-bootstrap
 # is init-profiled, and compose builds only what the active profiles
 # select. Without it this target built eight of the nine images and left
@@ -202,14 +218,7 @@ build:
 	@printf "  Layer cache is the contract: lockfiles first, source after.\n"
 	@printf "  Never --no-cache, never --pull — $(C)make pull$(X) is the registry step.\n"
 	@printf "  $(C)make up$(X) does not rebuild. Run this before destroy+up when Python or routing changed.\n"
-	@plan=$$(mktemp); trap 'rm -f "$$plan"' EXIT; \
-	$(COMPOSE) --profile init build --print > "$$plan"; \
-	allow=""; \
-	if grep -q '"network": *"host"' "$$plan"; then \
-		allow="--allow=network.host"; \
-		printf "  Builds run on the host network, so bake is granted network.host.\n"; \
-	fi; \
-	docker buildx bake $$allow -f "$$plan"
+	@$(call bake_build,--profile init)
 	$(call ok,images rebuilt — the next make up will run these, not the previous tags)
 
 # =============================================================================
