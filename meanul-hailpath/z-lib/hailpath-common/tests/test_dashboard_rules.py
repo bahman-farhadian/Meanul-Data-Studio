@@ -34,9 +34,9 @@ def _load(name: str, filename: str):
     return module
 
 
-CHECK = _load("nus_check_dashboards", "check-dashboards.py")
-RENDER = _load("nus_render_dashboards", "render_dashboards.py")
-PROBE = _load("nus_panel_probe", "panel-probe.py")
+CHECK = _load("hailpath_check_dashboards", "check-dashboards.py")
+RENDER = _load("hailpath_render_dashboards", "render_dashboards.py")
+PROBE = _load("hailpath_panel_probe", "panel-probe.py")
 
 
 def test_a_rate_of_raw_columns_is_refused() -> None:

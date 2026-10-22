@@ -33,8 +33,8 @@ def _load(name: str, filename: str):
     return module
 
 
-CHECK = _load("nus_check_assets", "check-assets.py")
-RENDER = _load("nus_render_assets", "render_assets.py")
+CHECK = _load("hailpath_check_assets", "check-assets.py")
+RENDER = _load("hailpath_render_assets", "render_assets.py")
 
 
 def test_the_bundle_passes_its_own_check() -> None:

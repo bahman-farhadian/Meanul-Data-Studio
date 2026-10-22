@@ -1166,3 +1166,61 @@ def test_closed_sets_are_written_in_the_contract():
     for key, value in re.findall(r'"([^"]+)":\s*"([^"]+)"', block.group(1)):
         assert f"`{key}` is `{value}`" in section, key
 
+
+
+# The old project name. A bare `nus`, `nus-`, `nus_` or `nus.` - not the
+# `nus` inside a word like "unusual", which is why the pattern has letter
+# boundaries on both sides.
+OLD_NAME = re.compile(r"(?<![A-Za-z])nus(?![A-Za-z])")
+
+_SHIPPED_SUFFIXES = {
+    ".avsc", ".cfg", ".conf", ".example", ".ini", ".json", ".md", ".mk",
+    ".py", ".sh", ".sql", ".template", ".toml", ".tsv", ".xml", ".yaml",
+    ".yml",
+}
+_SHIPPED_NAMES = {"Makefile", ".dockerignore"}
+_NOT_SOURCE = {".git", ".venv", ".pytest_cache", "__pycache__", "node_modules"}
+# TODO.md keeps the 2026-10-06 archive verbatim - `nus-pg-3`, `nus-etcd-1`,
+# the four-node warehouse. Those readings were taken on containers with
+# those names, and rewriting them would make the evidence say something
+# that was never measured. uv.lock is generated. This file names the old
+# containers on purpose, to assert they are gone.
+_NOT_CHECKED = {"TODO.md", "uv.lock", Path(__file__).name}
+
+
+def _shipped_files() -> list[Path]:
+    out = []
+    for path in HAILPATH.rglob("*"):
+        if not path.is_file() or _NOT_SOURCE & set(path.parts):
+            continue
+        if path.name in _NOT_CHECKED:
+            continue
+        if path.suffix in _SHIPPED_SUFFIXES or path.name in _SHIPPED_NAMES:
+            out.append(path)
+    return out
+
+
+def test_the_old_project_name_is_gone():
+    """No shipped file still says nus.
+
+    The rename reached the container names first and left identifiers
+    behind that each broke something quietly: an Avro namespace, ksqlDB's
+    internal topic prefix, a broker grep in verify-kafka that could then
+    only pass, a ClickHouse login in the sample stack's healthcheck, and
+    twenty-one runbook commands naming services that no longer exist.
+    Every one of those read as working code. This is the guard that makes
+    the next one fail a test instead.
+    """
+    files = _shipped_files()
+    assert len(files) > 100, f"found only {len(files)} shipped files - check the walk"
+    offenders = []
+    for path in files:
+        try:
+            text = path.read_text()
+        except (UnicodeDecodeError, OSError):
+            continue
+        for number, line in enumerate(text.splitlines(), 1):
+            if OLD_NAME.search(line):
+                rel = path.relative_to(HAILPATH)
+                offenders.append(f"{rel}:{number}: {line.strip()}")
+    assert not offenders, "the old project name survives in:\n" + "\n".join(offenders)
