@@ -1,12 +1,17 @@
 # Throwaway single-node stores for on-laptop routing/data-quality checks.
-# Project name is unique so `down -v` cannot touch idops or a real nus stack.
+# Project name is unique so `down -v` cannot touch idops or a real hailpath stack.
 # No LION/tiles volumes. Passwords come from the environment (see the test).
 
 name: hailpath-goal-sample
 
 services:
   pg:
-    image: hailpath-lion-prepare-lion-pg:latest
+    # The same published image the real database runs, because the sample
+    # graph needs PostGIS and pgRouting. This used to name the image the
+    # lion-prepare build produced; that service stopped building one when
+    # it moved to the published image (468f4b0), so the reference had
+    # nothing behind it and the sample stack could not start at all.
+    image: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DB: hailpath
@@ -107,7 +112,7 @@ services:
     healthcheck:
       test:
         - CMD-SHELL
-        - clickhouse-client --user nus --password "$$CLICKHOUSE_PASSWORD" --query 'SELECT 1'
+        - clickhouse-client --user hailpath --password "$$CLICKHOUSE_PASSWORD" --query 'SELECT 1'
       interval: 5s
       timeout: 5s
       retries: 30
