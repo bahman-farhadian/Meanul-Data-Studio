@@ -1628,6 +1628,42 @@ grepped for `nus-kafka-[0-9]` so its broker listing could only pass,
 commands named compose services that no longer exist.
 `test_the_old_project_name_is_gone` now fails on the next one.
 
+### Before the cycle: the old data tree and the quota project ids
+
+Two things on Dionysus are left over from the pre-rename stack, and
+neither is removed by `make destroy`.
+
+**The old tree is orphaned, not cleaned.** `_rm-data-tree` only deletes
+directories matching `hailpath-*`, and the old root was a different path
+entirely (`NUS_VOLUME_ROOT=/data-root/lssd/nus`). Everything under it
+still holds the three-node warehouse, three brokers, and three Postgres
+data directories. Check it and reclaim the space before a seven-day run
+is asked to fit a 112 GiB warehouse quota on the same disk.
+
+**The XFS project ids are reused, and that is the trap.** The old
+`volume-quotas` numbered from 100 across nine directories, starting
+`nus-kafka-data-1` at 96g. The current one numbers from 100 across three:
+
+| projid | Was | Is now | Limit now |
+| --- | --- | --- | --- |
+| 100 | `nus-kafka-data-1` | `hailpath-kafka-data` | 96g |
+| 101 | `nus-kafka-data-2` | `hailpath-clickhouse-data` | 112g |
+| 102 | `nus-kafka-data-3` | `hailpath-pgdata` | 24g |
+
+An XFS project limit applies to every tree carrying that id, and the
+usage sums. If the old directories still carry 100-102, the new ones
+share their limit with them — and `hailpath-pgdata` would start life
+already over a 24g cap it never used a byte of. Postgres sees ENOSPC on
+the first write, which is a long way from the cause.
+
+This is reasoned from how project quotas work, not measured on the host.
+Read the report before trusting it, and remove the old tree before
+setting the new limits:
+
+```
+sudo xfs_quota -x -c 'report -p' /data-root/lssd
+```
+
 ### Seed
 
 One tenth of full scale, holding the supply ratio step 12 settled, so
