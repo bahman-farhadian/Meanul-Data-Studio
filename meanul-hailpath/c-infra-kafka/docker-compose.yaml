@@ -262,7 +262,7 @@ services:
       TZ: ${TZ:-UTC}
       KSQL_BOOTSTRAP_SERVERS: hailpath-kafka:9092
       KSQL_LISTENERS: http://0.0.0.0:8088
-      KSQL_KSQL_SERVICE_ID: nus_ksqldb_
+      KSQL_KSQL_SERVICE_ID: hailpath_ksqldb_
       KSQL_KSQL_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
       # One broker, so ksqlDB's own topics are one copy. A second copy on
       # this same host would not survive the host dying.

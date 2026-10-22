@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "DispatchOffer",
-  "namespace": "nus.events",
+  "namespace": "hailpath.events",
   "doc": "One offer of one trip to one driver, and what became of it. Dispatch offers a ride to a single candidate with a deadline; the driver accepts, declines, or says nothing until it expires, and the request then moves to the next candidate. Keyed by trip_id so the whole offer chain for one request stays ordered on one partition, the same rule trip_lifecycle follows. This stream is the matching funnel - acceptance rate, offers per match, and time-to-match all come from here and from nowhere else.",
   "fields": [
     {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},

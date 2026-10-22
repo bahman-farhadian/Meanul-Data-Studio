@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "SegmentTrafficUpdate",
-  "namespace": "nus.events",
+  "namespace": "hailpath.events",
   "doc": "One congestion-factor update, as computed by city-service from real speed reports and applied to every road segment in one zone for one part of the day. This is the event trail behind segment_traffic (Postgres), which only ever holds the current factor - this is what makes a real history of it possible.",
   "fields": [
     {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},

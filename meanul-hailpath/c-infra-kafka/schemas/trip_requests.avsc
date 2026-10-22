@@ -1,7 +1,7 @@
 {
   "type": "record",
   "name": "TripRequest",
-  "namespace": "nus.events",
+  "namespace": "hailpath.events",
   "doc": "A passenger asks for a ride. This is what dispatch-service listens to. Keyed by trip_id.",
   "fields": [
     {"name": "event_id", "type": "string", "doc": "Unique id of this message, a UUID4 minted by the producer. The sink refuses an event_id it has already written - ClickHouse does not deduplicate on its own, so uniqueness has to hold before the warehouse. Plain string rather than the uuid logical type on purpose: fastavro decodes that one into a UUID object, which json.dumps cannot write into Redis."},
