@@ -23,7 +23,7 @@ topics:
 verify-kafka:
 	$(call say,Kafka)
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-broker-api-versions.sh \
-		--bootstrap-server hailpath-kafka:9092 2>/dev/null | grep -E '^nus-kafka-[0-9]' || true
+		--bootstrap-server hailpath-kafka:9092 2>/dev/null | grep -E '^hailpath-kafka' || true
 	@echo
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
 		--bootstrap-server hailpath-kafka:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
