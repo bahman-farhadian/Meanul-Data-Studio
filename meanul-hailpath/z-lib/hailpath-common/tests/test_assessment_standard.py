@@ -1224,3 +1224,84 @@ def test_the_old_project_name_is_gone():
                 rel = path.relative_to(HAILPATH)
                 offenders.append(f"{rel}:{number}: {line.strip()}")
     assert not offenders, "the old project name survives in:\n" + "\n".join(offenders)
+
+
+def _buildable_services() -> dict[str, dict]:
+    """Every compose service with a `build:`, by service name.
+
+    Parsed rather than grepped because `g-infra-superset` declares its
+    build once as a YAML anchor and the service refers to it by alias -
+    a line-based match sees no `build:` under that service at all.
+    """
+    import yaml
+
+    out: dict[str, dict] = {}
+    for compose in sorted(HAILPATH.glob("*/docker-compose.yaml")):
+        doc = yaml.safe_load(compose.read_text()) or {}
+        for name, spec in (doc.get("services") or {}).items():
+            if isinstance(spec, dict) and "build" in spec:
+                out[name] = spec
+    return out
+
+
+def test_build_covers_every_image_it_claims_to():
+    """make build reaches the init profile, and bake gets host networking.
+
+    Two regressions the rename introduced, both of which left the stack
+    unbuildable while every file still looked right.
+
+    hailpath-bootstrap gained `profiles: ["init"]`, and compose builds
+    only what the active profiles select - so `compose build` produced
+    eight of nine images, and preflight then asked for a `make prepare`
+    that could never supply the ninth.
+
+    Separately, buildx treats `network: host` as a privilege a build must
+    be granted. `docker compose build` has no flag that grants it, so the
+    build has to go through `bake --allow=network.host`.
+    """
+    root = (HAILPATH / "Makefile").read_text()
+    build = re.search(r"^build:\n((?:\t.*\n|\n)*)", root, re.M)
+    assert build, "no build target in the root Makefile"
+    recipe = build.group(1)
+
+    assert "--profile init" in recipe, recipe
+    assert "buildx bake" in recipe, recipe
+    assert "--allow=network.host" in recipe, recipe
+    # compose build cannot grant the entitlement, so it must not be the
+    # thing that runs the build - only the thing that prints the plan.
+    assert not re.search(r"\$\(COMPOSE\) build\b", recipe), recipe
+
+    # Anything init-profiled that builds has to be inside that profile
+    # sweep, which is what --profile init buys. Assert the one that bit.
+    bootstrap = (HAILPATH / "h-bootstrap" / "docker-compose.yaml").read_text()
+    assert 'profiles: ["init"]' in bootstrap
+    assert "hailpath/bootstrap:" in bootstrap
+
+    # Host networking is what needs the entitlement. If no build asks for
+    # it any more, the --allow above is dead weight and should come out.
+    networks = re.findall(r"^      network: (\S+)", "".join(
+        c.read_text() for c in sorted(HAILPATH.glob("*/docker-compose.yaml"))
+    ), re.M)
+    assert any("BUILD_NETWORK" in n for n in networks), networks
+
+    services = _buildable_services()
+    # Eleven services build, but superset-init and superset-verify reuse
+    # the image hailpath-superset builds, so nine tags come out.
+    images = {spec["image"].split(":")[0] for spec in services.values()}
+    assert len(images) == 9, sorted(images)
+    assert "hailpath/bootstrap" in images, sorted(images)
+
+    # The tags only a profiled service carries are the ones a build
+    # without --profile init would miss entirely. hailpath/bootstrap is
+    # that case today; a second one has to stay inside the same sweep.
+    gated = {
+        spec["image"].split(":")[0]
+        for name, spec in services.items()
+        if spec.get("profiles")
+    }
+    ungated = {
+        spec["image"].split(":")[0]
+        for name, spec in services.items()
+        if not spec.get("profiles")
+    }
+    assert gated - ungated == {"hailpath/bootstrap"}, gated - ungated
