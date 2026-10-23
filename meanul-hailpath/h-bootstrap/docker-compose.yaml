@@ -79,8 +79,12 @@ services:
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
       # Raised above the code's own default (5): the threaded routing pass
-      # below checks out HISTORY_ROUTING_WORKERS connections at once.
-      PG_POOL_SIZE: ${PG_POOL_SIZE:-24}
+      # below checks out HISTORY_ROUTING_WORKERS connections at once. Its
+      # own variable, not the shared PG_POOL_SIZE: postgres.py opens a read
+      # and a write pool of that size per process, so sizing the shared one
+      # for this container would put the running stack over
+      # max_connections. Nothing else is connected while bootstrap runs.
+      PG_POOL_SIZE: ${BOOTSTRAP_PG_POOL_SIZE:-32}
 
       # Redis.
       REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
@@ -108,7 +112,7 @@ services:
       # matches BOOTSTRAP_CPUS too, same reasoning as
       # PEOPLE_GENERATION_WORKERS above.
       HISTORY_GENERATION_WORKERS: ${HISTORY_GENERATION_WORKERS:-20}
-      HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-18}
+      HISTORY_ROUTING_WORKERS: ${HISTORY_ROUTING_WORKERS:-24}
       # Real, road-snapped points precomputed per zone before assigning
       # driver/passenger home locations and historical pickups/dropoffs -
       # see zones.build_road_point_pools's own docstring for why.
