@@ -1664,6 +1664,26 @@ setting the new limits:
 sudo xfs_quota -x -c 'report -p' /data-root/lssd
 ```
 
+### What the bring-up hit, and what was substituted
+
+Three upstream faults during the 2026-10-22/23 attempt, none of them in
+the stack:
+
+| Fault | Cause | Fix |
+| --- | --- | --- |
+| `make prepare` refused at `build` and again at `lion-prepare` | compose 5.x delegates to `buildx bake`, which needs `--allow=network.host` for a `network: host` build | the `bake_build` macro, all three call sites |
+| `grafana-plugin-prepare` could not resolve `grafana.com` | until `79bb6b0` this ran as a build layer under `BUILD_NETWORK=host`; the official-image refactor moved it to a bare `docker run` on the bridge, where the daemon hands it `8.8.8.8` | the script reads `BUILD_NETWORK` |
+| `tiles-prepare` could not reach `osmdata.openstreetmap.de` | the host refused HTTPS, then stopped answering; confirmed from two networks outside Dionysus | `make tiles-water-from-image` |
+
+**The water polygons in this run are not the current file.** The only
+source for `water-polygons-split-3857.zip` has no mirror, so the coastline
+shapefile came from the copy baked into `openmaptiles/import-water`, dated
+`2020-01-09`. Same dataset, same ODbL licence, same osmdata origin; only
+the vintage differs, and only the Grafana basemap reads it. No bar below
+depends on it except bar 9's `tiles-health`, which checks that the tile
+server answers, not how recent its coastlines are. Re-run `tiles-prepare`
+against the real host when it returns if step 13 should ship current data.
+
 ### Seed
 
 One tenth of full scale, holding the supply ratio step 12 settled, so

@@ -102,6 +102,13 @@ tiles-prepare:
 	$(call say,NYC OSM tiles)
 	@bash f-infra-grafana/tiles/prepare.sh "$(ENV_FILE)"
 
+# Not part of make prepare, and not a default. See the script for why it
+# exists and what it costs.
+.PHONY: tiles-water-from-image
+tiles-water-from-image:
+	$(call say,Water polygons from the OpenMapTiles image)
+	@bash f-infra-grafana/tiles/water-from-image.sh "$(ENV_FILE)"
+
 .PHONY: grafana-plugin-prepare
 grafana-plugin-prepare:
 	$(call say,Grafana ClickHouse plugin)
