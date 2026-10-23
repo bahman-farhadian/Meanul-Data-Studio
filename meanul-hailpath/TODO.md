@@ -1731,16 +1731,94 @@ section already gives.
 | 7 | Trips reach the warehouse on street geometry | `make verify-positions`: last-hour trips > 0, off-network 0, long two-point 0 |
 | 8 | Quality is structural-clean | `make verify-quality` Q0-Q14 all measured 0 |
 | 9 | Dashboards return rows | `make grafana-check` all panels, `make verify-superset` 20 charts / 6 datasets / 1 dashboard, `make tiles-health` 200 |
-| 10 | The driver tick is near 3 s | `make logs SVC=hailpath-driver` tick spacing single-digit seconds, not 35-50 |
+| 10 | The driver tick is near 3 s | `make logs SVC=hailpath-driver`: `positions_sent` delta divided by `online` is how many ticks fall between two lines. Seconds per tick single-digit, not 35-50 |
 | 11 | Consumers are not wedging | `make lag` moving, dispatch not in the tens of thousands |
 
 Bar 10 is the one step 12 left open and `84c9a69` claims to fix. It is
 cheap to read here and expensive to read at full scale.
 
+**Read it from `positions_sent`, not from the gap between lines.** The
+`tick` line is emitted inside `if started - last_db_sync >= db_sync_seconds`
+(`j-service-driver/driver_service/__main__.py:647`), so with
+`DRIVER_DB_SYNC_SECONDS=30.0` the lines are about 30-36 s apart whatever
+the tick is doing. `positions_sent` rises once per online driver per tick,
+so the delta divided by `online` gives the tick count, and the elapsed
+time divided by that gives the tick. Step 12 read the gap directly and got
+the right answer by luck: its delta was exactly one tick's worth per line,
+so the gap *was* the tick there. That stops being true the moment the tick
+drops below the sync interval, which is the whole point of `84c9a69`.
+
 **Test:** DIONYSUS - one cycle, at the seed above.
 
 **Done when:** all eleven bars above are true, recorded with the output
 that proved them.
+
+### DONE — 2026-10-23, Dionysus
+
+One cycle, at the seed above. Stores up about two hours, app processes
+about forty-two minutes at the time of the readings. All eleven bars true.
+
+| # | Bar | Reading |
+| --- | --- | --- |
+| 1 | The stack starts | 18 containers up |
+| 2 | Nothing is restarting | `restarts 0` and `oomkilled false` on all 18 |
+| 3 | Each layer answers | `verify` clean end to end. `verify-kafka` printed `hailpath-kafka:9092 (id: 1 rack: null isFenced: false)`, every partition one replica in sync |
+| 4 | The renamed Avro registered | 7 subjects under `hailpath.events`, 26 in the Registry in all. `DriverLocation` id 3, version 1, 13 fields |
+| 5 | ksqlDB rebuilt its topics | 7 of 7 streams, 1 of 1 table, `CTAS_OFFER_FUNNEL_BY_ZONE_1M_13` RUNNING, all three client settings right |
+| 6 | CDC runs | connector and task RUNNING on 3.6.2.Final, 7 `cdc.*` topics, slot `hailpath_debezium` active with `wal_status reserved`. Redis db 1 21,203, db 2 150,000 |
+| 7 | Trips on street geometry | 812 last-hour trips, pickup and dropoff off-network 0, long two-point 0. Route 5.25 km against a 3.86 km chord, 136 vertices |
+| 8 | Quality is structural-clean | Q0-Q14 all measured 0, including the Q3 that step 12 could not clear |
+| 9 | Dashboards return rows | 46 Grafana panels, 6 datasets / 20 charts / 1 dashboard in Superset with all 20 matching the files, `nyc.mbtiles` 375M and the tile PNG 200 |
+| 10 | The driver tick is near 3 s | **4.8 s** warm, 6.8 s during warm-up. Derived below |
+| 11 | Consumers are not wedging | dispatch 229 across six partitions, nowhere near tens of thousands |
+
+Bar 4 was read with a hand-typed `docker exec` against the Registry
+through `hailpath-debezium`, because `hailpath-schema-registry` has
+neither curl nor wget and 8081 is not published. `54f5288` adds
+`make verify-schemas` so step 13 reads it like every other bar.
+
+**The tick.** Four gaps, taken from the same log:
+
+| Gap | Seconds | `positions_sent` delta | `online` | Ticks | Per tick |
+| --- | --- | --- | --- | --- | --- |
+| 10:36:47 - 10:37:21 | 34.0 | 28,864 | 5,775 | 5.00 | 6.8 s |
+| 10:38:28 - 10:38:59 | 30.8 | 28,349 | 5,653 | 5.01 | 6.2 s |
+| 10:43:54 - 10:44:28 | 33.7 | 38,206 | 5,462 | 7.00 | 4.8 s |
+| 11:07:45 - 11:08:18 | 33.4 | 38,956 | 5,558 | 7.01 | 4.8 s |
+
+The tick counts land on whole numbers to within 1%, which is what proves
+the line is not per-tick. Against 45-48 s at step 12, `84c9a69` worked.
+
+**The warehouse under it.** 10,600 drivers, 150,000 passengers, 263 zones,
+80,000 segment-traffic rows, 172,148 road segments. PostgreSQL `trips`
+61,379, the retention window; `trip_events` 71,830. 45,364 completed trips
+carrying 1,050,187.97 of gross revenue, fulfilment 0.68, acceptance 0.51,
+cancellation 0.23, take rate 0.23, duration p50 427 s and p95 1,488 s.
+
+### What this cycle leaves for step 13
+
+- **The tick will not hold at full scale.** 4.8 s carries 5,500 online
+  drivers. The per-driver work is roughly linear, so ten times the fleet
+  projects to about 48 s and bar 10 reopens. This is one scale point, not
+  a measurement. Related: `DRIVER_TICK_SECONDS` is 3.0 and the loop takes
+  4.8 s, so `shutdown.wait(max(tick_seconds - elapsed, 0.0))` always waits
+  zero. The configured tick is already not being honoured here.
+- **City service is one tick behind, and flat.** `driver_location` lag
+  2,609-2,892 per partition, about 33,000 across twelve, which at a
+  derived 1,145 messages/s is roughly 29 s. The ClickHouse sink on the
+  same topic was 1,757 in all, about 1.5 s. Not growing. This is the
+  reading the step 13 table below already says only full scale settles,
+  and it is still one process by decision.
+- **Drivers were being routed to the point they stood on.** Half the
+  `drive_path found no street path` warnings had `from` equal to `to` to
+  the last decimal, and the same pair recurred across ticks. One wasted
+  pgRouting query each, on the hot path measured above. Fixed in
+  `d0adb14`; that log line should be rare at step 13, and any that remain
+  are genuine.
+- **Three ClickHouse `Code: 210` log errors**, 11:03:36 to 11:04:18,
+  inside the `verify` run - a health probe closing the socket without
+  reading the body. Cleared with `make errors-ack` after `verify-*` came
+  back clean.
 
 ---
 
