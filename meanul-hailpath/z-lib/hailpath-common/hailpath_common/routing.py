@@ -309,11 +309,22 @@ def drive_path(
     """Street vertices in drive order, start to end.
 
     spacing_km is accepted for callers that used to densify; the vertex
-    list is already the real geometry. An empty result means pgRouting
-    found no path — the caller must not walk a chord across water or
+    list is already the real geometry. An empty result means there is no
+    path to install — the caller must not walk a chord across water or
     blocks. Driver.follow([]) is a no-op, so the car sits and retries.
     """
     del spacing_km
+    # A driver that has arrived picks a fresh target, and that target can
+    # snap to the vertex it is already parked on. pgr_ksp has no path from
+    # a node to itself, so this used to spend a routing query on the tick's
+    # hot path to be told so, and then report it as a missing street path.
+    # Nothing is missing: there is nowhere to go. Exact equality, not a
+    # tolerance - both coordinates come from the same snapped vertex, so
+    # they match to the last decimal, and a tolerance would swallow genuine
+    # short hops. Dionysus logged one such pair on three ticks running
+    # during the 2026-10-23 step-12c cycle.
+    if from_lat == to_lat and from_lon == to_lon:
+        return []
     computed = route(from_lat, from_lon, to_lat, to_lon, period)
     if not computed or not computed[2]:
         log.warning(
