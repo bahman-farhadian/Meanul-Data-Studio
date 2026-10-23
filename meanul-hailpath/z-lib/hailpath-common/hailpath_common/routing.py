@@ -25,9 +25,29 @@ is at this time of day. That is what makes the answer change between rush
 hour and three in the morning: the same two points, a different best path.
 A repeated OD pair at the same hour does take the same literal streets again
 - the honest tradeoff of reverting K_ROUTES to 1.
+
+The edge list is bounded to a box around the two points. pgRouting takes its
+edges as a SQL string and reads every row of the result into its own C++
+memory before the search starts, so an unbounded query made each call read
+all 172k ways, whatever the trip. That is the dominant cost: on the
+2026-10-23 full-scale run it held the week of history to 38.6 trips a
+second, a 31-hour routing pass. A typical New York trip is a few kilometres
+and needs a few thousand of those edges.
+
+The box is generous on purpose - see _route_envelope - and when the bounded
+search comes back with nothing the unbounded query is run before the pair is
+called unroutable, so "no path" still means no path in the whole graph. What
+the box can hide is a path that exists inside it but is worse than one
+leaving it: a real detour around water that the padding did not cover. The
+padding scales with trip length, so a long trip's box approaches the whole
+city and the question stops arising; a short trip's does not, and for a
+short trip a long detour outside the box is not a route anybody would drive
+anyway. This is a fidelity tradeoff, not a free win, and it is shared by
+dispatch-service's live calls, not only the seeded week.
 """
 
 import hashlib
+import math
 import random
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -35,7 +55,7 @@ from concurrent.futures import ThreadPoolExecutor
 import psycopg
 
 from hailpath_common import config, postgres
-from hailpath_common.geo import linestring_vertices
+from hailpath_common.geo import distance_km, linestring_vertices
 from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
@@ -68,6 +88,10 @@ ROUTE_CHOICE_WEIGHTS = [60, 25, 15]
 # cost_s is the travel time of the segment in seconds, as computed by the map
 # import. Multiplying it by congestion_factor is the whole traffic model: a
 # segment that is twice as congested costs twice as much to drive.
+#
+# {bbox} is either empty - every way in the city - or a bounding-box filter
+# from _route_envelope. ways_geom_idx (build-graph.sql:107) is the GiST index
+# && uses.
 EDGES_SQL_TEMPLATE = """
     SELECT w.gid AS id,
            w.source,
@@ -77,7 +101,12 @@ EDGES_SQL_TEMPLATE = """
       FROM ways w
       LEFT JOIN segment_traffic st
              ON st.way_id = w.gid AND st.period = '{period}'
+     {bbox}
 """
+
+# Degrees of latitude are the same length everywhere; degrees of longitude
+# are not, which is why the envelope below converts the two separately.
+KM_PER_DEGREE_LAT = 111.32
 
 KSP_SQL = """
     WITH start_vertex AS (
@@ -141,6 +170,72 @@ ROUTE_QUERY_ATTEMPTS = 3
 ROUTE_RETRY_DELAY_S = 0.5
 
 
+def _route_envelope(
+    from_lat: float, from_lon: float, to_lat: float, to_lon: float,
+    min_pad_km: float, pad_factor: float,
+) -> tuple[float, float, float, float]:
+    """The box pgr_ksp may search, as (min_lon, min_lat, max_lon, max_lat).
+
+    The two points' own bounding box, padded by whichever is larger: a flat
+    min_pad_km, or pad_factor of the straight-line distance between them.
+    The flat floor is what keeps a very short trip's box from being a sliver
+    the real streets immediately leave; the proportional part is what lets a
+    long trip detour as far as a long trip plausibly needs to.
+
+    The padding must also comfortably exceed MAX_SNAP_KM, or a snapped
+    endpoint could fall outside the box the search is given and pgr_ksp
+    would find nothing from a vertex it cannot see.
+    """
+    pad_km = max(min_pad_km, pad_factor * distance_km(from_lat, from_lon, to_lat, to_lon))
+    lat_pad = pad_km / KM_PER_DEGREE_LAT
+    # A degree of longitude shrinks towards the poles. Use the latitude
+    # furthest from the equator of the two, so the box is never narrower
+    # than pad_km anywhere inside it rather than only at its centre.
+    widest = max(abs(from_lat), abs(to_lat))
+    lon_km_per_degree = max(KM_PER_DEGREE_LAT * math.cos(math.radians(widest)), 1e-6)
+    lon_pad = pad_km / lon_km_per_degree
+    return (
+        float(min(from_lon, to_lon) - lon_pad),
+        float(min(from_lat, to_lat) - lat_pad),
+        float(max(from_lon, to_lon) + lon_pad),
+        float(max(from_lat, to_lat) + lat_pad),
+    )
+
+
+def _edge_queries(
+    period: str, from_lat: float, from_lon: float, to_lat: float, to_lon: float
+) -> list[str]:
+    """The edge lists to try, cheapest first.
+
+    Normally two: the box around this trip, then the whole city if the box
+    turned up no path. A pair that really is unroutable therefore pays for
+    both queries - that is the price of never reporting "no path" on the
+    strength of a box alone, and unroutable pairs are rare.
+
+    ROUTE_BBOX_PAD_FACTOR at or below zero disables bounding entirely and
+    leaves one unbounded query, the behaviour before the box existed.
+    """
+    unbounded = EDGES_SQL_TEMPLATE.format(period=period, bbox="")
+    pad_factor = config.number("ROUTE_BBOX_PAD_FACTOR", 0.6)
+    if pad_factor <= 0:
+        return [unbounded]
+
+    min_lon, min_lat, max_lon, max_lat = _route_envelope(
+        from_lat, from_lon, to_lat, to_lon,
+        config.number("ROUTE_BBOX_MIN_PAD_KM", 3.0),
+        pad_factor,
+    )
+    # These four go into the statement as text, like the period above,
+    # because pgRouting takes the whole edge list as a string. They are
+    # floats this module computed, not anything a caller passed through -
+    # _route_envelope casts them, and repr of a float is a float literal.
+    bbox = (
+        "WHERE w.the_geom && ST_MakeEnvelope("
+        f"{min_lon!r}, {min_lat!r}, {max_lon!r}, {max_lat!r}, 4326)"
+    )
+    return [EDGES_SQL_TEMPLATE.format(period=period, bbox=bbox), unbounded]
+
+
 def _query_with_retry(fetch, sql: str, params: dict, what: str, **log_extra):
     """Run one route()-path query, retrying past a transient connection
     failure before this specific trip is given up on. Raises the last
@@ -179,6 +274,10 @@ def route(
     repeat is reproducible, and either way the caller treats it as "no
     driver found" for this one trip rather than crashing the whole run.
 
+    The search is bounded to a padded box around the two points, falling
+    back to the whole city when the box finds nothing - see this module's
+    own docstring for what that buys and what it costs.
+
     Up to K_ROUTES candidate routes are computed (pgr_ksp), and one is
     picked with ROUTE_CHOICE_WEIGHTS - at the current K_ROUTES=1 this is
     always the one candidate pgr_ksp returns, functionally a plain
@@ -202,22 +301,26 @@ def route(
     if nearest_road_point(from_lat, from_lon) is None or nearest_road_point(to_lat, to_lon) is None:
         return None
 
-    edges_sql = EDGES_SQL_TEMPLATE.format(period=period)
-
+    # The box first, the whole city only if the box found nothing. See
+    # _edge_queries.
+    rows = []
     try:
-        rows = _query_with_retry(
-            postgres.fetch_all,
-            KSP_SQL,
-            {
-                "from_lat": from_lat, "from_lon": from_lon,
-                "to_lat": to_lat, "to_lon": to_lon,
-                "edges_sql": edges_sql,
-                "k": K_ROUTES,
-            },
-            "pgr_ksp call",
-            from_lat=from_lat, from_lon=from_lon,
-            to_lat=to_lat, to_lon=to_lon, period=period,
-        )
+        for edges_sql in _edge_queries(period, from_lat, from_lon, to_lat, to_lon):
+            rows = _query_with_retry(
+                postgres.fetch_all,
+                KSP_SQL,
+                {
+                    "from_lat": from_lat, "from_lon": from_lon,
+                    "to_lat": to_lat, "to_lon": to_lon,
+                    "edges_sql": edges_sql,
+                    "k": K_ROUTES,
+                },
+                "pgr_ksp call",
+                from_lat=from_lat, from_lon=from_lon,
+                to_lat=to_lat, to_lon=to_lon, period=period,
+            )
+            if rows:
+                break
     except psycopg.OperationalError as exc:
         # Confirmed live that both failure modes land here: a clean
         # statement_timeout cancellation, and a backend dying underneath

@@ -65,6 +65,12 @@ services:
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
 
+      # How far beyond a trip's two endpoints pgRouting may search. See
+      # hailpath_common/routing.py's own docstring for why the edge list is
+      # bounded at all, and the master .env.example for the tuning.
+      ROUTE_BBOX_MIN_PAD_KM: ${ROUTE_BBOX_MIN_PAD_KM:-3.0}
+      ROUTE_BBOX_PAD_FACTOR: ${ROUTE_BBOX_PAD_FACTOR:-0.6}
+
       # Prices. The same three numbers h-bootstrap used for the seeded week,
       # so live trips are priced the way the history was.
       FARE_BASE: ${FARE_BASE:-3.0}

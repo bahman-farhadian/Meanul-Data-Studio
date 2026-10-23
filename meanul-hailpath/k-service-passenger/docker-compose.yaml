@@ -68,6 +68,11 @@ services:
       # How far a random point may sit from the nearest on-network road
       # vertex before nearest_road_point() rejects it and the caller retries.
       MAX_SNAP_KM: ${MAX_SNAP_KM:-0.5}
+      # How far beyond a trip's two endpoints pgRouting may search. See
+      # hailpath_common/routing.py's own docstring for why the edge list is
+      # bounded at all, and the master .env.example for the tuning.
+      ROUTE_BBOX_MIN_PAD_KM: ${ROUTE_BBOX_MIN_PAD_KM:-3.0}
+      ROUTE_BBOX_PAD_FACTOR: ${ROUTE_BBOX_PAD_FACTOR:-0.6}
 
       # A pool of real, road-snapped points per zone, built once at startup
       # (hailpath_common.routing.build_road_point_pools) instead of paying a real
