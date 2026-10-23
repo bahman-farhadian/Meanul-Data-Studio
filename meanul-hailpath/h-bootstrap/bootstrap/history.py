@@ -35,6 +35,7 @@ logged as such.
 import random
 import time
 import uuid
+from collections import deque
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
@@ -58,6 +59,16 @@ log = get_logger(__name__)
 # bootstrap that can otherwise run for hours with nothing in the log to say
 # how far along it is (confirmed live).
 PROGRESS_LOG_INTERVAL_S = 1.0
+
+# The window the reported rate and ETA are measured over. Not the whole run:
+# a cumulative average answers "how fast has this been on average", which is
+# the wrong question the moment the rate changes. Confirmed live on
+# 2026-10-23 - raising Postgres's cpu quota mid-run took routing from 21.9
+# to 38.6 trips a second, and the printed ETA went from 56.1 hours to 56.0,
+# because an hour of the old rate outweighed the new one. It read as "the
+# change did nothing". A minute is long enough to ride out a retried call
+# and short enough that a real change shows up while you are still watching.
+ETA_WINDOW_S = 60.0
 
 # How busy each hour of the day is, relative to the others. Two peaks: people
 # going to work and people going home, with a smaller late-evening bump.
@@ -257,6 +268,9 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
         # useful signal, not just the number.
         started = time.monotonic()
         last_logged = started
+        # (monotonic time, trips done) samples, oldest first, trimmed to
+        # ETA_WINDOW_S as it goes - the rate is measured across this.
+        window: deque[tuple[float, int]] = deque([(started, 0)])
         with ThreadPoolExecutor(max_workers=settings.history_routing_workers) as pool:
             for done, result in enumerate(
                 pool.map(
@@ -276,7 +290,12 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
                 poll_t = time.monotonic()
                 if poll_t - last_logged >= PROGRESS_LOG_INTERVAL_S or done == total:
                     elapsed_s = poll_t - started
-                    rate = done / elapsed_s if elapsed_s > 0 else 0.0
+                    # Keep one sample older than the window, so the span is
+                    # always at least ETA_WINDOW_S once the run is that old.
+                    while len(window) > 1 and poll_t - window[1][0] >= ETA_WINDOW_S:
+                        window.popleft()
+                    span_s = poll_t - window[0][0]
+                    rate = (done - window[0][1]) / span_s if span_s > 0 else 0.0
                     remaining = int((total - done) / rate) if rate > 0 else None
                     log.info(
                         "routing progress",
@@ -284,9 +303,11 @@ def generate(settings: Settings, seed_value: int = 20250824) -> GeneratedWeek:
                             "done": done, "of": total,
                             "pct": round(100 * done / total, 1),
                             "elapsed_s": round(elapsed_s),
+                            "rate_per_s": round(rate, 1),
                             "eta_s": remaining,
                         },
                     )
+                    window.append((poll_t, done))
                     last_logged = poll_t
     else:
         routed = [None] * len(to_route)
