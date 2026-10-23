@@ -314,7 +314,7 @@ lb-config:
 # =============================================================================
 
 .PHONY: verify
-verify: verify-pg verify-redis verify-kafka verify-ksqldb verify-cdc verify-ch verify-dash verify-data
+verify: verify-pg verify-redis verify-kafka verify-schemas verify-ksqldb verify-cdc verify-ch verify-dash verify-data
 
 .PHONY: verify-dash
 verify-dash: grafana-health tiles-health verify-grafana superset-health verify-superset

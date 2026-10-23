@@ -52,6 +52,13 @@ Each message carries a schema id. Schema Registry resolves it.
 Compatibility is `backward`. The files in `schemas/` are the source.
 One `.avsc` per declared topic.
 
+`make schemas` registers them all, before anything produces. `make
+verify-schemas` reads them back and compares namespace, record name and
+field list with the file on disk, so a Registry still holding an older
+copy fails instead of merely answering. Both run inside `schema-init`:
+port 8081 is not published through `hailpath-proxy`, and the Registry
+image ships neither curl nor wget.
+
 ```bash
 docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
   --bootstrap-server hailpath-kafka:9092 \
@@ -108,11 +115,14 @@ directory.
 
 ```bash
 make verify-kafka
+make verify-schemas
 make verify-ksqldb
 ```
 
 `verify-kafka` describes topics on `hailpath-kafka:9092`. Every partition
-has one replica, and that replica is in sync.
+has one replica, and that replica is in sync. `verify-schemas` checks the
+seven subjects this repository declares; the `cdc.*`, heartbeat and
+ksqlDB subjects are counted and otherwise left alone.
 
 ## Teardown
 

@@ -1725,7 +1725,7 @@ section already gives.
 | 1 | The stack starts | `make up` returns, `make ps` shows every long-running container up |
 | 2 | Nothing is restarting | `make health` restarts 0 and `oom=false` on all of them |
 | 3 | Each layer answers | `make verify` exits 0, and `verify-kafka` prints a broker line now that the grep is fixed |
-| 4 | The renamed Avro registered | 7 of 7 subjects, namespace `hailpath.events` |
+| 4 | The renamed Avro registered | `make verify-schemas` OK — 7 of 7 subjects, namespace `hailpath.events` |
 | 5 | ksqlDB rebuilt its topics under the new prefix | `make verify-ksqldb` exits 0, 7 streams and 1 table |
 | 6 | CDC runs | connector and task RUNNING, Redis db 1 and db 2 filled |
 | 7 | Trips reach the warehouse on street geometry | `make verify-positions`: last-hour trips > 0, off-network 0, long two-point 0 |

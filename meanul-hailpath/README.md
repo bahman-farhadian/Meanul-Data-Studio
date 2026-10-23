@@ -281,12 +281,16 @@ make verify        # every layer, in order
 ```
 
 or one layer at a time — `verify-pg`, `verify-redis`, `verify-kafka`,
-`verify-ksqldb`, `verify-cdc`, `verify-ch`, `verify-dash`, `verify-data`.
+`verify-schemas`, `verify-ksqldb`, `verify-cdc`, `verify-ch`, `verify-dash`,
+`verify-data`.
 Each prints what a healthy answer looks like underneath the output, and
 each component's own README explains the checks in full.
 
 `verify-pg` is `pg_isready`. `verify-redis` is a PING. `verify-kafka`
-expects one replica in sync. `verify-ch` lists MergeTree engines.
+expects one replica in sync. `verify-schemas` compares every `.avsc` in
+`c-infra-kafka/schemas` with the subject the Registry holds, so a Registry
+left behind by a skipped `make schemas` fails rather than reading as ok.
+`verify-ch` lists MergeTree engines.
 
 Two results that look wrong and are not:
 

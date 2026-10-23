@@ -34,6 +34,16 @@ schemas:
 	$(call say,Avro schemas)
 	@$(COMPOSE) run --rm schema-init
 
+# The expected subjects are read out of schemas/*.avsc. schema-init is the
+# container with that directory mounted, and the Registry image's python3 is
+# the only interpreter here that can reach :8081 - the port is not published
+# through hailpath-proxy, and the image itself ships neither curl nor wget.
+# Same arrangement verify-ksqldb uses for ksql-init.
+.PHONY: verify-schemas
+verify-schemas:
+	$(call say,Schema Registry)
+	@$(COMPOSE) run --rm --entrypoint python3 schema-init /schemas/check-schemas.py
+
 .PHONY: ksql-ddl
 ksql-ddl:
 	$(call say,ksqlDB streams and tables)
