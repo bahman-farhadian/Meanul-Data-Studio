@@ -2,6 +2,14 @@
 # entries and leaves every byte on disk. Nothing else deletes them, and a
 # leftover tree is picked up by the next bring-up as if it were a fresh
 # volume — a half-initialised PostgreSQL is far worse than none.
+#
+# The four directories in `keep` survive, because they hold downloads rather
+# than stack state: nothing a destroy does invalidates them, and refetching
+# needs the internet, which is the fragile axis here — osmdata.openstreetmap.de
+# was down for the whole 2026-10-22/23 window. hailpath-grafana-plugins and
+# hailpath-connect-plugins were not on that list until 2026-10-23, so a destroy
+# silently undid two of `make prepare`'s ten steps and the next `make up` died
+# in preflight on both. RM_MAP=1 (make nuke) still removes everything.
 .PHONY: _rm-data-tree
 _rm-data-tree:
 	@root=$$(grep -E '^HAILPATH_VOLUME_ROOT=' $(ENV_FILE) 2>/dev/null | tail -1 | cut -d= -f2-); \
@@ -10,7 +18,8 @@ _rm-data-tree:
 	else \
 		case "$$root" in /|/root|/home|/usr|/etc|/var|/boot|/data-root) \
 			printf "  $(R)REFUSED$(X) HAILPATH_VOLUME_ROOT is %s — too broad to delete\n" "$$root"; exit 1;; esac; \
-		if [ "$(RM_MAP)" = 1 ]; then keep=""; else keep="hailpath-lion-data hailpath-tiles-data"; fi; \
+		if [ "$(RM_MAP)" = 1 ]; then keep=""; \
+		else keep="hailpath-lion-data hailpath-tiles-data hailpath-grafana-plugins hailpath-connect-plugins"; fi; \
 		before=0; after=0; \
 		for d in $$(find "$$root" -maxdepth 1 -mindepth 1 -type d -name 'hailpath-*' 2>/dev/null); do \
 			base=$$(basename "$$d"); \

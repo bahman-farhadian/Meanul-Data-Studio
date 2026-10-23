@@ -430,12 +430,13 @@ down:
 .PHONY: destroy
 destroy:
 	@printf "$(R)$(B)This deletes the databases, the cache, the topics and the warehouse.$(X)\n"
-	@printf "  LION and OSM tiles (hailpath-lion-data, hailpath-tiles-data) are kept.\n"
+	@printf "  The four download directories are kept: LION, the OSM tiles, the\n"
+	@printf "  Grafana plugin and the Avro converter jars.\n"
 	@printf "  $(C)make nuke$(X) is what removes those downloads.\n"
 	@read -r -p "Type 'destroy' to confirm: " a; [ "$$a" = destroy ] || { echo "cancelled"; exit 1; }
 	@$(COMPOSE) down -v
 	@$(MAKE) --no-print-directory _rm-data-tree
-	@printf "\n  Volumes gone. LION and OSM tiles were kept.\n"
+	@printf "\n  Volumes gone. Every downloaded dependency was kept.\n"
 	@printf "  Next, without re-downloading: $(C)make build && make up$(X)\n"
 	@printf "  Skip $(C)make prepare$(X) unless the graph or nyc.mbtiles is missing.\n"
 
