@@ -1675,14 +1675,28 @@ the stack:
 | `grafana-plugin-prepare` could not resolve `grafana.com` | until `79bb6b0` this ran as a build layer under `BUILD_NETWORK=host`; the official-image refactor moved it to a bare `docker run` on the bridge, where the daemon hands it `8.8.8.8` | the script reads `BUILD_NETWORK` |
 | `tiles-prepare` could not reach `osmdata.openstreetmap.de` | the host refused HTTPS, then stopped answering; confirmed from two networks outside Dionysus | `make tiles-water-from-image` |
 
-**The water polygons in this run are not the current file.** The only
-source for `water-polygons-split-3857.zip` has no mirror, so the coastline
-shapefile came from the copy baked into `openmaptiles/import-water`, dated
-`2020-01-09`. Same dataset, same ODbL licence, same osmdata origin; only
-the vintage differs, and only the Grafana basemap reads it. No bar below
-depends on it except bar 9's `tiles-health`, which checks that the tile
-server answers, not how recent its coastlines are. Re-run `tiles-prepare`
-against the real host when it returns if step 13 should ship current data.
+**The water polygons in this run are a snapshot, not the live file.** The
+only source for `water-polygons-split-3857.zip` has no mirror, so the
+coastline shapefile came from the copy baked into `openmaptiles/import-data`
+(pinned by digest), dated `2026-03-12`. Same dataset, same ODbL licence,
+same osmdata origin.
+
+The cost was measured, not assumed. Water coverage per z13 tile, the
+`2020-01-09` copy against current Protomaps data, before the newer image
+was found:
+
+| Tile | 2020 copy | Current | Diff |
+| --- | --- | --- | --- |
+| Hudson at midtown | 28.66% | 29.12% | 0.46pp |
+| Upper New York Bay | 73.25% | 73.25% | 0.00pp |
+| East River / Queens | 15.13% | 15.12% | 0.00pp |
+| Open Atlantic | 100.00% | 100.00% | 0.00pp |
+| Jamaica Bay | 96.54% | 90.19% | 6.34pp |
+
+Six years of drift moved the NYC waterfront by half a percentage point.
+The shipped snapshot is seven months old, so the real figure is smaller
+still. Only the Grafana basemap reads it, and no bar below depends on it
+except bar 9's `tiles-health`, which checks that the tile server answers.
 
 ### Seed
 

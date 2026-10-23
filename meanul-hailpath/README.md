@@ -136,19 +136,19 @@ make tiles-water-from-image
 make tiles-prepare
 ```
 
-OpenMapTiles' water-import image downloads that same zip at build time and
+OpenMapTiles' `import-data` image downloads that same zip at build time and
 ships the shapefile inside it. The first command repackages that copy into
 the archive Planetiler expects, writing it where `tiles-prepare` looks, so
 the second finds it already there and never calls out. Same dataset, same
-ODbL licence, same osmdata origin, and the original `README.txt` travels
-inside the zip.
+ODbL licence, same osmdata origin, and the shapefile's own `README.txt`
+travels inside the zip.
 
-**It is not the current file.** The copy in that image is years old and the
-command prints its date. Coastlines are the one layer where that is
-defensible; nothing else here should be sourced this way. Delete the zip
-and re-run `tiles-prepare` once the real host is back, if the vintage
-matters. The image is `WATER_POLYGONS_IMAGE` in `.env`, and nothing runs it
-automatically — `make prepare` always tries the real source first.
+**It is a snapshot, not the live file.** The command prints the date of the
+copy it found — 2026-03-12 for the pinned digest. Coastlines are the one
+layer where a few months of drift is defensible; nothing else here should
+be sourced this way. The image is `WATER_POLYGONS_IMAGE` in `.env`, pinned
+by digest so a redeploy cannot silently change the data, and nothing runs
+it automatically — `make prepare` always tries the real source first.
 
 ## Deploying without outside network
 
