@@ -37,6 +37,18 @@ services:
     # this one had been the one exception, which is worth closing rather
     # than relying on an implicit default.
     cpus: ${LION_PG_CPUS:-20}
+    # cpus alone is half a reservation. Without mem_limit this container is
+    # unbounded, and the values above are deliberately large - 8GB of
+    # shared_buffers and 4GB of maintenance_work_mem during
+    # pgr_createTopology. On a 125GB server that is merely untidy; on a
+    # 31GB laptop with no swap an unbounded Postgres reaches the host's own
+    # OOM-killer, which picks a victim anywhere on the machine. Capped, the
+    # cgroup kills inside this container instead and the host is never at
+    # risk. Keep this comfortably above shared_buffers +
+    # maintenance_work_mem, and lower it together with them on a small
+    # machine.
+    mem_limit: ${LION_PG_MEM:-24g}
+    memswap_limit: ${LION_PG_MEM:-24g}
     command:
       - -c
       - shared_buffers=${LION_PG_SHARED_BUFFERS:-2GB}
@@ -91,6 +103,11 @@ services:
     # A psql/ogr2ogr client mostly waiting on lion-pg, not computing itself -
     # a modest reservation, not the large one lion-pg gets above.
     cpus: ${LION_PREPARE_CPUS:-4}
+    # Same reasoning as lion-pg above: a limit so the host's OOM-killer is
+    # never the one that fires. ogr2ogr streams the shapefile rather than
+    # holding it, so this needs far less.
+    mem_limit: ${LION_PREPARE_MEM:-4g}
+    memswap_limit: ${LION_PREPARE_MEM:-4g}
     volumes:
       - ${HAILPATH_LION_DATA_DIR:?set it}:/data
     networks:
