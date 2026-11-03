@@ -51,6 +51,13 @@ if [ -f "${mbtiles}" ]; then
   rm -f "${mbtiles}"
 fi
 
+# Geofabrik publishes New York *State* - 498MB, of which the city is a
+# small corner. BBBike cuts a New York *City* extract at 153MB, which is
+# the whole area this project ever renders. The state file stays the
+# default so the deployed map does not silently change; a dev machine
+# overrides GEOFABRIK_NY_PBF_URL to the city extract and gets a usable
+# basemap for a third of the download and a fraction of the Planetiler
+# heap. The file name below follows the URL so both can coexist on disk.
 pbf_url="$(val GEOFABRIK_NY_PBF_URL)"
 pbf_url="${pbf_url:-https://download.geofabrik.de/north-america/us/new-york-latest.osm.pbf}"
 jar_url="$(val PLANETILER_JAR_URL)"
@@ -67,20 +74,33 @@ ne_url="${ne_url:-https://naciscdn.org/naturalearth/packages/natural_earth_vecto
 lakes_url="$(val LAKE_CENTERLINES_URL)"
 lakes_url="${lakes_url:-https://github.com/acalcutt/osm-lakelines/releases/download/latest/lake_centerline.shp.zip}"
 
-fetch "${pbf_url}" "${dir}/new-york-latest.osm.pbf"
+pbf_file="${dir}/$(basename "${pbf_url}")"
+fetch "${pbf_url}" "${pbf_file}"
 fetch "${jar_url}" "${dir}/planetiler.jar"
 fetch "${water_url}" "${src}/water-polygons-split-3857.zip"
 fetch "${ne_url}" "${src}/natural_earth_vector.sqlite.zip"
 fetch "${lakes_url}" "${src}/lake_centerline.shp.zip"
 
-printf '  running  Planetiler in %s (container has no network)\n' "${jre}"
+# The JVM heap and the container ceiling are two separate numbers and both
+# have to be set. -Xmx alone tells the JVM what it may use; without
+# --memory the container is unbounded, so a JVM that overshoots its heap -
+# or any native allocation beside it - reaches the host's own OOM-killer,
+# which picks a victim anywhere on the machine. On the 125GB deploy host
+# that never showed. On a 31GB workstation with no swap it takes the
+# machine down. Keep PLANETILER_MEM comfortably above PLANETILER_HEAP:
+# the JVM needs headroom outside the heap for metaspace and buffers.
+heap="$(val PLANETILER_HEAP)"; heap="${heap:-8g}"
+plmem="$(val PLANETILER_MEM)"; plmem="${plmem:-10g}"
+printf '  running  Planetiler in %s (container has no network, heap %s, ceiling %s)\n' \
+  "${jre}" "${heap}" "${plmem}"
 docker run --rm --user 0:0 --network none \
-  -e JAVA_TOOL_OPTIONS="-Xmx16g" \
+  --memory "${plmem}" --memory-swap "${plmem}" \
+  -e JAVA_TOOL_OPTIONS="-Xmx${heap}" \
   -w /data \
   -v "${dir}:/data" \
   "${jre}" \
   java -jar /data/planetiler.jar \
-    --osm-path=/data/new-york-latest.osm.pbf \
+    --osm-path="/data/$(basename "${pbf_file}")" \
     --water-polygons-path=/data/sources/water-polygons-split-3857.zip \
     --natural-earth-path=/data/sources/natural_earth_vector.sqlite.zip \
     --lake-centerlines-path=/data/sources/lake_centerline.shp.zip \
