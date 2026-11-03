@@ -36,6 +36,13 @@ init:
 	else \
 		printf "  $(G)ok$(X)      every setting the template defines is already present\n"; \
 	fi
+# Virtual and tunnel interfaces are excluded along with docker's own. A
+# VPN usually holds the default route, so the device lookup below lands on
+# the tunnel and advertises an address no client can reach - seen on a
+# workstation where the default route was a nekoray-tun at 172.19.0.1,
+# while the address a client would actually use was the wifi interface.
+# libvirt's virbr* are out for the same reason: a host-local bridge is
+# not how anything reaches this machine.
 # Ports and passwords get a plain change-me placeholder above, same as any
 # other setting — preflight already refuses to deploy on one. These two are
 # the exception: a guess beats a placeholder, because this is the one
@@ -47,7 +54,7 @@ init:
 		def=$$(ip route get 1.1.1.1 2>/dev/null | grep -oE 'dev [a-z0-9.-]+' | awk '{print $$2}' | head -1 || true); \
 		ips=$$(ip -4 -o addr show scope global 2>/dev/null \
 			| awk '{gsub(/\/.*/,"",$$4); print $$2, $$4}' \
-			| grep -vE '^(docker[0-9]*|br-[0-9a-f]+|veth[0-9a-f]*) ' || true); \
+			| grep -vE '^(docker[0-9]*|br-[0-9a-f]+|veth[0-9a-f]*|virbr[0-9]*|tun[0-9]*|tap[0-9]*|wg[0-9]*|[a-z0-9]+-tun[0-9]*) ' || true); \
 		a=$$(echo "$$ips" | awk -v d="$$def" '$$1==d{print $$2; f=1} END{if(!f) exit 1}' \
 			|| echo "$$ips" | head -1 | awk '{print $$2}'); \
 		if [ -n "$$a" ]; then \
