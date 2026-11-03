@@ -55,6 +55,7 @@ docker pull -q "${image}" >/dev/null
 # zip is written straight into the mounted sources directory rather than
 # copied out, so an 887 MB shapefile is never on disk twice.
 docker run --rm --network none --entrypoint python3 \
+  --memory 2g --memory-swap 2g \
   -v "${src}:/out" "${image}" -c "
 import pathlib, sys, zipfile
 # import-water put the shapefile straight in /import; its successor

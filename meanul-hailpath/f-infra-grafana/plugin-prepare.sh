@@ -40,7 +40,10 @@ if [ -d "$plugin" ]; then
 fi
 
 printf '  from    grafana cli grafana-clickhouse-datasource %s\n' "$ver"
+# A ceiling even on a plugin download: every docker run in this repo gets
+# one, so no step can reach the host's OOM-killer on a small machine.
 docker run --rm --user 0:0 --network "$net" --entrypoint grafana \
+  --memory 512m --memory-swap 512m \
   -v "${dir}:/var/lib/grafana/plugins" \
   "$image" \
   cli --pluginsDir /var/lib/grafana/plugins plugins install grafana-clickhouse-datasource "$ver"

@@ -105,7 +105,7 @@ lion-prepare:
 	lion_pg_image=$${lion_pg_image:-pgrouting/pgrouting:18-3.6-3.8.0}; \
 	HAILPATH_LION_DATA_DIR="$$dir" $(COMPOSE) -f h-bootstrap/lion-prepare/docker-compose.yaml --env-file $(ENV_FILE) down -v --remove-orphans >/dev/null 2>&1 || true; \
 	dump_has_zones=false; \
-	if [ -s "$$dump" ] && docker run --rm -v "$$dump:/data/dump:ro" "$$lion_pg_image" \
+	if [ -s "$$dump" ] && docker run --rm --memory 512m --memory-swap 512m -v "$$dump:/data/dump:ro" "$$lion_pg_image" \
 		pg_restore -l /data/dump 2>/dev/null | grep -q "TABLE public city_zones_source"; then \
 		dump_has_zones=true; \
 	fi; \

@@ -150,6 +150,12 @@ services:
   graph-restore:
     image: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
     profiles: ["init"]
+    # A pg_restore client; the work happens in hailpath-postgres, which has
+    # its own ceiling. This was the one service in the stack with no
+    # reservation of either kind.
+    cpus: ${GRAPH_RESTORE_CPUS:-2}
+    mem_limit: ${GRAPH_RESTORE_MEM:-1g}
+    memswap_limit: ${GRAPH_RESTORE_MEM:-1g}
     depends_on:
       hailpath-postgres:
         condition: service_healthy
