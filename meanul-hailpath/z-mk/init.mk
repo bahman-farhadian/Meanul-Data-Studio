@@ -25,7 +25,7 @@ init:
 		printf "  $(G)created$(X) $(ENV_FILE) from $(EXAMPLE) (previous kept as $(ENV_FILE).bak)\n"; \
 		for key in HAILPATH_VOLUME_ROOT KAFKA_ADVERTISED_HOST; do \
 			was=$$(grep -E "^$$key=" $(ENV_FILE).bak | tail -1 | cut -d= -f2-); \
-			case "$$was" in ""|change-me*) continue;; esac; \
+			case "$$was" in ""|change-me*|/change-me*) continue;; esac; \
 			sed -i "s|^$$key=.*|$$key=$$was|" $(ENV_FILE); \
 			printf "  $(G)carried$(X) $$key=%s\n" "$$was"; \
 		done; \
@@ -92,7 +92,7 @@ init:
 # host's /data-root/lssd, which exists on exactly one machine, and make init
 # then died on `cannot create` AFTER it had already written .env - so the run
 # failed halfway and the obvious fix, running it again, failed the same way.
-	@if grep -qE '^HAILPATH_VOLUME_ROOT=change-me' $(ENV_FILE) 2>/dev/null; then \
+	@if grep -qE '^HAILPATH_VOLUME_ROOT=/?change-me' $(ENV_FILE) 2>/dev/null; then \
 		root=""; \
 		for cand in "$$HOME/.local/share/hailpath" "/var/lib/hailpath" "$(CURDIR)/.hailpath-data"; do \
 			if mkdir -p "$$cand" 2>/dev/null; then root="$$cand"; break; fi; \
