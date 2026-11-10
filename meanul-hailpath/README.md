@@ -231,6 +231,14 @@ disk, which is where the growth and the I/O actually are.
 `make init` creates the tree; `make preflight` refuses to deploy if the root
 is missing, unwritable, or short of space.
 
+The template ships `HAILPATH_VOLUME_ROOT=change-me` rather than a path,
+because no path is plausible on two different machines. `make init` picks the
+first of `$HOME/.local/share/hailpath`, `/var/lib/hailpath` or
+`./.hailpath-data` that it can create, and prints which. **Change it before
+deploying** — every volume is a bind mount under it, so moving it afterwards
+orphans the whole tree rather than relocating it. Once it holds any value but
+`change-me`, `make init` never touches it again, including with `FORCE=1`.
+
 **The one thing to know:** because these are bind mounts, `docker volume rm`
 and `docker compose down -v` remove the volume *entry* and leave every byte
 on disk. `make destroy` and `make clean` therefore delete the tree

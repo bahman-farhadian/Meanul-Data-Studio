@@ -66,6 +66,31 @@ init:
 			printf "  $(Y)warn$(X)    no network interface found — edit KAFKA_ADVERTISED_HOST by hand\n"; \
 		fi; \
 	fi
+# Same rule as KAFKA_ADVERTISED_HOST above: a guess beats a placeholder, and
+# only a value still literally the placeholder is ever touched, so an answer
+# already in .env - yours, or detected on an earlier run - is never
+# overwritten. Overwriting it would be worse than useless here: every data
+# volume is a bind mount under this path, so changing it orphans the lot.
+#
+# This one has no sensible shipped default at all. It used to be the deploy
+# host's /data-root/lssd, which exists on exactly one machine, and make init
+# then died on `cannot create` AFTER it had already written .env - so the run
+# failed halfway and the obvious fix, running it again, failed the same way.
+	@if grep -qE '^HAILPATH_VOLUME_ROOT=change-me' $(ENV_FILE) 2>/dev/null; then \
+		root=""; \
+		for cand in "$$HOME/.local/share/hailpath" "/var/lib/hailpath" "$(CURDIR)/.hailpath-data"; do \
+			if mkdir -p "$$cand" 2>/dev/null; then root="$$cand"; break; fi; \
+		done; \
+		if [ -n "$$root" ]; then \
+			sed -i "s|^HAILPATH_VOLUME_ROOT=.*|HAILPATH_VOLUME_ROOT=$$root|" $(ENV_FILE); \
+			printf "  $(G)detected$(X) HAILPATH_VOLUME_ROOT=%s\n" "$$root"; \
+			printf "  $(Y)Every data volume is a bind mount under this path. Point it at your\n"; \
+			printf "  largest, fastest disk before deploying — moving it later orphans the tree.$(X)\n"; \
+		else \
+			printf "  $(R)FAIL$(X)    could not create a data root anywhere — set HAILPATH_VOLUME_ROOT by hand\n"; \
+			exit 1; \
+		fi; \
+	fi
 	@if docker network inspect $(NETWORK) >/dev/null 2>&1; then \
 		printf "  $(G)ok$(X)      network $(NETWORK) exists\n"; \
 	else \
