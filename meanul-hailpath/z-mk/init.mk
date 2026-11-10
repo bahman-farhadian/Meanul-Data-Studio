@@ -1,6 +1,16 @@
 .PHONY: init
 init:
 	$(call say,Preparing the working copy)
+# FORCE=1 regenerates .env from the template, which is the point: it is how a
+# .env that predates a template change gets the new settings. The passwords go
+# with it and have to be set again - that is what FORCE is for.
+#
+# The two answers below are different in kind. They are not template settings
+# with a newer default; they are facts about THIS machine, and the template has
+# no opinion worth restoring. Resetting HAILPATH_VOLUME_ROOT in particular does
+# not just lose a value: every volume is a bind mount under it, so the next
+# bring-up silently builds a second, empty tree somewhere else and leaves the
+# real one on disk. So both are carried across from the backup.
 	@if [ -f $(ENV_FILE) ] && [ -z "$(FORCE)" ]; then \
 		printf "  $(Y)kept$(X)    $(ENV_FILE) already exists — not overwriting it\n"; \
 		if ! grep -qE '^PG_SUPERUSER_PASSWORD=' $(ENV_FILE); then \
@@ -13,6 +23,12 @@ init:
 		cp $(ENV_FILE) $(ENV_FILE).bak; \
 		cp $(EXAMPLE) $(ENV_FILE); \
 		printf "  $(G)created$(X) $(ENV_FILE) from $(EXAMPLE) (previous kept as $(ENV_FILE).bak)\n"; \
+		for key in HAILPATH_VOLUME_ROOT KAFKA_ADVERTISED_HOST; do \
+			was=$$(grep -E "^$$key=" $(ENV_FILE).bak | tail -1 | cut -d= -f2-); \
+			case "$$was" in ""|change-me*) continue;; esac; \
+			sed -i "s|^$$key=.*|$$key=$$was|" $(ENV_FILE); \
+			printf "  $(G)carried$(X) $$key=%s\n" "$$was"; \
+		done; \
 	else \
 		cp $(EXAMPLE) $(ENV_FILE); \
 		printf "  $(G)created$(X) $(ENV_FILE) from $(EXAMPLE)\n"; \

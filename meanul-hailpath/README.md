@@ -237,7 +237,10 @@ first of `$HOME/.local/share/hailpath`, `/var/lib/hailpath` or
 `./.hailpath-data` that it can create, and prints which. **Change it before
 deploying** — every volume is a bind mount under it, so moving it afterwards
 orphans the whole tree rather than relocating it. Once it holds any value but
-`change-me`, `make init` never touches it again, including with `FORCE=1`.
+`change-me`, `make init` leaves it alone — and `make init FORCE=1`, which
+otherwise regenerates `.env` from the template, carries it and
+`KAFKA_ADVERTISED_HOST` across from the backup rather than re-detecting them.
+Passwords are not carried: re-setting those is what `FORCE=1` is for.
 
 **The one thing to know:** because these are bind mounts, `docker volume rm`
 and `docker compose down -v` remove the volume *entry* and leave every byte
