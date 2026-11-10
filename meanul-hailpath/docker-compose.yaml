@@ -39,7 +39,6 @@ include:
   - path: d-infra-debezium/docker-compose.yaml
   - path: e-infra-clickhouse/docker-compose.yaml
   - path: f-infra-grafana/docker-compose.yaml
-  - path: g-infra-superset/docker-compose.yaml
   - path: h-bootstrap/docker-compose.yaml
   - path: i-service-cache-updater/docker-compose.yaml
   - path: j-service-driver/docker-compose.yaml
@@ -85,9 +84,9 @@ services:
                     hailpath-redis-data
         # Kafka's uid is configurable because the image has changed it before.
         own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} hailpath-kafka-data
-        # Grafana runs as 472 with group 0; Superset as 1000.
+        # Grafana runs as 472 with group 0; tileserver-gl as 1000.
         own 472:0 hailpath-grafana-data hailpath-grafana-plugins
-        own 1000:1000 hailpath-superset-home hailpath-tiles-data
+        own 1000:1000 hailpath-tiles-data
         # h-bootstrap and the six services all run as the 'hailpath' user, 10001.
         own 10001:10001 hailpath-lion-data
         # ClickHouse starts as root and drops privileges itself, so its
@@ -142,7 +141,6 @@ services:
       - "${PROXY_CH_HTTP_PORT:-8123}:8123"
       - "${PROXY_CH_NATIVE_PORT:-9000}:9000"
       - "${PROXY_GRAFANA_PORT:-3000}:3000"
-      - "${PROXY_SUPERSET_PORT:-8088}:8088"
       - "${PROXY_KSQLDB_PORT:-8089}:8089"
       - "${PROXY_DEBEZIUM_PORT:-8083}:8083"
       # Fixed literal, not a `${VAR:-default}:CONTAINER` pair like every

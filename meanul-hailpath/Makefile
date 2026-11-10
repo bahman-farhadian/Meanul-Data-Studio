@@ -67,11 +67,10 @@ include c-infra-kafka/Makefile
 include d-infra-debezium/Makefile
 include e-infra-clickhouse/Makefile
 include f-infra-grafana/Makefile
-include g-infra-superset/Makefile
 include h-bootstrap/Makefile
 
-# How long to wait for a group of containers to report healthy. ClickHouse and
-# Superset have a 40-60s start_period of their own, so this is generous.
+# How long to wait for a group of containers to report healthy. ClickHouse has
+# a 40s start_period of its own, so this is generous.
 WAIT_TIMEOUT ?= 420
 
 # How long `make wait-live` will wait for driver-service to put the fleet on
@@ -109,14 +108,13 @@ PIECE_E  := hailpath-clickhouse
 # OSM raster lives here, not as a later sidecar. HAProxy /tiles/ 503s
 # ("no server available") if this list is only grafana.
 PIECE_F  := hailpath-grafana hailpath-tiles
-PIECE_G  := hailpath-superset
 SERVICES := hailpath-cache-updater hailpath-driver hailpath-passenger hailpath-dispatch hailpath-city hailpath-clickhouse-sink hailpath-archiver
-INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F) $(PIECE_G)
+INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F)
 # Everything the bring-up waits on. Debezium Connect is started with the rest
 # but deliberately not waited for: it takes minutes to scan its plugins, and
 # nothing needs it until `cdc-register`, which runs after bootstrap. By then
 # it has had the whole bootstrap to come up.
-INFRA_WAIT := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_E) $(PIECE_F) $(PIECE_G)
+INFRA_WAIT := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_E) $(PIECE_F)
 
 # Consumer groups, for the lag report. Must match the consumer-group section of .env.example.
 GROUPS := hailpath-cache-updater hailpath-driver hailpath-passenger hailpath-dispatch hailpath-city hailpath-clickhouse-sink
@@ -239,7 +237,7 @@ up:
 	@$(MAKE) --no-print-directory volume-perms
 	@$(MAKE) --no-print-directory lb-config
 	@$(MAKE) --no-print-directory ksqldb-secrets
-	$(call say,Starting the infrastructure — pieces a to g)
+	$(call say,Starting the infrastructure — pieces a to f)
 	@$(COMPOSE) up -d $(PIECE_D)
 	@$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) $(INFRA_WAIT)
 	$(call ok,infrastructure healthy; Debezium Connect still loading its plugins)
@@ -247,7 +245,6 @@ up:
 	@$(MAKE) --no-print-directory schemas
 	@$(MAKE) --no-print-directory ksql-ddl
 	@$(MAKE) --no-print-directory ch-ddl
-	@$(MAKE) --no-print-directory superset-init
 	@$(MAKE) --no-print-directory bootstrap
 	@$(MAKE) --no-print-directory cdc-register
 	$(call say,Starting the services — pieces i to o)
@@ -267,11 +264,10 @@ up-piece:
 		d) set -- $(PIECE_D) ;; \
 		e) set -- $(PIECE_E) ;; \
 		f) set -- $(PIECE_F) ;; \
-		g) set -- $(PIECE_G) ;; \
 		infra) set -- $(INFRA) ;; \
 		services) $(COMPOSE) up -d $(SERVICES); exit $$? ;; \
-		"") printf "$(R)set PIECE=a..g, infra, or services$(X)\n"; exit 1 ;; \
-		*) printf "$(R)unknown PIECE '$(PIECE)' — a..g, infra, or services$(X)\n"; exit 1 ;; \
+		"") printf "$(R)set PIECE=a..f, infra, or services$(X)\n"; exit 1 ;; \
+		*) printf "$(R)unknown PIECE '$(PIECE)' — a..f, infra, or services$(X)\n"; exit 1 ;; \
 	esac; \
 	$(COMPOSE) up -d --wait --wait-timeout $(WAIT_TIMEOUT) "$$@"
 
@@ -317,7 +313,7 @@ lb-config:
 verify: verify-pg verify-redis verify-kafka verify-schemas verify-ksqldb verify-cdc verify-ch verify-dash verify-data
 
 .PHONY: verify-dash
-verify-dash: grafana-health tiles-health verify-grafana superset-health verify-superset
+verify-dash: grafana-health tiles-health verify-grafana
 
 # verify-walk and verify-sample are the only WORKSTATION targets in this
 # file. Every other target drives Docker and runs anywhere; these two run

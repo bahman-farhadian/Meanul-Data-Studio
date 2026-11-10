@@ -6,7 +6,7 @@
 # Not sed: a plain `sed s/X/Y/` breaks the moment a value contains the
 # delimiter character (a `/` in the password looks like the end of the sed
 # command), and this project has already been bitten by exactly that class of
-# bug once, in Superset's ClickHouse connection string. awk's index()/substr()
+# bug once, in a ClickHouse connection string. awk's index()/substr()
 # does a literal replace — no regex, no delimiter, safe for any password
 # content except whitespace (see the note in the template: the Redis
 # tcp-check sends AUTH as a raw inline command, which splits on spaces

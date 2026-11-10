@@ -1,6 +1,6 @@
 # hailpath-proxy — one HAProxy. It is the stable address on hailpath-net
 # and, in this lab, the host publish of every store. Production would
-# publish Grafana and Superset only. Each backend is the one process
+# publish Grafana only. Each backend is the one process
 # behind that port. Backends resolve through Docker's embedded DNS
 # (127.0.0.11) with init-addr none, so HAProxy starts cleanly even while
 # a backend's container does not exist yet.
@@ -154,14 +154,3 @@ backend tiles
     http-check send meth GET uri /
     http-check expect status 200
     server hailpath-tiles hailpath-tiles:8080 check
-
-# Superset (g-infra-superset) -------------------------------------------------
-# One backend again: the proxy is the single address, not a balancer. The
-# check asks for /health, which Superset answers without a login.
-
-listen superset
-    bind :8088
-    option httpchk
-    http-check send meth GET uri /health
-    http-check expect status 200
-    server hailpath-superset hailpath-superset:8088 check
