@@ -138,6 +138,14 @@ services:
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
       SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://hailpath-kafka:9092
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "1"
+      # Confluent's own default here is 500ms, and it is the whole budget
+      # for writing a schema into the _schemas topic and reading it back.
+      # On the very first registration that topic has just been created, so
+      # the round trip includes its creation and first flush - measured
+      # failing at "targetOffset: 2, offsetReached: 1, timeout(ms): 500",
+      # then succeeding on an immediate retry. make up calls make schemas,
+      # so a cold-start race there stops the whole bring-up.
+      SCHEMA_REGISTRY_KAFKASTORE_TIMEOUT_MS: ${SCHEMA_REGISTRY_KAFKASTORE_TIMEOUT_MS:-5000}
       # BACKWARD: a new schema must still be readable by consumers written
       # against the previous one. Adding an optional field is fine; removing
       # a required field is refused at registration time.

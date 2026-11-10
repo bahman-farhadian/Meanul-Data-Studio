@@ -674,7 +674,7 @@ retention is bounded.
 | Redis (`hailpath-redis`, `maxmemory` 384 MB) | 1 | 0.5 | 640 MB |
 | Kafka (`hailpath-kafka`, heap 768 MB) | 1 | 1 | 1.25 GB |
 | Schema Registry (heap 256 MB) | 1 | 0.2 | 448 MB |
-| ksqlDB (heap 384 MB) | 1 | 0.5 | 640 MB |
+| ksqlDB (heap 384 MB) | 1 | 0.5 | 768 MB |
 | Debezium Connect (heap 384 MB) | 1 | 0.4 | 640 MB |
 | ClickHouse (`hailpath-clickhouse`, server ceiling 1.2 GiB) | 1 | 1 | 2 GB |
 | Grafana | 1 | 0.2 | 384 MB |
@@ -688,8 +688,8 @@ retention is bounded.
 | `archiver-service` | 1 | 0.25 | 256 MB |
 | `bootstrap` (one-shot, then it exits) | 1 | 6 | 2 GB |
 
-Steady state is **12.19 GiB** across seventeen containers, and the
-bootstrap peak is **11.44 GiB** — the seven app services have not started
+Steady state is **12.31 GiB** across seventeen containers, and the
+bootstrap peak is **11.56 GiB** — the seven app services have not started
 yet while `bootstrap` runs, so the two numbers do not add up. Both fit a
 31 GiB workstation with the OS and a browser still on it.
 
