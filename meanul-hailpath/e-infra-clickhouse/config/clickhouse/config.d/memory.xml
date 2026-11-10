@@ -9,15 +9,23 @@
 
   A query that would cross the line fails with a clear "memory limit
   exceeded" error, which is a fixable problem; an OOM kill is not.
+
+  Every number below comes from the environment, because every one of them
+  is sized against CH_MEM and has to move when CH_MEM moves. They were
+  written here as literals for an 8 GB container; a laptop profile that
+  lowered CH_MEM to 2g would have kept a 6.5 GB server ceiling, which is
+  the one mistake this file exists to prevent. ClickHouse substitutes
+  from_env while it merges the config - the resolved values are visible in
+  /var/lib/clickhouse/preprocessed_configs/config.xml.
 -->
 <clickhouse>
     <!-- 6.5 GiB, well under the 8 GB container limit -->
-    <max_server_memory_usage>6979321856</max_server_memory_usage>
+    <max_server_memory_usage from_env="CH_MAX_SERVER_MEMORY"/>
 
     <!-- Caches, sized small on purpose: this server answers dashboards, not
          thousands of users. -->
-    <mark_cache_size>1073741824</mark_cache_size>
-    <uncompressed_cache_size>1073741824</uncompressed_cache_size>
+    <mark_cache_size from_env="CH_MARK_CACHE_SIZE"/>
+    <uncompressed_cache_size from_env="CH_UNCOMPRESSED_CACHE_SIZE"/>
 
     <logger>
         <level>information</level>

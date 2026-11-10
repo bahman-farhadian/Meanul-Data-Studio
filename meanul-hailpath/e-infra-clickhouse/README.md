@@ -56,6 +56,13 @@ TTL on each table is what bounds disk. The full list is `ddl/`.
 One query may use at most 4 GB. A refused query says "memory limit
 exceeded". An OOM kill does not.
 
+Every one of those numbers is set in `.env`, not in the XML:
+`CH_MEM` is the container, `CH_MAX_SERVER_MEMORY` the server,
+`CH_MAX_QUERY_MEMORY` one query, `CH_MARK_CACHE_SIZE` and
+`CH_UNCOMPRESSED_CACHE_SIZE` the caches, `CH_MAX_THREADS` the per-query
+thread count. ClickHouse pulls them in with `from_env`; the merged
+result is in `/var/lib/clickhouse/preprocessed_configs/config.xml`.
+
 ## Ports
 
 HAProxy **8123** (HTTP) and **9000** (native) both go to

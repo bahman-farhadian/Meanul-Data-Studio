@@ -33,7 +33,9 @@ against `hailpath-clickhouse`.
 
 `max_server_memory_usage` is 6.5 GB inside the 8 GB container limit, so
 a heavy query fails with a memory error instead of the cgroup killing
-the process.
+the process. Both numbers come from `.env` — `CH_MAX_SERVER_MEMORY` and
+`CH_MEM` — because a ceiling written against a container size has to
+change when that size does.
 
 ## Loss
 

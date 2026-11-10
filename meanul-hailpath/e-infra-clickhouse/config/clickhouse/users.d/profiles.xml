@@ -9,16 +9,22 @@
         <default>
             <!-- One query may use at most 4 GB. Well below the server
                  ceiling, so one heavy dashboard query cannot starve the
-                 inserts arriving from clickhouse-sink. -->
-            <max_memory_usage>4294967296</max_memory_usage>
+                 inserts arriving from clickhouse-sink. From the
+                 environment for the same reason as the server ceiling in
+                 config.d/memory.xml: it is a fraction of CH_MEM, and a
+                 fraction written as a literal stops being one as soon as
+                 CH_MEM changes. -->
+            <max_memory_usage from_env="CH_MAX_QUERY_MEMORY"/>
 
             <!-- A dashboard query that runs longer than a minute is a
                  mistake, not a result worth waiting for. -->
             <max_execution_time>60</max_execution_time>
 
             <!-- Let ClickHouse use several cores per query, but not all of
-                 them; the node also has inserts to accept. -->
-            <max_threads>4</max_threads>
+                 them; the node also has inserts to accept. Each thread
+                 carries its own share of max_memory_usage, so this is part
+                 of the memory budget too. -->
+            <max_threads from_env="CH_MAX_THREADS"/>
         </default>
     </profiles>
 </clickhouse>
