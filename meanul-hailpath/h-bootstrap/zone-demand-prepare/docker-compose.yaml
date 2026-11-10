@@ -23,17 +23,30 @@ services:
       args:
         PYTHON_IMAGE: ${PYTHON_IMAGE:-python:3.13.15-slim}
         UV_IMAGE: ${UV_IMAGE:-ghcr.io/astral-sh/uv:0.12.9}
-    # Reads a month of trip records and aggregates them. The parquet is
-    # small on disk but expands in memory, and an aggregation that grows
-    # with an unexpectedly large month has nothing to stop it here - this
-    # container had neither a cpu nor a memory reservation. Capped, a bad
-    # month fails this one container; uncapped on a machine without swap
-    # it reaches the host's OOM-killer.
+    # Reads a month of trip records and aggregates them in fixed-size
+    # batches, keeping only running totals, so this ceiling does not have to
+    # scale with the month: the bound is the zone grid and one batch, not the
+    # trip count. 823 MiB measured on 20.4M trips.
+    #
+    # It is still a ceiling and still needed. The first version collected
+    # every row group and pd.concat'd them, holding two copies of 20.4M
+    # trips plus a filtered third, and was OOM-killed here at exit 137. That
+    # kill landed inside this cgroup and the host never noticed - its
+    # MemAvailable never moved below 17.2 GiB. Uncapped on a machine without
+    # swap it would have reached the host's own OOM-killer, which picks a
+    # victim anywhere on the machine.
     cpus: ${ZONE_DEMAND_CPUS:-4}
-    mem_limit: ${ZONE_DEMAND_MEM:-4g}
-    memswap_limit: ${ZONE_DEMAND_MEM:-4g}
+    mem_limit: ${ZONE_DEMAND_MEM:-1280m}
+    memswap_limit: ${ZONE_DEMAND_MEM:-1280m}
     environment:
       TLC_TRIP_DATA_MONTH: ${TLC_TRIP_DATA_MONTH:-2025-01}
       OUTPUT_DIR: /data
+      ZONE_DEMAND_BATCH_ROWS: ${ZONE_DEMAND_BATCH_ROWS:-250000}
+      # glibc keeps a per-thread arena and does not reliably return large
+      # freed blocks to the OS, so the high-water this cgroup sees is the sum
+      # of what every arena ever held rather than what is live. pyarrow reads
+      # on several threads, so there are several arenas. Capping them at two
+      # was worth more here than any change to the aggregation itself.
+      MALLOC_ARENA_MAX: "2"
     volumes:
       - ${HAILPATH_LION_DATA_DIR:?set it}:/data
