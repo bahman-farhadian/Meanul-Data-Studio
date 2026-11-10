@@ -55,7 +55,7 @@ services:
       VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
       CONNECT_KEY_CONVERTER_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
       CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
-      KAFKA_HEAP_OPTS: -Xmx1g -Xms1g
+      KAFKA_HEAP_OPTS: ${DEBEZIUM_HEAP_OPTS:--Xmx1g -Xms1g}
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://localhost:8083/ >/dev/null || exit 1"]
       interval: 15s

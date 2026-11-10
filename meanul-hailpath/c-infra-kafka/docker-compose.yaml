@@ -69,7 +69,10 @@ x-kafka-env: &kafka-env
   KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
   # The JVM heap is capped well below the 5.5 GB container limit. Kafka wants
   # the rest as operating-system page cache, which is what makes reads fast.
-  KAFKA_HEAP_OPTS: -Xmx3500m -Xms3500m
+  # From .env, because it is a fraction of KAFKA_MEM: a heap left at 3500m
+  # inside a smaller container is a JVM that believes it has room the cgroup
+  # will not give it, and the kill lands on the container, not the query.
+  KAFKA_HEAP_OPTS: ${KAFKA_HEAP_OPTS:--Xmx3500m -Xms3500m}
 
 services:
   # One-shot: give the Kafka data volumes to the user inside the image.
@@ -139,7 +142,7 @@ services:
       # against the previous one. Adding an optional field is fine; removing
       # a required field is refused at registration time.
       SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: backward
-      SCHEMA_REGISTRY_HEAP_OPTS: -Xmx512m -Xms512m
+      SCHEMA_REGISTRY_HEAP_OPTS: ${SCHEMA_REGISTRY_HEAP_OPTS:--Xmx512m -Xms512m}
     healthcheck:
       # python3, not curl. This image is built on cp-base-java-micro, which
       # ships neither curl nor wget nor nc — so a curl healthcheck can never
@@ -308,7 +311,7 @@ services:
       # SELECT * with no LIMIT does not.
       KSQL_KSQL_QUERY_PULL_STREAM_ENABLED: "true"
       KSQL_KSQL_QUERY_PULL_TABLE_SCAN_ENABLED: "true"
-      KSQL_HEAP_OPTS: -Xmx1g -Xms1g
+      KSQL_HEAP_OPTS: ${KSQLDB_HEAP_OPTS:--Xmx1g -Xms1g}
       KSQL_OPTS: -Djava.security.auth.login.config=/etc/ksqldb-secrets/jaas_config.file
       KSQL_AUTHENTICATION_METHOD: BASIC
       KSQL_AUTHENTICATION_REALM: KsqlServerAuth
