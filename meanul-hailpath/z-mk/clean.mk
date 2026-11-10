@@ -50,7 +50,7 @@ clean-images:
 	$(call say,Removing images)
 	@built=$$($(COMPOSE) config --images 2>/dev/null | grep '^hailpath/' | sort -u); \
 	pulled=$$($(COMPOSE) --profile init config --images 2>/dev/null | grep -v '^hailpath/' | sort -u); \
-	bases=$$(grep -oE '^(PG|CONNECT|GRAFANA|SUPERSET|PYTHON|UV)_IMAGE=.+' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
+	bases=$$(grep -oE '^(PG|CONNECT|GRAFANA|PYTHON|UV)_IMAGE=.+' $(ENV_FILE) 2>/dev/null | cut -d= -f2-); \
 	for i in $$built $$pulled $$bases; do \
 		if docker image inspect "$$i" >/dev/null 2>&1; then \
 			docker rmi "$$i" >/dev/null 2>&1 \

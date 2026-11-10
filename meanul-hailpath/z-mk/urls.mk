@@ -21,7 +21,6 @@ urls:
 	printf "  %-18s %s\n" "ClickHouse HTTP"   "<host>:$(call getenv,PROXY_CH_HTTP_PORT,8123)"; \
 	printf "  %-18s %s\n" "ClickHouse native" "<host>:$(call getenv,PROXY_CH_NATIVE_PORT,9000)"; \
 	printf "  %-18s %s\n" "Grafana"           "http://<host>:$(call getenv,PROXY_GRAFANA_PORT,3000)"; \
-	printf "  %-18s %s\n" "Superset"          "http://<host>:$(call getenv,PROXY_SUPERSET_PORT,8088)"; \
 	printf "  %-18s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,PROXY_STATS_PORT,8404)/stats"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above. Kafka is the one broker below. A client\n"; \

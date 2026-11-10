@@ -12,10 +12,10 @@ preflight:
 		1.*) printf "  $(R)FAIL$(X)    compose $$cv is v1; this stack needs v2+ for include:\n"; fail=1;; \
 		*)   printf "  $(G)ok$(X)      compose %s\n" "$$cv";; esac; \
 	cores=$$(nproc); mem=$$(awk '/MemTotal/{printf "%d", $$2/1024/1024}' /proc/meminfo); \
-	[ "$$cores" -ge 20 ] && printf "  $(G)ok$(X)      %s cores (budget assumes 20)\n" "$$cores" \
-		|| printf "  $(Y)warn$(X)    %s cores; the budget assumes 20 — turn the pacing down\n" "$$cores"; \
-	[ "$$mem" -ge 118 ] && printf "  $(G)ok$(X)      %s GB RAM (budget needs ~112 GB at the bootstrap peak)\n" "$$mem" \
-		|| printf "  $(Y)warn$(X)    %s GB RAM; the budget peaks near 112 GB during bootstrap\n" "$$mem"; \
+	[ "$$cores" -ge 12 ] && printf "  $(G)ok$(X)      %s cores (budget assumes 12)\n" "$$cores" \
+		|| printf "  $(Y)warn$(X)    %s cores; the budget assumes 12 — turn the pacing down\n" "$$cores"; \
+	[ "$$mem" -ge 16 ] && printf "  $(G)ok$(X)      %s GB RAM (the stack resolves to ~12 GB steady state)\n" "$$mem" \
+		|| printf "  $(Y)warn$(X)    %s GB RAM; the stack resolves to ~12 GB steady state and this host has no room for it\n" "$$mem"; \
 	root=$$(docker info -f '{{.DockerRootDir}}' 2>/dev/null || echo /var/lib/docker); \
 	avail=$$(df -BG --output=avail "$$root" 2>/dev/null | tail -1 | tr -dc '0-9'); \
 	if [ -n "$$avail" ] && [ "$$avail" -ge 100 ]; then \
@@ -36,7 +36,7 @@ preflight:
 		else printf "  $(G)ok$(X)      no change-me placeholders left\n"; fi; \
 		missing=""; \
 		for v in PG_SUPERUSER_PASSWORD REDIS_PASSWORD \
-		         CH_PASSWORD GRAFANA_ADMIN_PASSWORD SUPERSET_ADMIN_PASSWORD SUPERSET_SECRET_KEY \
+		         CH_PASSWORD GRAFANA_ADMIN_PASSWORD \
 		         KAFKA_CLUSTER_ID KSQLDB_ADMIN_PASSWORD; do \
 			grep -qE "^$$v=.+" $(ENV_FILE) || missing="$$missing $$v"; done; \
 		[ -z "$$missing" ] && printf "  $(G)ok$(X)      every required setting has a value\n" \
