@@ -185,6 +185,17 @@ value can come from, and no set of files to keep in step by hand.
 Only **section 1 must be edited** — the passwords. Everything below it works
 as shipped.
 
+Section 17's numbers are sized for a **12-thread / 31 GiB workstation with no
+swap**: 13.2 GiB of steady-state container memory, and a simulation at 1/100
+of production scale holding the supply ratio exactly (`1060/4.55 = 232.97 =
+106000/455`). The bootstrap routes about 6,550 trips rather than 4,401,860 —
+minutes instead of the 31–36 hours measured at full scale.
+
+The small scale is the default because it is the one that gets developed
+against. Each section names the deploy-host values it replaced, in a comment
+above them; on Dionysus, set those. There is no profile command and no second
+settings file — this is still one `.env`.
+
 Two consequences worth knowing:
 
 - PostgreSQL's password reaches its three consumers under three different

@@ -24,9 +24,11 @@
 #   make up            the whole ordered first deployment
 #
 # Events on Kafka are binary Avro; schemas live in the Schema Registry.
-# Resource limits are declared directly in the component compose files,
-# targeting a 20-core / 120 GB Docker host with memswap_limit equal to the
-# memory limit (zero swap).
+# Resource limits are declared directly in the component compose files, every
+# one of them reading its size from .env (section 17) with memswap_limit equal
+# to the memory limit, so nothing can fall back on swap. Those sizes target a
+# 12-thread / 31 GiB workstation and resolve to 13.2 GiB; .env.example names
+# the 24-thread / 125 GiB deploy-host values beside each one.
 
 name: meanul-hailpath
 
