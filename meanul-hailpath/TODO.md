@@ -1730,7 +1730,7 @@ section already gives.
 | 6 | CDC runs | connector and task RUNNING, Redis db 1 and db 2 filled |
 | 7 | Trips reach the warehouse on street geometry | `make verify-positions`: last-hour trips > 0, off-network 0, long two-point 0 |
 | 8 | Quality is structural-clean | `make verify-quality` Q0-Q14 all measured 0 |
-| 9 | Dashboards return rows | `make grafana-check` all panels, `make verify-superset` 20 charts / 6 datasets / 1 dashboard, `make tiles-health` 200 |
+| 9 | Dashboards return rows | `make grafana-check` all panels, `make tiles-health` 200 |
 | 10 | The driver tick is near 3 s | `make logs SVC=hailpath-driver`: `positions_sent` delta divided by `online` is how many ticks fall between two lines. Seconds per tick single-digit, not 35-50 |
 | 11 | Consumers are not wedging | `make lag` moving, dispatch not in the tens of thousands |
 
@@ -1840,8 +1840,8 @@ them).
 
 Then the full suite: `make verify`, `make verify-walk`,
 `make verify-positions` (last-hour trips > 0), `make tiles-health`,
-`make grafana-check`, `make profile`, `make lag`, plus the step-7 quality
-bars and the step-10 Superset check.
+`make grafana-check`, `make stats`, `make lag`, plus the step-7 quality
+bars.
 
 ### What this run owes that step 12c cannot
 
@@ -1866,6 +1866,31 @@ here.
 is that file's own definition of version 1 being closed.
 
 ---
+
+## Closed by decision — Superset dropped, Grafana is the only front end
+
+DROPPED 2026-11-10. Step 10 built the analytical BI tier and it worked:
+six datasets, twenty charts, one dashboard, every metric executing against
+the live warehouse. It is gone anyway, by decision, because two front ends
+over one ClickHouse is two things to provision, verify, document and hold
+inside a memory budget, for one reader. Grafana already served the live
+tier and reads the same tables.
+
+What came out: `g-infra-superset/` entire, its four make targets, the
+`superset` listen block in HAProxy, `PROXY_SUPERSET_PORT`, the two
+`SUPERSET_*` secrets, `test_superset_assets.py`, the asset-count helpers in
+`z-docs/schema_inventory.py`, the 9.6 Superset bar and the `analytic-ui`
+role in ASSESSMENT.md. The component letters now skip `g`; renaming `h`
+through `o` was not worth the churn.
+
+The step-10 and step-12 records below are left exactly as written. They are
+what happened, and twenty charts did return rows on 2026-09-26. Only the
+still-pending step-13 Done-when bars were edited, to stop naming a check
+that no longer exists.
+
+The analytical charts were not ported to Grafana. That is open: the twenty
+chart definitions are recoverable from this repository at `fbd37db^` if any
+of them is worth rebuilding as a Grafana panel.
 
 ## Closed by decision — Grafana reads ClickHouse, never Redis
 
