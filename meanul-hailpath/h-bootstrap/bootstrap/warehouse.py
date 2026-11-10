@@ -1,7 +1,7 @@
 """Loading the generated week into ClickHouse.
 
 The point of this step is that the dashboards have something to show from
-the first minute. Without it, Grafana and Superset would be empty until the
+the first minute. Without it, Grafana would be empty until the
 services had been running long enough to fill them.
 
 Everything here is inserted in batches. ClickHouse is built for that: one

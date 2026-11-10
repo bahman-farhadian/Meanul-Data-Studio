@@ -28,9 +28,9 @@ make prepare               # pull every image, build the eleven, prepare LION + 
 # --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
                            #   volume-perms -> lb-config -> ksqldb-secrets
-                           #   -> infrastructure (a-g, including grafana+tiles)
+                           #   -> infrastructure (a-f, including grafana+tiles)
                            #   -> topics -> schemas -> ksql-ddl -> ch-ddl
-                           #   -> superset-init -> bootstrap -> cdc-register
+                           #   -> bootstrap -> cdc-register
                            #   -> services (i-o)
 make verify                # prove each layer works (includes ksqlDB and /tiles/)
 
@@ -267,10 +267,9 @@ happened, which is the whole reason this is a Makefile and not one
 | 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `hailpath-proxy` starts. |
 | 3 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
 | 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
-| 5 | `up` pieces a–g | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`, Superset. Waited on until every healthcheck passes. Debezium is not in that wait. |
+| 5 | `up` pieces a–f | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`. Waited on until every healthcheck passes. Debezium is not in that wait. |
 | 6 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
 | 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `hailpath.trip_events`. |
-| 8 | `make superset-init` | Superset's own tables, admin user and ClickHouse connection. |
 | 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
 | 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` through the write port. |
 | 11 | `up` pieces i–o | The services, which were waiting on the marker. |
@@ -313,8 +312,7 @@ Two results that look wrong and are not:
 ## Running it
 
 `make urls` lists every store on the host. That is a lab choice so a
-laptop can use DBeaver. Production would publish Grafana (`3000`) and
-Superset (`8088`) only.
+laptop can use DBeaver. Production would publish Grafana (`3000`) only.
 
 ```bash
 make urls          # where to point a browser or a client
@@ -354,7 +352,6 @@ make up-piece PIECE=c   # one Kafka broker, Schema Registry, ksqlDB
 make up-piece PIECE=d   # Debezium Connect               (register the connector after piece h)
 make up-piece PIECE=e   # one ClickHouse                 (then: make ch-ddl)
 make up-piece PIECE=f   # Grafana
-make up-piece PIECE=g   # Superset                       (then: make superset-init)
 make bootstrap
 make cdc-register
 make up-piece PIECE=services

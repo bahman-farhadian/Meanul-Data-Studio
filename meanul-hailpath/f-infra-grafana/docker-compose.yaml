@@ -1,7 +1,7 @@
 # f-infra-grafana — the live view of the platform.
 #
 # Grafana answers "what is happening right now": trips finishing, position
-# events arriving, where demand is. Superset (piece g) is the slower,
+# events arriving, where demand is. It is the only front end: the
 # analytical view. Both read the same ClickHouse cluster.
 #
 # The ClickHouse connection and the Hailpath dashboards are provisioned from

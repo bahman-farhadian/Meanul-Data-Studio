@@ -1,7 +1,7 @@
 # e-infra-clickhouse — one ClickHouse
 
 One server, `hailpath-clickhouse` / `hailpath-clickhouse`. `clickhouse-sink` writes events
-here, `h-bootstrap` loads history here, and Grafana and Superset read
+here, `h-bootstrap` loads history here, and Grafana reads
 here.
 
 Why a second copy on this host is not a second machine:

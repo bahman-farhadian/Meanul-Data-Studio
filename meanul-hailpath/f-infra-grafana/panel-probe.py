@@ -7,8 +7,8 @@ not exist on this ClickHouse version, an alias ClickHouse resolves before the
 column it shadows - each of those is a panel that renders an error to
 whoever opens it first, and nothing in the repository would have said so.
 
-This is the Grafana counterpart of g-infra-superset/init/verify-assets.py,
-which executes every Superset metric for the same reason. It writes a SQL
+A declared panel is not a working one, so every panel's query is run
+rather than merely parsed. It writes a SQL
 script to stdout; the Makefile pipes it into clickhouse-client, which stops
 at the first error - so the last panel name printed is the one that broke.
 

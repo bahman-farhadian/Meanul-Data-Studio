@@ -1,4 +1,4 @@
--- Daily rollups - the grain Superset's trend charts actually want.
+-- Daily rollups - the grain the trend panels actually want.
 -- trip_stats_hourly answers "what happened this hour"; a dashboard asking
 -- "how is this month trending" would otherwise have to sum 720+ hourly
 -- rows itself, every time it renders.

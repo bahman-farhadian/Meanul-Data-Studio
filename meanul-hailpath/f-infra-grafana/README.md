@@ -2,10 +2,9 @@
 
 Grafana is meant to answer **"what is happening right now"** and to chart
 the ClickHouse rollups: trips finishing, position events arriving, where
-demand is, hourly/daily stats. Superset (piece `g`) is a separate SQL Lab
-tool; it is not used by these dashboards. Both *can* read the same
-ClickHouse. This piece brings Grafana up, connects it, and
-provisions the Hailpath dashboards from files.
+demand is, hourly/daily stats. It is the only front end in the stack.
+This piece brings Grafana up, connects it, and provisions the Hailpath
+dashboards from files.
 
 Reached through the entry tier on **port 3000** (`hailpath-proxy`). Grafana itself
 publishes no host port.

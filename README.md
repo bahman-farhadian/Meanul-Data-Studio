@@ -41,10 +41,10 @@ versions over time**; the pattern itself is domain-agnostic:
   managed by a schema registry. Partitions stay, so one key still orders
   on one partition. A SQL client reads the broker through ksqlDB.
 - **OLAP layer (one ClickHouse)** — One MergeTree server fed from Kafka.
-  The names Grafana and Superset query are the tables.
-- **Dashboards** — [Grafana](https://grafana.com/) for live/operational
-  views and [Apache Superset](https://superset.apache.org/) for analytical
-  BI dashboards, both backed by ClickHouse.
+  The names Grafana queries are the tables.
+- **Dashboards** — [Grafana](https://grafana.com/), the only front end,
+  backed by ClickHouse. It serves both the live/operational views and the
+  analytical ones.
 
 Every component, including the Python generator services, runs inside its
 own Docker container — there is no host-level virtual environment; any
@@ -75,7 +75,6 @@ graph LR
 
     subgraph Dashboards ["Dashboards"]
         GF["Grafana"]
-        SS["Superset"]
     end
 
     G1 -->|"writes: profiles, trips, state"| PG
@@ -127,14 +126,14 @@ only. Built images are `hailpath/<job>`. The Docker network is
 
 One HAProxy publishes a stable host port for each store. This is a lab:
 the stores are on the host so a laptop can use DBeaver. Production would
-publish Grafana (`3000`) and Superset (`8088`) only.
+publish Grafana (`3000`) only.
 
 - **5432** -> the one PostgreSQL. Debezium uses this port;
 - **6379** -> the one Redis;
 - **9094** -> the one Kafka broker;
 - **8089** -> ksqlDB, the SQL reader of that broker;
 - **8123 / 9000** -> the one ClickHouse (HTTP / native);
-- **3000 / 8088** -> Grafana / Superset;
+- **3000** -> Grafana;
 - **8404** -> HAProxy stats.
 
 HAProxy is there so a client keeps a stable port. Each port is the one
@@ -172,8 +171,8 @@ healthchecks and `depends_on: condition: service_healthy`:
 
 1. **Infrastructure** starts first: HAProxy (`hailpath-proxy`),
    one PostgreSQL, one Redis, one Kafka broker with Schema Registry and
-   ksqlDB, Debezium Connect, one ClickHouse, Grafana, Superset — each
-   with a healthcheck.
+   ksqlDB, Debezium Connect, one ClickHouse, Grafana — each with a
+   healthcheck.
 2. **Long-running app services** (`driver-service`, `passenger-service`,
    `dispatch-service`, `city-service`, `clickhouse-sink`, `cache-updater`)
    start once the infrastructure they depend on is healthy, and wait in
@@ -258,14 +257,12 @@ graph LR
     CH[("ClickHouse")]
     BOOT["bootstrap"]
     GRAF["Grafana"]
-    SUPER["Superset"]
 
     KAFKA -->|"all topics"| SINK
     REDIS -.->|"enrichment"| SINK
     SINK --> CH
     BOOT -->|"backfill history"| CH
     CH --> GRAF
-    CH --> SUPER
 ```
 
 ### 2.3 PostgreSQL (HLD)
@@ -412,7 +409,7 @@ queryable (the concrete recipes live in `c-infra-kafka/`'s docs):
   and `format_avro_schema_registry_url`.
 - **SQL over the full history**: `clickhouse-sink` lands every event in
   ClickHouse anyway, so anything that ever passed through Kafka is one
-  query away in `clickhouse-client`, Grafana, or Superset.
+  query away in `clickhouse-client` or Grafana.
 
 ```mermaid
 graph TB
@@ -446,8 +443,9 @@ factor is 1.
 ### 2.6 ClickHouse (HLD)
 
 ClickHouse is one server, `hailpath-clickhouse`. `clickhouse-sink` consumes the
-Kafka topics above and writes the warehouse tables that back Grafana
-(live/ops) and Superset (BI). The names those dashboards query
+Kafka topics above and writes the warehouse tables that back Grafana,
+which serves both the live/ops and the analytical views. The names those
+dashboards query
 (`hailpath.trip_events`, `hailpath.driver_positions`, and the rest) are the tables.
 Engines are `MergeTree`, `SummingMergeTree`, `AggregatingMergeTree`, or
 `ReplacingMergeTree`. A second copy on this host would not be a second
@@ -462,12 +460,11 @@ compares the actual duration against the predicted duration cached on
 This keeps those lookups off PostgreSQL, per the cache-first rule in
 Section 1.
 
-**Client entry point:** `clickhouse-sink`, Grafana, and Superset reach
+**Client entry point:** `clickhouse-sink` and Grafana reach
 the server through HAProxy (`hailpath-proxy`) on 8123 (HTTP) and 9000
 (native). Both ports are `nus-ch-s1r1`. `bootstrap` loads history here
 so dashboards have rows after init. Grafana uses the ClickHouse
-datasource plugin. Superset uses `clickhouse-connect` and keeps its own
-metadata in **SQLite on a named volume**.
+datasource plugin.
 
 ```mermaid
 graph TB
@@ -476,13 +473,11 @@ graph TB
     SINK["hailpath-clickhouse-sink"]
     CH[("nus-ch-s1r1")]
     GRAF["Grafana"]
-    SUPER["Superset"]
 
     KAFKA -->|"topics"| SINK
     REDIS -.->|"enrichment"| SINK
     SINK --> CH
     CH --> GRAF
-    CH --> SUPER
 ```
 
 ### 2.7 NYC road network & routing
@@ -577,7 +572,6 @@ meanul-data-studio/
     ├── d-infra-debezium/             # Kafka Connect + Avro converter, PostgreSQL CDC connector
     ├── e-infra-clickhouse/           # one ClickHouse, table DDL, clickhouse-design.md
     ├── f-infra-grafana/              # provisioned ClickHouse datasource + live dashboard
-    ├── g-infra-superset/             # Superset + ClickHouse driver, init one-shot
     ├── h-bootstrap/                  # one-shot init service (starts last, runs once, exits)
     │   ├── bootstrap/                # the stages: migrate, osm, zones, people, history, warehouse
     │   └── migrations/               # SQL schema migrations, applied once in name order
@@ -627,7 +621,6 @@ tested in isolation before the next depends on it:
 | `d-` | `d-infra-debezium` | Needs `a` + `c`: CDC connector turning Postgres WAL into Kafka `cdc.*` topics. |
 | `e-` | `e-infra-clickhouse` | One ClickHouse — testable standalone (DDL, inserts); the design note says why it is one process. |
 | `f-` | `f-infra-grafana` | Datasource/provisioning against `e`; dashboards populate once services produce data. |
-| `g-` | `g-infra-superset` | Datasource/provisioning against `e`; dashboards populate once services produce data. |
 | `h-` | `h-bootstrap` | Needs `a` + `b` running: migrations, OSM import/topology build, seed data, historical week, cache preload. |
 | `i-` | `i-service-cache-updater` | Needs `b` + `d`: consumes `cdc.*`, proves the cache-sync loop end-to-end. |
 | `j-` | `j-service-driver` | Needs `a`, `b`, `c`, `i`: first activity generator — profiles, status, location stream. |
@@ -668,7 +661,7 @@ memory or restart-looping, and `make lag` reports consumer lag.
 
 Two assumptions keep the budget realistic: generation pacing is configured
 for **moderate volumes** (this is a simulation, not Uber-scale traffic),
-and Grafana/Superset serve a **single dashboard user**.
+and Grafana serves a **single dashboard user**.
 
 Storage is not expected to be the first constraint: at the default
 moderate pacing, ClickHouse produces low single-digit GB per day and Kafka
@@ -676,40 +669,46 @@ retention is bounded.
 
 | Component | Containers | CPU ceiling | Memory ceiling |
 | --- | --- | --- | --- |
-| PostgreSQL (`hailpath-postgres`, `shared_buffers` 4 GB) | 1 | 10 | 16 GB |
+| PostgreSQL (`hailpath-postgres`, `shared_buffers` 768 MB) | 1 | 4 | 3 GB |
 | HAProxy (`hailpath-proxy`) | 1 | 0.5 | 128 MB |
-| Redis (`hailpath-redis`) | 1 | 0.5 | 4 GB |
-| Kafka (`hailpath-kafka`, heap 3.5 GB) | 1 | 1.2 | 5.5 GB |
-| Schema Registry | 1 | 0.2 | 1 GB |
-| ksqlDB | 1 | 0.5 | 1.5 GB |
-| Debezium Connect | 1 | 0.4 | 2 GB |
-| ClickHouse (`hailpath-clickhouse`) | 1 | 1.3 | 8 GB |
-| Grafana | 1 | 0.2 | 1 GB |
-| Tiles (`hailpath-tiles`) | 1 | 1.0 | 3 GB |
-| Superset | 1 | 0.6 | 3 GB |
-| `cache-updater` | 1 | 1.5 | 1536 MB |
-| `driver-service` | 1 | 2 | 2048 MB |
-| `passenger-service` | 1 | 1.5 | 1536 MB |
-| `dispatch-service` | 1 | 1.5 | 1024 MB |
-| `city-service` | 1 | 1 | 1024 MB |
-| `clickhouse-sink` | 1 | 2.5 | 2048 MB |
-| `archiver-service` | 1 | 0.5 | 512 MB |
-| `bootstrap` (one-shot, then it exits) | 1 | 20 | 48 GB |
+| Redis (`hailpath-redis`, `maxmemory` 384 MB) | 1 | 0.5 | 640 MB |
+| Kafka (`hailpath-kafka`, heap 768 MB) | 1 | 1 | 1.25 GB |
+| Schema Registry (heap 256 MB) | 1 | 0.2 | 448 MB |
+| ksqlDB (heap 384 MB) | 1 | 0.5 | 640 MB |
+| Debezium Connect (heap 384 MB) | 1 | 0.4 | 640 MB |
+| ClickHouse (`hailpath-clickhouse`, server ceiling 1.2 GiB) | 1 | 1 | 2 GB |
+| Grafana | 1 | 0.2 | 384 MB |
+| Tiles (`hailpath-tiles`) | 1 | 0.5 | 384 MB |
+| `cache-updater` | 1 | 0.5 | 448 MB |
+| `driver-service` | 1 | 1 | 512 MB |
+| `passenger-service` | 1 | 0.75 | 448 MB |
+| `dispatch-service` | 1 | 0.5 | 320 MB |
+| `city-service` | 1 | 0.5 | 320 MB |
+| `clickhouse-sink` | 1 | 0.75 | 512 MB |
+| `archiver-service` | 1 | 0.25 | 256 MB |
+| `bootstrap` (one-shot, then it exits) | 1 | 6 | 2 GB |
 
-Those long-running ceilings are about **27 CPU** and about **55 GB**.
-Memory fits a 120 GB host with room for the OS. The CPU sum is above 20
-because the numbers are caps. PostgreSQL's 10-core cap is the wall during
-a tick; it is not 10 cores reserved all day. Do not set `PG_MEM` below
-16 GB.
+Steady state is **12.19 GiB** across seventeen containers, and the
+bootstrap peak is **11.44 GiB** — the seven app services have not started
+yet while `bootstrap` runs, so the two numbers do not add up. Both fit a
+31 GiB workstation with the OS and a browser still on it.
 
-`bootstrap` is the one-shot that builds the street graph. `.env.example`
-sets `BOOTSTRAP_MEM=48g` and `BOOTSTRAP_CPUS=20`. It exits when init
-finishes. The compose fallback, if that variable is unset, is 24 GB.
+The CPU ceilings sum to about 13.6 on a 12-thread host, which is
+deliberate: `cpus:` is a quota, not a reservation. PostgreSQL's 4-core cap
+is the wall during a tick, not four cores held all day.
 
-Key tuning that makes the budget fit: `KAFKA_HEAP_OPTS` capped on the
-broker, ClickHouse `max_server_memory_usage` set below its container
-limit, PostgreSQL `shared_buffers` at 4 GB inside the 16 GB cap, and
-Superset running in single-worker mode with SQLite metadata.
+`PG_MEM` has a floor the simulation scale cannot lower. LION is all of New
+York at any scale — 172k ways — and pgRouting reads the whole edge list
+into its own memory on every call, so 3 GiB is set by the graph. The
+deploy-host value is 16 GB; `.env.example` names it beside each setting.
+
+Key tuning that makes the budget fit, and the reason each pair has to move
+together: `KAFKA_HEAP_OPTS` under `KAFKA_MEM`, ClickHouse's
+`max_server_memory_usage` under `CH_MEM`, PostgreSQL's `shared_buffers`
+under `PG_MEM`, and Redis's `maxmemory` under `REDIS_MEM`. A container cap
+lowered on its own leaves a process that believes it has room the cgroup
+will not give it, and the kill lands on the container with nothing in its
+log to read.
 
 #### No-swap policy
 
@@ -762,4 +761,4 @@ infrastructure layers can absorb — headroom, not a cliff.
 ### 2.10 Showcase
 
 _Screenshots of the running system (PostgreSQL data, Grafana dashboards,
-Superset dashboards, etc.) will be added here._
+etc.) will be added here._

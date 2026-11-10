@@ -7,8 +7,9 @@
 # something else has happened, and `make up` puts them in that order. Those
 # steps stay as targets so a failed run can resume at the step that failed.
 #
-# Pieces a-h each have a Makefile because they have a check or a one-shot.
-# The services do not: make lag, make errors, and make profile cover them.
+# Pieces a-f and h each have a Makefile because they have a check or a
+# one-shot; g is gone with Superset. The services do not: make lag,
+# make errors and make stats cover them.
 #
 # Full explanation of each piece: README.md. Architecture: ../README.md
 #

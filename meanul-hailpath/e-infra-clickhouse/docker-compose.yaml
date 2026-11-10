@@ -1,6 +1,6 @@
 # e-infra-clickhouse — the analytics database.
 #
-# One ClickHouse, hailpath-clickhouse. Clients (clickhouse-sink, Grafana, Superset)
+# One ClickHouse, hailpath-clickhouse. Clients (clickhouse-sink, Grafana)
 # come in through hailpath-proxy on 8123 (HTTP) and 9000 (native).
 #
 # Standalone test:

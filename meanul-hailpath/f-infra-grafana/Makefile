@@ -65,7 +65,7 @@ tiles-health:
 grafana-check:
 	@python3 f-infra-grafana/check-dashboards.py
 
-# The counterpart of verify-superset, and for the same reason: grafana-check
+# A declared panel is not a working one, which is the reason: grafana-check
 # proves a panel's SQL is well-formed and reads the right tables, but not
 # that it RUNS. A renamed column or a function this ClickHouse version does
 # not have is a panel that renders an error to whoever opens it first.

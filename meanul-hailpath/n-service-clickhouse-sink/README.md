@@ -116,7 +116,7 @@ logs for a memory limit before changing anything here.
 
 ## Where the numbers end up
 
-The hourly summary that Grafana and Superset read is filled automatically by
+The hourly summary that Grafana reads is filled automatically by
 a materialized view inside ClickHouse as these rows land, so nothing here has
 to maintain it. That view runs per node, which is why every query against
 `hailpath.trip_stats_hourly` aggregates — see

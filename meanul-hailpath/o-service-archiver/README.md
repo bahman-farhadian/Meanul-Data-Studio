@@ -35,7 +35,7 @@ geometry, `requested_vehicle_type`, `attributes`). Deliberately: those matter
 while a trip is recent — inspecting a route on a map, debugging a specific
 request — not months later, and carrying them into ClickHouse would only
 move the same storage cost somewhere else instead of removing it. Everything
-the historical/analytical side (Superset, the daily rollups) actually reads
+the historical/analytical side (Grafana, the daily rollups) actually reads
 already survives in `trip_events`.
 
 ## Postgres only

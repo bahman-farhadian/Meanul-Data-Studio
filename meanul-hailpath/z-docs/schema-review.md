@@ -82,7 +82,7 @@ and `requested_vehicle_type` exist in `trips` (migrations `006`, `009`,
 four appears in any `.avsc`, and none appears in any ClickHouse DDL file.
 `trip_lifecycle.avsc` carries 13 fields; those four are not among them.
 
-**Consequence.** The warehouse — which is the *only* thing Superset is
+**Consequence.** The warehouse — which is the *only* thing a dashboard is
 allowed to chart — cannot answer:
 
 - take rate (`fare_final` vs `driver_payout`), the single most important
@@ -417,8 +417,8 @@ no-driver, per zone per hour. One table that makes the funnel a `SELECT`.
 **What we have.** Zero dimension tables in ClickHouse. `driver_id` is a
 `FixedString(11)` and nothing else. A chart that wants driver tier, home
 borough, vehicle make, or zone name has to join back to Postgres — which
-the Superset rule in the plan explicitly forbids for dashboards (the
-Postgres connection is SQL-Lab-only).
+the plan explicitly forbids for dashboards: a panel reads the warehouse,
+never the operational database.
 
 Debezium already publishes `cdc.*` topics for every Postgres table; today
 they feed only Redis via cache-updater, never the warehouse.
@@ -569,7 +569,7 @@ status filter. That belongs in the schema documentation in step 11.
 **What we have.** Migration `008` builds a proper bidirectional
 `trip_ratings` table, and dispatch-service writes it
 (`dispatch_service/ratings.py`). Verified by grep: no Avro record, no
-Kafka topic, no ClickHouse table. Superset cannot chart rating
+Kafka topic, no ClickHouse table. No dashboard can chart rating
 distribution, rating by zone, or rating by tier.
 
 Related and worth naming: `drivers.rating` and `passengers.rating` are

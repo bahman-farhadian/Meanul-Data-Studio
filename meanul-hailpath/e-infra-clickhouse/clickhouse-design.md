@@ -1,6 +1,6 @@
 # ClickHouse on one host
 
-One ClickHouse process, `hailpath-clickhouse` / `hailpath-clickhouse`. Grafana, Superset,
+One ClickHouse process, `hailpath-clickhouse` / `hailpath-clickhouse`. Grafana
 and `clickhouse-sink` query it through HAProxy on 8123 (HTTP) and 9000
 (native). Both ports are that process. `hailpath-proxy` is the stable address.
 

@@ -22,7 +22,7 @@ deliberately: those matter while a trip is recent, not months later, and
 carrying them into ClickHouse would just move the same storage cost
 somewhere else rather than removing it. What is lost on prune is the
 exact geometry and a few operational fields; what survives in trip_events
-is everything the historical/analytical side (Superset, the daily
+is everything the historical/analytical side (Grafana, the daily
 rollups) actually reads.
 """
 
