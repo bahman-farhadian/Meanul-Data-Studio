@@ -72,9 +72,8 @@ roles. A version profile states the directory that fills each role.
 | `cache` | One Redis. The read path for every service that is not the OLTP owner. |
 | `broker` | One Kafka broker in KRaft mode, Schema Registry, ksqlDB, binary Avro. Cross-process events. |
 | `cdc` | Debezium. PostgreSQL WAL → `cdc.*` topics. The only path from OLTP to cache. |
-| `warehouse` | One ClickHouse. Analytics. Grafana and Superset query this, nothing else. |
+| `warehouse` | One ClickHouse. Analytics. Grafana queries this, nothing else. |
 | `live-ui` | Grafana. Operational views on the warehouse tables. |
-| `analytic-ui` | Superset. Analytical BI on the same warehouse. Empty panels before data are fine; an HTTP error is not. |
 | `bootstrap` | One-shot: migrations, reference data, history, warehouse backfill, bootstrap-done marker. Then it exits. |
 | `cache-updater` | Applies `cdc.*` to Redis. Idempotent last-write-wins. Does **not** wait for bootstrap. |
 | `generator` | Long-running Faker service. One process, many simulated entities. Writes profiles/state to OLTP and high-frequency events to the broker. |
@@ -258,7 +257,7 @@ must see that walk. A dashboard is not the proof.
 | M3 | Side-effect order | Durable OLTP write and the cache write a consumer needs both happen before the broker announce (B7) | Announce first → empty cache → generator falls off the constraint surface | Coordinator source; M1 live |
 | M4 | Empty window is not a pass | A last-window count of 0 means wait and re-run. Off-network = 0 with trips = 0 is not a pass | Treating a silent window as green | Version profile |
 | M5 | Playhead on the broker | High-frequency telemetry is Avro on a declared topic → warehouse. OLTP last-known is a timer, not the stream | Per-tick OLTP inserts | S9; warehouse freshness |
-| M6 | Dashboards are not the score | Live-ui / analytic-ui health is process + HTTP + “queries the warehouse tables”. Generation quality is G* and M* | Screenshot of Grafana | Version `grafana-health` / dashboard check |
+| M6 | Dashboards are not the score | Live-ui health is process + HTTP + “queries the warehouse tables”. Generation quality is G* and M* | Screenshot of Grafana | Version `grafana-health` / dashboard check |
 
 A version that has a map additionally scores same-origin tiles (HTTP 200
 `image/png` through the load balancer, no third-party tile CDN). A version
@@ -281,7 +280,6 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | `cdc` | `d-infra-debezium` |
 | `warehouse` | `e-infra-clickhouse` |
 | `live-ui` | `f-infra-grafana` (Grafana **and** `hailpath-tiles`) |
-| `analytic-ui` | `g-infra-superset` |
 | `bootstrap` | `h-bootstrap` |
 | `cache-updater` | `i-service-cache-updater` |
 | `generator` | `j-service-driver`, `k-service-passenger` |
@@ -412,15 +410,6 @@ Grafana plus `hailpath-tiles` (piece f is both). Same-origin OSM at `/tiles/`.
 
 `make up` starts `grafana` and `tiles` (`PIECE_F`). `make destroy` keeps
 `hailpath-tiles-data`. `make nuke` is what deletes the MBTiles.
-
-#### `g-infra-superset`
-
-Analytical BI on the same ClickHouse cluster. Empty panels before data are
-fine; an HTTP error is not.
-
-| Bar | Pass | Fail | Instrument |
-| --- | --- | --- | --- |
-| Health | `/health` OK | Error page | `make superset-health` |
 
 #### `h-bootstrap`
 
@@ -606,7 +595,7 @@ Instrument: `make tiles-health`; `make grafana-check`.
 
 ### 9.6 Closed sets
 
-These bars already have Makefile targets. This section names the pass and the fail. The names are read from `z-config/quality.sql`, `c-infra-kafka/ksql/*.sql`, and `g-infra-superset/assets`. `test_assessment_standard.py` fails when this section drifts from those files.
+These bars already have Makefile targets. This section names the pass and the fail. The names are read from `z-config/quality.sql` and `c-infra-kafka/ksql/*.sql`. `test_assessment_standard.py` fails when this section drifts from those files.
 
 #### ksqlDB
 
@@ -626,14 +615,6 @@ Instrument: `make verify-ksqldb`.
 Pass: every name above is registered, and every persistent query is RUNNING. `ksql.query.pull.stream.enabled` is `true`, `ksql.query.pull.table.scan.enabled` is `true`, and `ksql.streams.auto.offset.reset` is `earliest`.
 
 Fail: a declared name is missing, a query is not RUNNING, or one of those settings differs. A server that only answers `/info` is not a pass.
-
-#### Superset
-
-Instrument: `make verify-dash`, which runs `make verify-superset`.
-
-Pass: `g-infra-superset/assets` holds 20 charts, 6 datasets, and 1 dashboard, and `make verify-superset` exits 0.
-
-Fail: the counts differ from the files on disk, a chart points at a dataset outside the bundle, or a metric does not run.
 
 #### Quality
 
@@ -690,10 +671,8 @@ under `meanul-hailpath/`):
 | `make grafana-health` | `f-infra-grafana` |
 | `make tiles-health` | `f-infra-grafana`, §9.5 |
 | `make grafana-check` | `f-infra-grafana`, §9.5 |
-| `make superset-health` | `g-infra-superset` |
 | `make verify-data` | S1, G1, G3, G4, `h-bootstrap` |
-| `make verify-dash` | grafana + tiles + superset |
-| `make verify-superset` | §9.6 Superset assets |
+| `make verify-dash` | grafana + tiles |
 | `make verify-quality` | Q0–Q14, `z-config/quality.sql` |
 | `make verify-positions` | M1, M3, `l-service-dispatch`, §9.4 |
 | `make verify-walk` | S5, M1 unit, `j-service-driver` |

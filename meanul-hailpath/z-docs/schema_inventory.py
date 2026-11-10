@@ -16,9 +16,6 @@ CH_DDL = HAILPATH / "e-infra-clickhouse" / "ddl"
 TOPICS = HAILPATH / "c-infra-kafka" / "topics" / "topics.tsv"
 KSQL = HAILPATH / "c-infra-kafka" / "ksql"
 QUALITY = HAILPATH / "z-config" / "quality.sql"
-CHARTS = HAILPATH / "g-infra-superset" / "assets" / "charts"
-DATASETS = HAILPATH / "g-infra-superset" / "assets" / "datasets"
-DASHBOARDS = HAILPATH / "g-infra-superset" / "assets" / "dashboards"
 
 CREATE = re.compile(
     r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:hailpath\.)?([a-z_][a-z0-9_]*)"
@@ -227,18 +224,6 @@ def quality_bars() -> list[tuple[str, str]]:
     return bars
 
 
-def chart_count() -> int:
-    return len(list(CHARTS.glob("*.yaml")))
-
-
-def dataset_count() -> int:
-    return len(list(DATASETS.rglob("*.yaml")))
-
-
-def dashboard_count() -> int:
-    return len(list(DASHBOARDS.glob("*.yaml")))
-
-
 def _md_cell(value: str) -> str:
     return value.replace("|", "\\|")
 
@@ -344,7 +329,3 @@ if __name__ == "__main__":
     write_docs()
     print(f"oltp {len(oltp_tables())} warehouse {len(warehouse_tables())}")
     print(f"bars {len(quality_bars())} ksql {len(ksql_objects())}")
-    print(
-        f"charts {chart_count()} datasets {dataset_count()} "
-        f"dashboards {dashboard_count()}"
-    )

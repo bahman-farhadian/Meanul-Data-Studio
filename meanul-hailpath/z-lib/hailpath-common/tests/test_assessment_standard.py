@@ -141,6 +141,9 @@ def test_make_steps_exist_and_demos_are_gone():
     gone = [
         "failover-pg", "failover-redis", "patronictl", "kafka-dirs",
         "superset-import", "help-all", "config", "ch-secrets",
+        # Superset was dropped - Grafana is the only front end. These four
+        # came out with g-infra-superset/Makefile and must not come back.
+        "superset-init", "superset-assets", "superset-health", "verify-superset",
     ]
     still = sorted(name for name in gone if name in targets)
     assert still == [], f"removed make targets are still defined: {still}"
@@ -148,7 +151,7 @@ def test_make_steps_exist_and_demos_are_gone():
     # Steps make up and make prepare call. pull, build, and preflight too.
     resume = [
         "volume-perms", "lb-config", "ksqldb-secrets",
-        "topics", "schemas", "ksql-ddl", "ch-ddl", "superset-init", "bootstrap",
+        "topics", "schemas", "ksql-ddl", "ch-ddl", "bootstrap",
         "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
         "lion-prepare", "zone-demand-prepare", "tiles-prepare",
         "grafana-plugin-prepare", "avro-converter-prepare", "volume-quotas",
@@ -222,7 +225,6 @@ def test_studio_contract_sections_and_roles():
         "`cdc`",
         "`warehouse`",
         "`live-ui`",
-        "`analytic-ui`",
         "`bootstrap`",
         "`cache-updater`",
         "`generator`",
@@ -1134,11 +1136,11 @@ def test_dictionary_and_erd_match_the_shipped_schema():
 
 
 def test_closed_sets_are_written_in_the_contract():
-    """ksqlDB, Superset, and the quality bars have a pass line on paper.
+    """ksqlDB and the quality bars have a pass line on paper.
 
     The strings come from the files the Makefile targets already read.
-    A renamed stream, a new chart, or an edited pass line fails until
-    §9.6 is updated to match.
+    A renamed stream or an edited pass line fails until §9.6 is updated
+    to match.
     """
     inv = _inventory()
     section = _closed_sets()
@@ -1153,12 +1155,6 @@ def test_closed_sets_are_written_in_the_contract():
     for kind, name in inv.ksql_objects():
         assert name in section, name
         assert kind in section, kind
-
-    assert f"{inv.chart_count()} charts" in section
-    assert f"{inv.dataset_count()} datasets" in section
-    dashboards = inv.dashboard_count()
-    word = "dashboard" if dashboards == 1 else "dashboards"
-    assert f"{dashboards} {word}" in section
 
     checker = (HAILPATH / "c-infra-kafka" / "ksql" / "check-ksql.py").read_text()
     block = re.search(r"CLIENT_SETTINGS = \{([^}]+)\}", checker)
@@ -1229,9 +1225,9 @@ def test_the_old_project_name_is_gone():
 def _buildable_services() -> dict[str, dict]:
     """Every compose service with a `build:`, by service name.
 
-    Parsed rather than grepped because `g-infra-superset` declares its
-    build once as a YAML anchor and the service refers to it by alias -
-    a line-based match sees no `build:` under that service at all.
+    Parsed rather than grepped because a component may declare its build
+    once as a YAML anchor and have the service refer to it by alias - a
+    line-based match sees no `build:` under that service at all.
     """
     import yaml
 
@@ -1314,10 +1310,11 @@ def test_build_reaches_the_init_profile():
     assert "--profile init" in build.group(1), build.group(1)
 
     services = _buildable_services()
-    # Eleven services build, but superset-init and superset-verify reuse
-    # the image hailpath-superset builds, so nine tags come out.
+    # One tag per buildable service now that g-infra-superset is gone: it
+    # was the only component whose init and verify one-shots reused another
+    # service's image, which is why nine services used to yield eight tags.
     images = {spec["image"].split(":")[0] for spec in services.values()}
-    assert len(images) == 9, sorted(images)
+    assert len(images) == 8, sorted(images)
     assert "hailpath/bootstrap" in images, sorted(images)
 
     # The tags only a profiled service carries are the ones a build

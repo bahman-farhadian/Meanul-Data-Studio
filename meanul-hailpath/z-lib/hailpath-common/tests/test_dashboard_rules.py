@@ -151,10 +151,7 @@ def test_utilization_panels_say_the_seed_has_no_idle_time() -> None:
         panel = next(p for p in dash["panels"] if p["id"] == panel_id)
         return panel.get("description") or ""
 
-    superset = (
-        HAILPATH / "g-infra-superset" / "assets" / "charts" / "utilization-trend.yaml"
-    ).read_text()
-    for text in (description(history, 6), description(driver, 5), superset):
+    for text in (description(history, 6), description(driver, 5)):
         assert note in text, text
 
 
