@@ -15,7 +15,7 @@
 name: e-infra-clickhouse
 
 x-ch-node: &ch-node
-  image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:26.8.2.7}
+  image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:26.8.38.9}
   restart: unless-stopped
   cpus: ${CH_CPUS:-1.3}
   mem_limit: ${CH_MEM:-8g}
@@ -80,7 +80,7 @@ services:
   # statement uses IF NOT EXISTS, so re-running is safe and is how a newly
   # added DDL file is rolled out.
   ch-ddl-init:
-    image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:26.8.2.7}
+    image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:26.8.38.9}
     profiles: ["init"]
     cpus: ${CH_DDL_CPUS:-0.25}
     mem_limit: ${CH_DDL_MEM:-512m}

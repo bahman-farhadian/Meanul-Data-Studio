@@ -86,7 +86,7 @@ HAProxy **8123** (HTTP) and **9000** (native) both go to
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone. |
-| `CH_SERVER_IMAGE` | `clickhouse/clickhouse-server:26.8.2.7` | Server image, also used by the DDL one-shot. |
+| `CH_SERVER_IMAGE` | `clickhouse/clickhouse-server:26.8.38.9` | Server image, also used by the DDL one-shot. |
 | `CH_USER` | `hailpath` | Login every client uses. |
 | `CH_PASSWORD` | required | Created by the image on first start. |
 | `CH_CPUS` | `1.3` | CPU ceiling. Set in the root `.env`. |
