@@ -177,13 +177,13 @@ def test_make_steps_exist_and_demos_are_gone():
     assert "PGHOST: hailpath-postgres" in compose
     assert 'profiles: ["init"]' in compose
     grafana = (HAILPATH / "f-infra-grafana" / "docker-compose.yaml").read_text()
-    assert "grafana/grafana:12.4.10" in grafana
+    assert "grafana/grafana:12.4.15" in grafana
     assert "\n    build:\n" not in grafana
     assert not (HAILPATH / "f-infra-grafana" / "Dockerfile").exists()
     debezium_df = (HAILPATH / "d-infra-debezium" / "Dockerfile")
     assert not debezium_df.exists()
     debezium = (HAILPATH / "d-infra-debezium" / "docker-compose.yaml").read_text()
-    assert "quay.io/debezium/connect:3.6.2.Final" in debezium
+    assert "quay.io/debezium/connect:3.6.4.Final" in debezium
     assert "confluent-avro-converter" in debezium
 
 
