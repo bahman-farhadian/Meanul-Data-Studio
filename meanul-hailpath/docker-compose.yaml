@@ -123,7 +123,7 @@ services:
       - backbone
 
   hailpath-proxy:
-    image: ${HAPROXY_IMAGE:-haproxy:3.4.4}
+    image: ${HAPROXY_IMAGE:-haproxy:3.4.7}
     container_name: hailpath-proxy
     hostname: hailpath-proxy
     restart: unless-stopped
