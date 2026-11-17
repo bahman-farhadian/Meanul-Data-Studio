@@ -27,7 +27,7 @@ services:
   hailpath-debezium:
     # Official Connect. Confluent's Avro converter is a set of jars
     # `make avro-converter-prepare` downloads once and this mount adds.
-    image: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.6.2.Final}
+    image: ${CONNECT_IMAGE:-quay.io/debezium/connect:3.6.4.Final}
     container_name: hailpath-debezium
     hostname: hailpath-debezium
     restart: unless-stopped
@@ -78,7 +78,7 @@ services:
   # to apply it. The database password is injected here and never written
   # into the committed JSON.
   connector-register:
-    image: ${PYTHON_IMAGE:-python:3.13.15-slim}
+    image: ${PYTHON_IMAGE:-python:3.13.18-slim}
     profiles: ["init"]
     cpus: ${CONNECTOR_REGISTER_CPUS:-0.25}
     mem_limit: ${CONNECTOR_REGISTER_MEM:-256m}

@@ -118,9 +118,9 @@ gate nothing that isn't already open one layer down.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.2.Final` | Base image for the build. |
-| `AVRO_CONVERTER_VERSION` | `8.3.1` | Confluent Avro converter version; keep it in step with the Schema Registry. |
-| `PYTHON_IMAGE` | `python:3.13.15-slim` | Image used by the registration one-shot. |
+| `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.4.Final` | Base image for the build. |
+| `AVRO_CONVERTER_VERSION` | `8.3.3` | Confluent Avro converter version; keep it in step with the Schema Registry. |
+| `PYTHON_IMAGE` | `python:3.13.18-slim` | Image used by the registration one-shot. |
 | `CDC_PG_HOST` / `CDC_PG_PORT` | `hailpath-proxy` / `5432` | The one Postgres, on the write port. |
 | `CDC_PG_DATABASE` / `CDC_PG_USER` | `hailpath` / `postgres` | Database and login. The user must be allowed to read the WAL. |
 | `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
