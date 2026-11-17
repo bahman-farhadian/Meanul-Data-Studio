@@ -65,7 +65,7 @@ services:
   # (/tiles/... on port 3000); HAProxy strips the prefix. Data is the
   # Planetiler MBTiles from `make tiles-prepare`.
   hailpath-tiles:
-    image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v5.6.0}
+    image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v5.7.0}
     container_name: hailpath-tiles
     hostname: hailpath-tiles
     restart: unless-stopped

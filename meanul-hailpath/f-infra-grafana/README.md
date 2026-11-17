@@ -70,8 +70,8 @@ directory and run `make grafana-plugin-prepare` again.
 | `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` | `4.23.5` | Plugin version installed by `make grafana-plugin-prepare`. |
 | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | `admin` / — (required) | The Grafana login. |
 | `CH_USER` / `CH_PASSWORD` | `hailpath` / — (required) | How Grafana logs in to ClickHouse; must match `e-infra-clickhouse/.env`. |
-| `TILESERVER_IMAGE` | `maptiler/tileserver-gl:v5.6.0` | Serves PNG tiles from `nyc.mbtiles`. |
-| `JAVA_JRE_IMAGE` | `eclipse-temurin:21-jre-jammy` | Runs Planetiler (Docker Hub, not ghcr). |
+| `TILESERVER_IMAGE` | `maptiler/tileserver-gl:v5.7.0` | Serves PNG tiles from `nyc.mbtiles`. |
+| `JAVA_JRE_IMAGE` | `eclipse-temurin:21-jre-noble` | Runs Planetiler (Docker Hub, not ghcr). |
 | `PLANETILER_JAR_URL` | GitHub `v0.8.4` | The Planetiler jar `make tiles-prepare` fetches. |
 | `GEOFABRIK_NY_PBF_URL` | Geofabrik `us/new-york` | OSM extract for the map. |
 | `WATER_POLYGONS_URL` / `NATURAL_EARTH_URL` / `LAKE_CENTERLINES_URL` | osmdata / naciscdn / acalcutt | Host-curl extras. Planetiler itself does not download. |

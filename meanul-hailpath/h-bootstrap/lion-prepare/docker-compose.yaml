@@ -92,7 +92,7 @@ services:
       context: ../..
       dockerfile: h-bootstrap/lion-prepare/Dockerfile
       args:
-        DEBIAN_IMAGE: ${DEBIAN_IMAGE:-debian:trixie-20260824-slim}
+        DEBIAN_IMAGE: ${DEBIAN_IMAGE:-debian:trixie-20261104-slim}
         PG_IMAGE: ${PG_IMAGE:-pgrouting/pgrouting:18-3.6-3.8.0}
     depends_on:
       lion-pg:
