@@ -73,7 +73,7 @@
           "queryType": "table",
           "rawSql": "SELECT\n    event_time,\n    status,\n    driver_id,\n    rider_id,\n    pickup_zone_id,\n    dropoff_zone_id,\n    route_km,\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    surge_multiplier,\n    hotspot_score,\n    is_hotspot_trip,\n    fare_estimate,\n    fare_final\nFROM hailpath.trip_events\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\nLIMIT 12\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -108,7 +108,7 @@
           "queryType": "table",
           "rawSql": "SELECT event_time, lat, lon, accuracy_m, zone_id\nFROM hailpath.rider_positions\nWHERE trip_id = '${trip_id}'\nORDER BY event_time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -195,7 +195,7 @@
           "queryType": "table",
           "rawSql": "SELECT\n    predicted_duration_s,\n    actual_duration_s,\n    duration_delta_s,\n    fare_estimate,\n    fare_final\nFROM hailpath.trip_events\nWHERE trip_id = '${trip_id}'\n  AND status = 'completed'\nORDER BY event_time DESC\nLIMIT 1\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {

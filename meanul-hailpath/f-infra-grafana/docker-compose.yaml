@@ -23,7 +23,7 @@ services:
   hailpath-grafana:
     # Official Grafana. The ClickHouse plugin is installed once by
     # `make grafana-plugin-prepare` into a host directory and mounted below.
-    image: ${GRAFANA_IMAGE:-grafana/grafana:12.4.10}
+    image: ${GRAFANA_IMAGE:-grafana/grafana:12.4.15}
     container_name: hailpath-grafana
     hostname: hailpath-grafana
     restart: unless-stopped

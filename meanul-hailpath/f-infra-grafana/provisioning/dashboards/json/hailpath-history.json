@@ -51,7 +51,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    hour AS time,\n    sum(completed_trips) AS completed_trips\nFROM hailpath.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -102,7 +102,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    hour AS time,\n    sum(revenue) AS revenue\nFROM hailpath.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -154,7 +154,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    toDateTime(day) AS time,\n    sum(completed_trips) AS completed_trips\nFROM hailpath.trip_stats_daily\nWHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)\nGROUP BY day\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -205,7 +205,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    toDateTime(day) AS time,\n    sum(revenue) AS revenue\nFROM hailpath.trip_stats_daily\nWHERE day >= toDate($__fromTime) AND day <= toDate($__toTime)\nGROUP BY day\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -257,7 +257,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    hour AS time,\n    quantileMerge(0.5)(p50_state) AS p50_s,\n    quantileMerge(0.95)(p95_state) AS p95_s\nFROM hailpath.trip_duration_percentiles_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -308,7 +308,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    hour AS time,\n    sum(busy_ticks) / sum(online_ticks) AS utilization\nFROM hailpath.driver_utilization_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(online_ticks) > 0\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -379,7 +379,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    hour AS time,\n    uniqMerge(driver_state) AS drivers,\n    uniqMerge(rider_state) AS riders\nFROM hailpath.active_entities_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -430,7 +430,7 @@
           "queryType": "timeseries",
           "rawSql": "SELECT\n    hour AS time,\n    sum(overrun_trips) / sum(completed_trips) AS overrun_share\nFROM hailpath.trip_stats_hourly\nWHERE $__timeFilter(hour)\nGROUP BY hour\nHAVING sum(completed_trips) > 0\nORDER BY time\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -501,7 +501,7 @@
           "queryType": "table",
           "rawSql": "SELECT\n    pickup_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue,\n    sum(route_km_total) AS route_km\nFROM hailpath.trip_stats_daily\nWHERE day = today()\nGROUP BY pickup_zone_id\nORDER BY completed_trips DESC\nLIMIT 15\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {
@@ -536,7 +536,7 @@
           "queryType": "table",
           "rawSql": "SELECT\n    pickup_zone_id,\n    dropoff_zone_id,\n    sum(completed_trips) AS completed_trips,\n    sum(revenue) AS revenue\nFROM hailpath.od_matrix_daily\nWHERE day = today()\nGROUP BY pickup_zone_id, dropoff_zone_id\nORDER BY completed_trips DESC\nLIMIT 15\n",
           "refId": "A",
-          "pluginVersion": "4.21.2"
+          "pluginVersion": "4.23.5"
         }
       ],
       "fieldConfig": {

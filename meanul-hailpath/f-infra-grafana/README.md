@@ -66,8 +66,8 @@ directory and run `make grafana-plugin-prepare` again.
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `GRAFANA_IMAGE` | `grafana/grafana:12.4.10` | Base image. |
-| `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` | `4.21.2` | Plugin version installed by `make grafana-plugin-prepare`. |
+| `GRAFANA_IMAGE` | `grafana/grafana:12.4.15` | Base image. |
+| `GRAFANA_CLICKHOUSE_PLUGIN_VERSION` | `4.23.5` | Plugin version installed by `make grafana-plugin-prepare`. |
 | `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | `admin` / — (required) | The Grafana login. |
 | `CH_USER` / `CH_PASSWORD` | `hailpath` / — (required) | How Grafana logs in to ClickHouse; must match `e-infra-clickhouse/.env`. |
 | `TILESERVER_IMAGE` | `maptiler/tileserver-gl:v5.6.0` | Serves PNG tiles from `nyc.mbtiles`. |

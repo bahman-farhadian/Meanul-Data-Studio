@@ -11,9 +11,9 @@ val() {
 
 root="$(val HAILPATH_VOLUME_ROOT)"
 image="$(val GRAFANA_IMAGE)"
-image="${image:-grafana/grafana:12.4.10}"
+image="${image:-grafana/grafana:12.4.15}"
 ver="$(val GRAFANA_CLICKHOUSE_PLUGIN_VERSION)"
-ver="${ver:-4.21.2}"
+ver="${ver:-4.23.5}"
 # Every other download in this repository runs on the host: lion-fetch,
 # tlc-*-fetch, tiles/prepare.sh and converter-prepare.sh all use host curl,
 # and the image builds already default to BUILD_NETWORK=host. This one
