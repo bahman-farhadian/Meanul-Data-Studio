@@ -52,7 +52,7 @@ safe to evict. Persistence is AOF only (`save ""`).
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `TZ` | `UTC` | Container timezone. |
-| `REDIS_IMAGE` | `redis:8.10.1` | Pinned image. |
+| `REDIS_IMAGE` | `redis:8.10.3` | Pinned image. |
 | `REDIS_PASSWORD` | required | `requirepass`. |
 | `REDIS_MAXMEMORY` | `2560mb` | Dataset ceiling, below the container limit. |
 | `REDIS_HOST` | `hailpath-redis` | Address clients open. The root example sets `hailpath-redis`. |
