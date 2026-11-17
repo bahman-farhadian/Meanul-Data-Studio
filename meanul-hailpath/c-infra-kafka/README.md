@@ -103,9 +103,9 @@ directory.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `KAFKA_IMAGE` | `apache/kafka:4.3.1` | Broker image. |
-| `SCHEMA_REGISTRY_IMAGE` | `confluentinc/cp-schema-registry:8.3.1` | Schema Registry. |
-| `KSQLDB_IMAGE` | `confluentinc/cp-ksqldb-server:8.3.1` | ksqlDB server. |
+| `KAFKA_IMAGE` | `apache/kafka:4.3.2` | Broker image. |
+| `SCHEMA_REGISTRY_IMAGE` | `confluentinc/cp-schema-registry:8.3.3` | Schema Registry. |
+| `KSQLDB_IMAGE` | `confluentinc/cp-ksqldb-server:8.3.3` | ksqlDB server. |
 | `KSQLDB_ADMIN_USER` | `admin` | REST login. |
 | `KAFKA_CLUSTER_ID` | in `.env.example` | Storage identity. Do not change it after the first format. |
 | `KAFKA_RETENTION_HOURS` | `48` | Default retention. |

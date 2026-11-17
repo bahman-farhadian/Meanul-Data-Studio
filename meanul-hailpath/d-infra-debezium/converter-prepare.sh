@@ -11,7 +11,7 @@ val() {
 
 root="$(val HAILPATH_VOLUME_ROOT)"
 ver="$(val AVRO_CONVERTER_VERSION)"
-ver="${ver:-8.3.1}"
+ver="${ver:-8.3.3}"
 
 if [ -z "$root" ]; then
   printf '  FAIL    HAILPATH_VOLUME_ROOT is not set in %s\n' "${env_file}" >&2

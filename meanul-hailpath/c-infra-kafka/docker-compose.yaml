@@ -23,7 +23,7 @@
 name: c-infra-kafka
 
 x-kafka-broker: &kafka-broker
-  image: ${KAFKA_IMAGE:-apache/kafka:4.3.1}
+  image: ${KAFKA_IMAGE:-apache/kafka:4.3.2}
   restart: unless-stopped
   cpus: ${KAFKA_CPUS:-1.2}
   mem_limit: ${KAFKA_MEM:-5.5g}
@@ -122,7 +122,7 @@ services:
   # that travel inside each message. It stores them in a Kafka topic, so it
   # holds no state of its own and can be restarted freely.
   hailpath-schema-registry:
-    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.3.1}
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.3.3}
     container_name: hailpath-schema-registry
     hostname: hailpath-schema-registry
     restart: unless-stopped
@@ -174,7 +174,7 @@ services:
   # once the brokers are healthy. Re-runs are safe - existing topics are
   # skipped, so this is also how a newly added topic is rolled out.
   kafka-topics-init:
-    image: ${KAFKA_IMAGE:-apache/kafka:4.3.1}
+    image: ${KAFKA_IMAGE:-apache/kafka:4.3.2}
     profiles: ["init"]
     cpus: ${KAFKA_TOPICS_CPUS:-0.25}
     mem_limit: ${KAFKA_TOPICS_MEM:-512m}
@@ -199,7 +199,7 @@ services:
   # It is worth doing on its own account. Without this, the contract for a
   # topic is whatever the first producer to connect happened to send.
   schema-init:
-    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.3.1}
+    image: ${SCHEMA_REGISTRY_IMAGE:-confluentinc/cp-schema-registry:8.3.3}
     profiles: ["init"]
     cpus: ${SCHEMA_INIT_CPUS:-0.25}
     mem_limit: ${SCHEMA_INIT_MEM:-512m}
@@ -257,7 +257,7 @@ services:
   # - Confluent's own docs still show the old one; confirmed by testing
   # against this exact pinned image, not assumed.
   hailpath-ksqldb:
-    image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
+    image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.3}
     container_name: hailpath-ksqldb
     hostname: hailpath-ksqldb
     restart: unless-stopped
@@ -354,7 +354,7 @@ services:
   # and it is the only image here with a python3 that can reach the REST
   # API. Nothing of the server runs - only the script.
   ksql-init:
-    image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.1}
+    image: ${KSQLDB_IMAGE:-confluentinc/cp-ksqldb-server:8.3.3}
     profiles: ["init"]
     cpus: ${KSQL_INIT_CPUS:-0.25}
     mem_limit: ${KSQL_INIT_MEM:-512m}
