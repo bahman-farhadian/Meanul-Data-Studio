@@ -65,9 +65,8 @@ result is in `/var/lib/clickhouse/preprocessed_configs/config.xml`.
 
 ## Ports
 
-HAProxy **8123** (HTTP) and **9000** (native) both go to
-`hailpath-clickhouse`. Clients use
-`CH_HOST=hailpath-proxy`.
+**8123** (HTTP) and **9000** (native) are `hailpath-clickhouse`. Clients use
+`CH_HOST=hailpath-clickhouse`.
 
 ## Files
 

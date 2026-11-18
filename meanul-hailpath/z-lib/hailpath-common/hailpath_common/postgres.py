@@ -1,8 +1,8 @@
-"""Talking to PostgreSQL through the entry tier.
+"""Talking to PostgreSQL.
 
 Two rules the whole stack follows:
 
-1. Clients use the proxy, not the container name. There is one PostgreSQL
+1. Clients use `hailpath-postgres`, not a proxy. There is one PostgreSQL
    and one listen. Debezium uses that port.
 2. **Only the components that own data come here at all.** Everything else
    reads from Redis. See section 1 of the main README.
@@ -28,11 +28,11 @@ _read_pool: ConnectionPool | None = None
 
 
 def _connection_string(port: int) -> str:
-    host = config.optional("PG_HOST", "hailpath-proxy")
+    host = config.optional("PG_HOST", "hailpath-postgres")
     database = config.optional("PG_DATABASE", "postgres")
     user = config.optional("PG_USER", "postgres")
     password = config.required("PG_PASSWORD")
-    # connect_timeout keeps a dead proxy from turning into a hung service.
+    # connect_timeout keeps a dead Postgres from turning into a hung service.
     # statement_timeout is the same idea for a single query: pgr_ksp
     # (hailpath_common.routing.route) is a real graph search over a real street
     # network, and confirmed live, some specific call can run away and

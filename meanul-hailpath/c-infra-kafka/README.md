@@ -14,7 +14,7 @@ partition. `auto.create.topics.enable` is false. Default retention is
 48 hours. ClickHouse is where history lives.
 
 Containers on `hailpath-net` use `hailpath-kafka:9092`. From the host,
-HAProxy publishes the one broker on `KAFKA_ADVERTISED_HOST:9094`.
+the broker publishes `KAFKA_ADVERTISED_HOST:9094`.
 
 `make init` fills that hostname from this machine's default-route
 interface. Override it if the guess is wrong.
@@ -24,7 +24,7 @@ interface. Override it if the guess is wrong.
 ksqlDB is the SQL reader. DBeaver speaks its REST API, not the raw
 broker protocol.
 
-| | hailpath-proxy |
+| | host |
 | --- | --- |
 | ksqlDB | `<host>:8089` |
 
@@ -56,7 +56,7 @@ One `.avsc` per declared topic.
 verify-schemas` reads them back and compares namespace, record name and
 field list with the file on disk, so a Registry still holding an older
 copy fails instead of merely answering. Both run inside `schema-init`:
-port 8081 is not published through `hailpath-proxy`, and the Registry
+port 8081 is not published on the host, and the Registry
 image ships neither curl nor wget.
 
 ```bash

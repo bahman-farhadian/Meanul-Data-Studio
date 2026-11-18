@@ -141,6 +141,7 @@ def test_make_steps_exist_and_demos_are_gone():
     gone = [
         "failover-pg", "failover-redis", "patronictl", "kafka-dirs",
         "superset-import", "help-all", "config", "ch-secrets",
+        "lb-config",
         # Superset was dropped - Grafana is the only front end. These four
         # came out with g-infra-superset/Makefile and must not come back.
         "superset-init", "superset-assets", "superset-health", "verify-superset",
@@ -150,7 +151,7 @@ def test_make_steps_exist_and_demos_are_gone():
     assert "help-all" not in root
     # Steps make up and make prepare call. pull, build, and preflight too.
     resume = [
-        "volume-perms", "lb-config", "ksqldb-secrets",
+        "volume-perms", "ksqldb-secrets",
         "topics", "schemas", "ksql-ddl", "ch-ddl", "bootstrap",
         "cdc-register", "lion-fetch", "tlc-zones-fetch", "tlc-trips-fetch",
         "lion-prepare", "zone-demand-prepare", "tiles-prepare",
@@ -192,7 +193,6 @@ def test_live_walk_and_tile_terms_are_in_the_sources():
     ids = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "ids.py").read_text()
     redis = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "redis_client.py").read_text()
     driver = (HAILPATH / "j-service-driver" / "driver_service" / "__main__.py").read_text()
-    haproxy = (HAILPATH / "z-config" / "haproxy" / "haproxy.cfg.template").read_text()
     tiles_make = (HAILPATH / "f-infra-grafana" / "Makefile").read_text()
 
     assert "drv-" in ids and "drv-" in text
@@ -202,8 +202,8 @@ def test_live_walk_and_tile_terms_are_in_the_sources():
     assert "trip_active" in redis and "trip_active" in text
     assert "path_chord" in driver and "path_p50" in driver
     assert "path_chord" in text and "path_p50" in text
-    assert "/tiles/" in haproxy and "/tiles/" in text
-    assert "tiles-health" in tiles_make and "make tiles-health" in text
+    assert "hailpath-tiles" in tiles_make and "tiles-health" in tiles_make
+    assert "make tiles-health" in text
     assert "image/png" in tiles_make and "image/png" in text
 
 
@@ -629,25 +629,25 @@ def test_one_redis_and_no_sentinel():
     assert "sentinel-" not in root
 
 
-def test_one_haproxy():
-    """One proxy publishes the stable ports. It does not have a failover twin."""
+def test_no_haproxy_in_front_of_one_process_stores():
+    """One-process stores have no entry-tier proxy and no fake read ports."""
     compose = (HAILPATH / "docker-compose.yaml").read_text()
-    assert "container_name: hailpath-proxy" in compose
+    assert "hailpath-proxy" not in compose
+    assert "haproxy-config-render" not in compose
     assert "nus-lb-b" not in compose
     assert "\n  lb-b:" not in compose
     assert "5433:5433" not in compose
     assert "6380:6380" not in compose
-    haproxy = (HAILPATH / "z-config" / "haproxy" / "haproxy.cfg.template").read_text()
-    assert "\nlisten pg\n" in haproxy
-    assert "\nlisten redis\n" in haproxy
-    assert "listen pg_read" not in haproxy
-    assert "listen redis_read" not in haproxy
-    assert "bind :5433" not in haproxy
-    assert "bind :6380" not in haproxy
+    assert not (HAILPATH / "z-config" / "haproxy").exists()
     pg = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "postgres.py").read_text()
-    assert 'config.integer("PG_READ_PORT", 5432)' in pg
+    assert 'config.optional("PG_HOST", "hailpath-postgres")' in pg
+    ch = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "clickhouse.py").read_text()
+    assert 'config.optional("CH_HOST", "hailpath-clickhouse")' in ch
+    postgres = (HAILPATH / "a-infra-postgres" / "docker-compose.yaml").read_text()
+    assert '"${PROXY_PG_PORT:-5432}:5432"' in postgres
     root = (HAILPATH / "Makefile").read_text()
-    assert "ENTRY    := hailpath-proxy\n" in root
+    assert "hailpath-proxy" not in root
+    assert "lb-config" not in root
     assert "lb-b" not in root
     assert "psql-read" not in root
 

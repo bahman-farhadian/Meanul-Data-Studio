@@ -14,7 +14,7 @@ from pathlib import Path
 DS = {"type": "grafana-clickhouse-datasource", "uid": "hailpath-clickhouse"}
 PLUGIN = "4.23.5"
 OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
-# Same-origin OSM raster from hailpath-tiles (HAProxy /tiles/ → tileserver-gl).
+# OSM raster from hailpath-tiles. Grafana piece will switch this to LION.
 # No MapTiler, no API key, no third-party CDN.
 LOCAL_XYZ = {
     "type": "xyz",

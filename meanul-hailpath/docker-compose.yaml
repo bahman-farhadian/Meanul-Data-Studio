@@ -1,9 +1,10 @@
 # Meanul Data Studio — Version 1 (Cab / Ride-Hailing Platform)
 #
-# Root compose file. Defines the stack-wide pieces (the hailpath-proxy HAProxy
-# entry tier) and stitches the components together via `include:` — every
-# component directory ships its own docker-compose.yaml and is testable in
-# isolation.
+# Root compose file. Stitches the components together via `include:` —
+# every component directory ships its own docker-compose.yaml and is
+# testable in isolation. There is no HAProxy: each store is one process
+# and clients use its container name on hailpath-net. Lab host ports are
+# published on those containers.
 #
 # ONE ENV FILE FOR THE WHOLE STACK. The include entries below deliberately
 # carry no `env_file:`, which makes every component resolve its ${...} from
@@ -96,76 +97,6 @@ services:
       - ${HAILPATH_VOLUME_ROOT:?set it in .env}:/vol
     networks:
       - backbone
-
-  # One-shot: renders haproxy.cfg.template into the shared config volume,
-  # filling in REDIS_PASSWORD. HAProxy does not expand ${VAR} from its own
-  # environment inside a tcp-check string (confirmed, not assumed), so the
-  # password has to be baked into the file before hailpath-proxy reads it.
-  #
-  # Run it BEFORE hailpath-proxy starts, and again any time REDIS_PASSWORD changes.
-  haproxy-config-render:
-    image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
-    profiles: ["init"]
-    cpus: ${HAPROXY_RENDER_CPUS:-0.25}
-    mem_limit: ${HAPROXY_RENDER_MEM:-64m}
-    memswap_limit: ${HAPROXY_RENDER_MEM:-64m}
-    environment:
-      TZ: ${TZ:-UTC}
-      REDIS_PASSWORD: ${REDIS_PASSWORD:?set it in .env}
-      KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
-      KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
-    entrypoint: ["/bin/sh", "/render-config.sh"]
-    volumes:
-      - ./z-config/haproxy/haproxy.cfg.template:/template/haproxy.cfg.template:ro
-      - ./z-config/haproxy/render-config.sh:/render-config.sh:ro
-      - hailpath-haproxy-config:/out
-    networks:
-      - backbone
-
-  hailpath-proxy:
-    image: ${HAPROXY_IMAGE:-haproxy:3.4.7}
-    container_name: hailpath-proxy
-    hostname: hailpath-proxy
-    restart: unless-stopped
-    cpus: ${PROXY_CPUS:-0.5}
-    mem_limit: ${PROXY_MEM:-128m}
-    memswap_limit: ${PROXY_MEM:-128m}
-    environment:
-      TZ: ${TZ:-UTC}
-    volumes:
-      - hailpath-haproxy-config:/usr/local/etc/haproxy:ro
-    ports:
-      - "${PROXY_PG_PORT:-5432}:5432"
-      - "${PROXY_REDIS_PORT:-6379}:6379"
-      - "${PROXY_STATS_PORT:-8404}:8404"
-      - "${PROXY_CH_HTTP_PORT:-8123}:8123"
-      - "${PROXY_CH_NATIVE_PORT:-9000}:9000"
-      - "${PROXY_GRAFANA_PORT:-3000}:3000"
-      - "${PROXY_KSQLDB_PORT:-8089}:8089"
-      - "${PROXY_DEBEZIUM_PORT:-8083}:8083"
-      # Fixed literal, not a `${VAR:-default}:CONTAINER` pair like every
-      # line above: a broker's advertised address is baked into its own
-      # config at startup (c-infra-kafka/docker-compose.yaml), so whatever
-      # port a client is told to dial here has to be the exact port it can
-      # actually reach — remapping the host side would silently break that.
-      - "9094:9094"
-    healthcheck:
-      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    networks:
-      - backbone
-
-volumes:
-  # Rendered by haproxy-config-render; never mounted read-write anywhere else.
-  hailpath-haproxy-config:
-    name: hailpath-haproxy-config
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: ${HAILPATH_VOLUME_ROOT:?set it in .env}/hailpath-haproxy-config
 
 networks:
   backbone:

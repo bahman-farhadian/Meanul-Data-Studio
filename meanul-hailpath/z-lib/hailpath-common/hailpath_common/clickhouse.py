@@ -1,4 +1,4 @@
-"""Talking to ClickHouse through the entry tier.
+"""Talking to ClickHouse.
 
 One thing decides how this module is written: ClickHouse is fast at
 inserting large batches and slow at inserting single rows. Every insert here
@@ -20,11 +20,11 @@ _client: Client | None = None
 def client() -> Client:
     """The shared ClickHouse connection.
 
-    It points at hailpath-proxy, which publishes the one ClickHouse.
+    It points at hailpath-clickhouse.
     """
     global _client
     if _client is None:
-        host = config.optional("CH_HOST", "hailpath-proxy")
+        host = config.optional("CH_HOST", "hailpath-clickhouse")
         port = config.integer("CH_HTTP_PORT", 8123)
         _client = clickhouse_connect.get_client(
             host=host,

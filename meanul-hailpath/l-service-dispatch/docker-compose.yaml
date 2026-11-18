@@ -58,7 +58,7 @@ services:
       REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
-      PG_HOST: ${PG_HOST:-hailpath-proxy}
+      PG_HOST: ${PG_HOST:-hailpath-postgres}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
       PG_READ_PORT: ${PG_READ_PORT:-5432}
       PG_DATABASE: ${PG_DATABASE:-hailpath}

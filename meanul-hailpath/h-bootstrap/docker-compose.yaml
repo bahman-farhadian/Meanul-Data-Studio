@@ -72,7 +72,7 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       # PostgreSQL, through the entry tier - never a pg-* container by name.
-      PG_HOST: ${PG_HOST:-hailpath-proxy}
+      PG_HOST: ${PG_HOST:-hailpath-postgres}
       PG_WRITE_PORT: ${PG_WRITE_PORT:-5432}
       PG_READ_PORT: ${PG_READ_PORT:-5432}
       PG_DATABASE: ${PG_DATABASE:-hailpath}
@@ -91,7 +91,7 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
       # ClickHouse, through the entry tier.
-      CH_HOST: ${CH_HOST:-hailpath-proxy}
+      CH_HOST: ${CH_HOST:-hailpath-clickhouse}
       CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
       CH_DATABASE: ${CH_DATABASE:-hailpath}
       CH_USER: ${CH_USER:-hailpath}

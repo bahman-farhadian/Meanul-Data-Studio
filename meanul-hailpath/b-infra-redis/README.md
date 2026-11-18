@@ -8,8 +8,7 @@ driver geo index here. They do not query PostgreSQL for those lookups.
 One process, `hailpath-redis` / `hailpath-redis`. Clients use `REDIS_HOST`
 (default `hailpath-redis`, `hailpath-redis` in the root example).
 
-HAProxy publishes that process on **6379**. `make verify-redis`
-is a PING.
+The lab host port is **6379**. `make verify-redis` is a PING.
 
 Logical databases are fixed in
 `z-lib/hailpath-common/hailpath_common/redis_client.py`:
@@ -30,8 +29,7 @@ Logical databases are fixed in
 already has that file. To roll a password, edit the live file and
 `CONFIG SET`, or drop the volume and start clean.
 
-`REDIS_PASSWORD` must not contain whitespace. The HAProxy check sends
-`AUTH` as one inline command, and Redis splits that on spaces.
+`REDIS_PASSWORD` must not contain whitespace. Redis AUTH splits on spaces.
 
 `maxmemory` defaults to 2560 MB, under the 4 GB container limit, because
 an AOF rewrite forks and there is no swap. The policy is `noeviction`.

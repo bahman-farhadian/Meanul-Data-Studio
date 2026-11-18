@@ -1,8 +1,9 @@
 # a-infra-postgres — one PostgreSQL
 
 The system of truth for operational state and the NYC road network.
-One process: `hailpath-postgres`. HAProxy (`hailpath-proxy`) publishes it
-on host port **5432**. Debezium tails this same database.
+One process: `hailpath-postgres`. Clients use `hailpath-postgres:5432`.
+The lab host port is published on this container. Debezium tails this
+same database.
 
 The image is the official `pgrouting/pgrouting:18-3.6-3.8.0` (Postgres 18,
 PostGIS 3.6, pgRouting 3.8). Pulled, not built. `h-bootstrap` creates the
@@ -15,7 +16,7 @@ the other `-c` flags in compose. Laptop: `PG_MEM=3g` and
 A 9 GB cap was not enough on the deploy host: the process was killed near
 8.3 GB.
 
-Clients use `PG_HOST=hailpath-proxy`. Port **5432** is
+Clients use `PG_HOST=hailpath-postgres`. Port **5432** is
 `hailpath-postgres`. Debezium uses that port.
 
 `pg_hba.conf` allows local sockets, scram-sha-256 for network logins,
@@ -56,7 +57,7 @@ That runs `pg_isready` on `hailpath-postgres`.
 
 ## Connecting
 
-In the full stack, connect through HAProxy. One listen.
+One listen. Host port `PROXY_PG_PORT` (default 5432).
 
 | Port | What it is |
 | --- | --- |
@@ -68,10 +69,7 @@ User `postgres`, database `hailpath`, password `PG_SUPERUSER_PASSWORD`.
 make psql
 ```
 
-HAProxy stats: <http://localhost:8404/stats>. A down server on `pg`
-means `hailpath-postgres` failed that check.
-
-For this directory alone, with no proxy:
+Standalone:
 
 ```bash
 docker network create hailpath-net

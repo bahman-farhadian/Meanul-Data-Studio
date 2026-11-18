@@ -55,7 +55,7 @@ version:
 | Empty last-window immediately after bring-up | Generators have not finished a cycle. Zero rows in a one-hour window is “not yet”, not a pass. |
 | Cache empty in a domain that only live coordinators write | History is not required there. Version 1 Redis db 3 (live trips) is this class at `up`. |
 | OLTP row count << seeded history after the archiver’s first ticks | Seeded history is older than retention. The warehouse keeps it. |
-| HAProxy stats for a backend whose one server is down | The process behind that port is down. |
+| A store process is down | The process behind that port is down. |
 
 ---
 
@@ -325,12 +325,12 @@ bar (S15 / n-service-clickhouse-sink).
 
 #### `a-infra-postgres`
 
-One PostgreSQL (`hailpath-postgres`). HAProxy `5432` is that process. Debezium uses that port.
+One PostgreSQL (`hailpath-postgres`). Clients use `hailpath-postgres:5432`. Debezium uses that port.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Process | `pg_isready` on `nus-pg-1` | not accepting connections | `make verify-pg` |
-| Write path | Clients use HAProxy `5432`. That is `hailpath-postgres`. `PG_HOST` is `hailpath-proxy` | A service `PG_HOST` set to a `pg-*` hostname | compose `PG_HOST` is `hailpath-proxy` |
+| Write path | Clients use `hailpath-postgres:5432`. `PG_HOST` is `hailpath-postgres` | A service `PG_HOST` set to a `pg-*` hostname or a proxy | compose `PG_HOST` is `hailpath-postgres` |
 
 #### `b-infra-redis`
 
@@ -398,14 +398,14 @@ One server, `nus-ch-s1r1`. Services and dashboards query the table names (`hailp
 
 #### `f-infra-grafana`
 
-Grafana plus `hailpath-tiles` (piece f is both). Same-origin OSM at `/tiles/`.
+Grafana plus `hailpath-tiles` (piece f is both). Tiles on `hailpath-tiles:8080`.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
 | Process | Grafana `/api/health` database ok | Unhealthy | `make grafana-health` |
 | Tiles file | `nyc.mbtiles` non-empty under `HAILPATH_VOLUME_ROOT/hailpath-tiles-data` | Missing file | `make tiles-health` |
-| Tiles container | `hailpath-tiles` health `healthy` | not running / unhealthy (HAProxy 503 HTML) | `make tiles-health` |
-| Tiles HTTP | `GET /tiles/styles.json` → 200; `GET /tiles/styles/hailpath/11/602/768.png` → 200 `image/png` | 503 HTML, 404, or non-PNG | `make tiles-health` |
+| Tiles container | `hailpath-tiles` health `healthy` | not running / unhealthy | `make tiles-health` |
+| Tiles HTTP | `GET hailpath-tiles:8080/styles.json` 200; PNG tile 200 `image/png` | 404 or non-PNG | `make tiles-health` |
 | Dashboards | Geomap URL contains `/tiles/styles/hailpath/` and `"type": "xyz"`; no `maptiler` / `cartocdn.com`; panels use uid `hailpath-clickhouse` and the warehouse tables | Third-party tile CDN or `*_local` | `make grafana-check` |
 
 `make up` starts `grafana` and `tiles` (`PIECE_F`). `make destroy` keeps
@@ -495,11 +495,11 @@ Analytics remain in ClickHouse.
 
 #### `z-config`
 
-Stack HAProxy, assessment SQL, `profile.sql`.
+Assessment SQL, `profile.sql`.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| Tiles routing | Frontend `grafana_fe` ACL `path_beg /tiles/` → backend `tiles`; rewrite `^/tiles/(.*) /\1` is on the **backend**, not the frontend | Strip on the frontend (tiles 302/404 from Grafana) | `z-config/haproxy/haproxy.cfg.template`; `make tiles-health` |
+| Tiles routing | `hailpath-tiles` serves styles and PNG on 8080 | Tiles only reachable through a proxy that is not in the stack | `f-infra-grafana/docker-compose.yaml`; `make tiles-health` |
 | On-network SQL | `z-config/check-on-network.sql` is what `make verify-positions` runs | Different thresholds in this file than in that SQL | §9.4 and `test_assessment_standard.py` |
 | Positions SQL | `z-config/check-positions.sql` is diagnostic (not a pass/fail bar) | Using `axis_share` as a gate | §2 |
 
@@ -578,17 +578,14 @@ Demand, `day_period`, and TLC `zone_weight` use `SIM_TIMEZONE`
 (version-1 default `America/New_York`) via `hailpath_common.geo.in_sim_tz` /
 `sim_zoneinfo`.
 
-Browser tiles: `/tiles/styles/hailpath/{z}/{x}/{y}@2x.png` (and the 1× PNG).
-HAProxy on `PROXY_GRAFANA_PORT` (default 3000) strips `/tiles/` on the tiles
-backend and forwards to `hailpath-tiles:8080`.
+Browser tiles: hailpath-tiles `/styles/hailpath/{z}/{x}/{y}@2x.png` (and the 1× PNG).
 
 | GET | Pass |
 | --- | --- |
-| `/tiles/styles.json` | HTTP 200 |
-| `/tiles/styles/hailpath/11/602/768.png` | HTTP 200, `Content-Type` `image/png` |
+| `hailpath-tiles:8080/styles.json` | HTTP 200 |
+| `hailpath-tiles:8080/styles/hailpath/11/602/768.png` | HTTP 200, `Content-Type` `image/png` |
 
-Fail: HTTP 503 body `No server is available to handle this request`
-(`hailpath-tiles` down); MapTiler “API KEY REQUIRED”; `maptiler` in dashboard
+Fail: tiles container down; MapTiler “API KEY REQUIRED”; `maptiler` in dashboard
 JSON.
 
 Instrument: `make tiles-health`; `make grafana-check`.

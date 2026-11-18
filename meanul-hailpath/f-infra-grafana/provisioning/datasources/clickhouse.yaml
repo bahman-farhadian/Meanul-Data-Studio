@@ -17,9 +17,8 @@ datasources:
     isDefault: true
     editable: false
     jsonData:
-      # Through the entry tier, not straight to a node: hailpath-proxy spreads
-      # queries over whichever ClickHouse nodes are healthy.
-      host: hailpath-proxy
+      # The one ClickHouse process on hailpath-net.
+      host: hailpath-clickhouse
       port: 9000
       protocol: native
       secure: false

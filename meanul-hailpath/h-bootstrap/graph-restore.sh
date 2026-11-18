@@ -15,7 +15,7 @@ if [ ! -s "$dump" ]; then
   exit 1
 fi
 
-echo "waiting for PostgreSQL at ${PGHOST:-hailpath-proxy}:${PGPORT:-5432} ..."
+echo "waiting for PostgreSQL at ${PGHOST:-hailpath-postgres}:${PGPORT:-5432} ..."
 attempt=1
 while [ "$attempt" -le 30 ]; do
   if psql -d postgres -c "SELECT 1" >/dev/null 2>&1; then

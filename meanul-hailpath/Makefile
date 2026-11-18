@@ -100,22 +100,19 @@ WAIT_LIVE_SETTLE  ?= 900
 ERRORS_WINDOW ?= 15m
 
 # --- the stack, in the pieces the runbook names -------------------------------
-ENTRY    := hailpath-proxy
 PIECE_A  := hailpath-postgres
 PIECE_B  := hailpath-redis
 PIECE_C  := hailpath-kafka hailpath-schema-registry hailpath-ksqldb
 PIECE_D  := hailpath-debezium
 PIECE_E  := hailpath-clickhouse
-# OSM raster lives here, not as a later sidecar. HAProxy /tiles/ 503s
-# ("no server available") if this list is only grafana.
 PIECE_F  := hailpath-grafana hailpath-tiles
 SERVICES := hailpath-cache-updater hailpath-driver hailpath-passenger hailpath-dispatch hailpath-city hailpath-clickhouse-sink hailpath-archiver
-INFRA    := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F)
+INFRA    := $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_D) $(PIECE_E) $(PIECE_F)
 # Everything the bring-up waits on. Debezium Connect is started with the rest
 # but deliberately not waited for: it takes minutes to scan its plugins, and
 # nothing needs it until `cdc-register`, which runs after bootstrap. By then
 # it has had the whole bootstrap to come up.
-INFRA_WAIT := $(ENTRY) $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_E) $(PIECE_F)
+INFRA_WAIT := $(PIECE_A) $(PIECE_B) $(PIECE_C) $(PIECE_E) $(PIECE_F)
 
 # Consumer groups, for the lag report. Must match the consumer-group section of .env.example.
 GROUPS := hailpath-cache-updater hailpath-driver hailpath-passenger hailpath-dispatch hailpath-city hailpath-clickhouse-sink
@@ -236,7 +233,6 @@ up:
 	@$(MAKE) --no-print-directory _mk-data-tree
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
-	@$(MAKE) --no-print-directory lb-config
 	@$(MAKE) --no-print-directory ksqldb-secrets
 	$(call say,Starting the infrastructure — pieces a to f)
 	@$(COMPOSE) up -d $(PIECE_D)
@@ -253,13 +249,13 @@ up:
 	@printf "\n$(G)$(B)The stack is up.$(X)\n\n"
 	@printf "  Grafana maps are same-origin OSM at /tiles/ (hailpath-tiles). No MapTiler key.\n"
 	@printf "  $(C)make up$(X) does not rebuild images — that was $(C)make build$(X).\n\n"
-	@printf "  Then: $(C)make verify$(X) (includes tiles through HAProxy), $(C)make urls$(X), $(C)make lag$(X)\n"
+	@printf "  Then: $(C)make verify$(X) (includes tiles), $(C)make urls$(X), $(C)make lag$(X)\n"
 	@printf "  After a few minutes of live trips: $(C)make verify-positions$(X)\n\n"
 
 .PHONY: up-piece
 up-piece:
 	@case "$(PIECE)" in \
-		a) set -- $(ENTRY) $(PIECE_A) ;; \
+		a) set -- $(PIECE_A) ;; \
 		b) set -- $(PIECE_B) ;; \
 		c) set -- $(PIECE_C) ;; \
 		d) set -- $(PIECE_D) ;; \
@@ -300,11 +296,6 @@ volume-perms:
 	@$(COMPOSE) run --rm volume-perms
 
 include z-mk/volume-quotas.mk
-
-.PHONY: lb-config
-lb-config:
-	$(call say,Entry tier config)
-	@$(COMPOSE) run --rm haproxy-config-render
 
 # =============================================================================
 # Verify

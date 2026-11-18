@@ -27,12 +27,12 @@ make prepare               # pull every image, build the eleven, prepare LION + 
 
 # --- the deployment (needs no internet) -----------------------------------
 make up                    # preflight, then the whole ordered bring-up:
-                           #   volume-perms -> lb-config -> ksqldb-secrets
+                           #   volume-perms -> ksqldb-secrets
                            #   -> infrastructure (a-f, including grafana+tiles)
                            #   -> topics -> schemas -> ksql-ddl -> ch-ddl
                            #   -> bootstrap -> cdc-register
                            #   -> services (i-o)
-make verify                # prove each layer works (includes ksqlDB and /tiles/)
+make verify                # prove each layer works (includes ksqlDB and tiles)
 
 # --- running it -----------------------------------------------------------
 make urls                  # where to point a browser or a client
@@ -275,15 +275,14 @@ happened, which is the whole reason this is a Makefile and not one
 | Step | Command | Why here |
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
-| 2 | `make lb-config` | Renders `haproxy.cfg` with `REDIS_PASSWORD` baked in — HAProxy does not expand `${VAR}` from its own environment inside a health check, so this has to happen **before** `hailpath-proxy` starts. |
-| 3 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
-| 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
-| 5 | `up` pieces a–f | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`. Waited on until every healthcheck passes. Debezium is not in that wait. |
-| 6 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
-| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `hailpath.trip_events`. |
-| 9 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
-| 10 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` through the write port. |
-| 11 | `up` pieces i–o | The services, which were waiting on the marker. |
+| 2 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
+| 3 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
+| 4 | `up` pieces a–f | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`. Waited on until every healthcheck passes. Debezium is not in that wait. |
+| 5 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
+| 6 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `hailpath.trip_events`. |
+| 7 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
+| 8 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` through the write port. |
+| 9 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is
@@ -313,10 +312,8 @@ expects one replica in sync. `verify-schemas` compares every `.avsc` in
 left behind by a skipped `make schemas` fails rather than reading as ok.
 `verify-ch` lists MergeTree engines.
 
-Two results that look wrong and are not:
+A result that looks wrong and is not:
 
-- **A down server on an HAProxy backend means that one process failed the
-  check.** Port 5432 is `hailpath-postgres`. Port 6379 is `hailpath-redis`.
 - **Empty dashboard panels before bootstrap finishes are fine.** An error is
   not.
 
@@ -390,13 +387,12 @@ $EDITOR .env        # Section 1 — all 8 passwords need real values, even
 
 # build/pull ONLY piece a's images — not `make prepare`, which does all 14
 docker compose build hailpath-postgres
-docker compose pull hailpath-proxy
+docker compose pull hailpath-postgres
 
-# the one-shots piece a needs before its first start
+# the one-shot piece a needs before its first start
 docker compose run --rm volume-perms          # whole tree, harmless to run unscoped
-docker compose run --rm haproxy-config-render # hailpath-proxy's config — piece a's entry tier needs this too
 
-# start it — hailpath-proxy, hailpath-postgres, nothing else
+# start it — hailpath-postgres, nothing else
 make up-piece PIECE=a
 
 make ps
@@ -404,11 +400,10 @@ make errors
 make verify-pg
 ```
 
-Connect a SQL client through `hailpath-proxy`
-(see [Connecting](a-infra-postgres/README.md#connecting)):
-host = this server, port `5432` (`hailpath-postgres`), database
-`hailpath`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`. The
-`hailpath` schema and its tables arrive with `h-bootstrap`, several pieces later.
+Connect a SQL client to this host on port `5432` (`hailpath-postgres`;
+see [Connecting](a-infra-postgres/README.md#connecting)):
+database `hailpath`, user `postgres`, password = `PG_SUPERUSER_PASSWORD`.
+The `hailpath` schema and its tables arrive with `h-bootstrap`, several pieces later.
 
 Skip `make preflight` and `make prepare` for this: both check readiness of
 all 14 components and will fail on the 13 you have not touched yet. They
@@ -424,9 +419,7 @@ components not yet verified.
 Write `<letter>-<kind>-<name>/docker-compose.yaml` and its README, add the
 `include:` entry to the root [`docker-compose.yaml`](docker-compose.yaml),
 add its settings to [`.env.example`](.env.example) in a section of their own,
-add its `listen` block to
-[z-config/haproxy/haproxy.cfg](z-config/haproxy/haproxy.cfg) plus the
-`PROXY_*` port lines if it is proxied, add it to the right group
+publish its lab host port on the container, add it to the right group
 variable in the [Makefile](Makefile), and update the tables in the main
 [README](../README.md).
 

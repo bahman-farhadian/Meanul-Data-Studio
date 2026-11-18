@@ -1,5 +1,4 @@
 # b-infra-redis — one Redis. Clients use hailpath-redis.
-# HAProxy publishes that one address on the host ports.
 #
 # Standalone test:
 #   docker network create hailpath-net   (once, shared by the whole stack)
@@ -52,6 +51,8 @@ services:
     environment:
       <<: *redis-env
       REDIS_NODE: hailpath-redis
+    ports:
+      - "${PROXY_REDIS_PORT:-6379}:6379"
     volumes:
       - *redis-entrypoint
       - *redis-template

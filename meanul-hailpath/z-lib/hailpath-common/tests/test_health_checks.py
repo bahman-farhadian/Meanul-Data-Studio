@@ -7,13 +7,9 @@ loopback call is a latent failure: Docker's published-port DNAT cannot send
 a 127.0.0.1 destination out to a real interface unless route_localnet is 1,
 so docker-proxy accepts the connection and closes it without a reply.
 
-This is not theoretical. tiles-health curled 127.0.0.1 and reported a tiles
-failure against a stack whose tiles were healthy - the same request returned
-200 through the same HAProxy from ::1, from the LAN address, from the
-container IP, and from inside the network. _wait-haproxy-pg-settled had the
-same shape and survived only because localhost happened to resolve to ::1 on
-that host; on a host that resolves localhost to 127.0.0.1 first it would
-have failed the bootstrap it exists to protect.
+This is not theoretical. tiles-health used to curl 127.0.0.1 and reported a
+tiles failure against a stack whose tiles were healthy - the same request
+returned 200 from inside hailpath-net.
 
 Host addresses belong in `make urls`, which enumerates the host's real
 addresses and never offers loopback.

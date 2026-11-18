@@ -120,24 +120,20 @@ Naming: running processes use `hailpath-<job>` for the compose service
 name, `container_name`, and hostname. Directory prefixes in
 [2.8](#28-project-structure) (`j-service-driver`, ...) encode build order
 only. Built images are `hailpath/<job>`. The Docker network is
-`hailpath-net`. The one HAProxy is `hailpath-proxy`.
+`hailpath-net`. There is no HAProxy. Each store is one process; clients
+use its container name. Lab host ports are published on those containers.
 
-#### Load-balancer tier (hailpath-proxy)
+#### Host ports (lab)
 
-One HAProxy publishes a stable host port for each store. This is a lab:
-the stores are on the host so a laptop can use DBeaver. Production would
-publish Grafana (`3000`) only.
+Each store publishes its own port. Production would publish Grafana (`3000`) only.
 
-- **5432** -> the one PostgreSQL. Debezium uses this port;
-- **6379** -> the one Redis;
-- **9094** -> the one Kafka broker;
-- **8089** -> ksqlDB, the SQL reader of that broker;
-- **8123 / 9000** -> the one ClickHouse (HTTP / native);
+- **5432** -> `hailpath-postgres`. Debezium uses this port;
+- **6379** -> `hailpath-redis`;
+- **9094** -> `hailpath-kafka`;
+- **8089** -> ksqlDB;
+- **8123 / 9000** -> `hailpath-clickhouse` (HTTP / native);
 - **3000** -> Grafana;
-- **8404** -> HAProxy stats.
-
-HAProxy is there so a client keeps a stable port. Each port is the one
-process behind it.
+- **8080** -> `hailpath-tiles`.
 
 #### Trip lifecycle & fares
 
@@ -169,10 +165,9 @@ system:
 `docker-compose up` brings the stack up in a strict order, enforced through
 healthchecks and `depends_on: condition: service_healthy`:
 
-1. **Infrastructure** starts first: HAProxy (`hailpath-proxy`),
-   one PostgreSQL, one Redis, one Kafka broker with Schema Registry and
-   ksqlDB, Debezium Connect, one ClickHouse, Grafana — each with a
-   healthcheck.
+1. **Infrastructure** starts first: one PostgreSQL, one Redis, one Kafka
+   broker with Schema Registry and ksqlDB, Debezium Connect, one ClickHouse,
+   Grafana — each with a healthcheck.
 2. **Long-running app services** (`driver-service`, `passenger-service`,
    `dispatch-service`, `city-service`, `clickhouse-sink`, `cache-updater`)
    start once the infrastructure they depend on is healthy, and wait in
@@ -283,10 +278,8 @@ PostgreSQL layer relies on three pillars:
   columns with GIN indexes where needed — PostgreSQL covers the
   document-store role, so no MongoDB is part of the stack.
 
-**Entry point:** services connect through HAProxy (`hailpath-proxy`, see
-[2.1](#load-balancer-tier-hailpath-proxy)). Port **5432** is
-`hailpath-postgres`. Debezium uses that port. `PG_HOST`
-is `hailpath-proxy`.
+**Entry point:** services connect to `hailpath-postgres:5432`. Debezium uses
+that port. `PG_HOST` is `hailpath-postgres`.
 
 **Migrations** are plain, ordered SQL files
 (`h-bootstrap/migrations/001_*.sql`, `002_*.sql`, ...) applied exactly once
@@ -294,10 +287,7 @@ by `bootstrap` — no migration framework is needed for a one-shot init.
 
 ```mermaid
 graph TB
-    HAP["hailpath-proxy<br/>5432"]
     PG[("hailpath-postgres")]
-
-    HAP --> PG
 ```
 
 ```mermaid
@@ -353,15 +343,12 @@ Core tables (conceptual):
 
 One Redis, `hailpath-redis`, is the **only** read path for cached reference
 and hot-path data — generators, dispatch, the city service, and the
-ClickHouse sink read from here, never directly from PostgreSQL. HAProxy
-port 6379 is that process. `make verify-redis` is a PING.
+ClickHouse sink read from here, never directly from PostgreSQL.
+`make verify-redis` is a PING.
 
 ```mermaid
 graph TB
-    HAP["hailpath-proxy<br/>6379"]
     R[("hailpath-redis")]
-
-    HAP --> R
 ```
 
 Key spaces (conceptual):
@@ -403,7 +390,7 @@ queryable (the concrete recipes live in `c-infra-kafka/`'s docs):
   `kcat -s avro -r http://schema-registry:8081` or
   `kafka-avro-console-consumer` decode messages on the fly through the
   Schema Registry.
-- **SQL directly over a live topic**: ksqlDB (`hailpath-proxy` port 8089) answers
+- **SQL directly over a live topic**: ksqlDB (host port 8089) answers
   `SELECT` against the streams in `c-infra-kafka/ksql/`. ClickHouse's
   Kafka table engine can also read topics with `format = 'AvroConfluent'`
   and `format_avro_schema_registry_url`.
@@ -461,8 +448,8 @@ This keeps those lookups off PostgreSQL, per the cache-first rule in
 Section 1.
 
 **Client entry point:** `clickhouse-sink` and Grafana reach
-the server through HAProxy (`hailpath-proxy`) on 8123 (HTTP) and 9000
-(native). Both ports are `nus-ch-s1r1`. `bootstrap` loads history here
+the server on 8123 (HTTP) and 9000 (native). Both ports are
+`hailpath-clickhouse`. `bootstrap` loads history here
 so dashboards have rows after init. Grafana uses the ClickHouse
 datasource plugin.
 
@@ -562,7 +549,7 @@ meanul-data-studio/
 └── meanul-hailpath/                 # Version 1 — cab / ride-hailing platform
     ├── README.md                     # step-by-step runbook for bringing the stack up
     ├── Makefile                      # the runbook, executable: make help / init / preflight / up / verify
-    ├── docker-compose.yaml           # root file: hailpath-proxy + include of every component compose
+    ├── docker-compose.yaml           # root file: include of every component compose
     ├── .env.example                  # template for the untracked .env — the MASTER settings file
     │                                 #   for the whole stack (every include resolves from it)
     ├── a-infra-postgres/             # one PostgreSQL (PostGIS, pgRouting)
@@ -583,7 +570,6 @@ meanul-data-studio/
     ├── n-service-clickhouse-sink/    # every event into ClickHouse, enriched from Redis
     ├── o-service-archiver/           # prune ended trips from PostgreSQL
     ├── z-config/                     # stack-level config (sorts last on purpose)
-    │   └── haproxy/                  # hailpath-proxy config
     ├── z-docs/                       # generated schema dictionary and ERD
     ├── z-lib/                        # shared Python code
     │   └── hailpath-common/               # clients, logging, lifecycle used by h- and every service
@@ -600,11 +586,8 @@ common — reading settings, JSON logging, clean shutdown, and the clients for
 PostgreSQL, Redis, Kafka and ClickHouse — lives once in `z-lib/hailpath-common`
 and is pulled in as a path dependency; their build context is
 `meanul-hailpath/` so the image holds the same layout as the repository.
-The proxy is stack-wide, so `hailpath-proxy` is defined in the root
-`docker-compose.yaml` with its config under `z-config/haproxy/`
-(`z-config/` sorts last and collects stack-level config files; the
-ClickHouse and UI routes are enabled there as those components land). The
-Schema Registry config lives in `c-infra-kafka/`.
+There is no stack-wide proxy. Lab host ports are published on each store.
+The Schema Registry config lives in `c-infra-kafka/`.
 
 #### 2.8.1 Build & test order
 
@@ -650,9 +633,9 @@ make up
 ```
 
 which runs the preflight and then every piece in dependency order, with the
-one-shots at the points where they belong. The root compose file defines the
-stack-level service (`hailpath-proxy`) and includes each component compose
-file. Each service sets `cpus`, `mem_limit`, and `memswap_limit`, with
+one-shots at the points where they belong. The root compose file includes
+each component compose file. Each service sets `cpus`, `mem_limit`, and
+`memswap_limit`, with
 `memswap_limit` equal to `mem_limit` so no container can swap.
 
 Whether the budget holds is observable rather than hoped for: `make stats`
@@ -670,7 +653,6 @@ retention is bounded.
 | Component | Containers | CPU ceiling | Memory ceiling |
 | --- | --- | --- | --- |
 | PostgreSQL (`hailpath-postgres`, `shared_buffers` 768 MB) | 1 | 4 | 3 GB |
-| HAProxy (`hailpath-proxy`) | 1 | 0.5 | 128 MB |
 | Redis (`hailpath-redis`, `maxmemory` 384 MB) | 1 | 0.5 | 640 MB |
 | Kafka (`hailpath-kafka`, heap 768 MB) | 1 | 1 | 1.25 GB |
 | Schema Registry (heap 256 MB) | 1 | 0.2 | 448 MB |

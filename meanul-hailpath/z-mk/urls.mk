@@ -4,7 +4,7 @@ urls:
 	ips=$$(ip -4 -o addr show scope global 2>/dev/null \
 		| awk '{gsub(/\/.*/,"",$$4); print $$2, $$4}' \
 		| grep -vE '^(docker[0-9]*|br-[0-9a-f]+|veth[0-9a-f]*) ' || true); \
-	printf "\n  The entry tier binds $(B)0.0.0.0$(X), so it answers on every address\n"; \
+	printf "\n  Each store binds $(B)0.0.0.0$(X) on its lab host port, so it answers on every address\n"; \
 	printf "  this host has — pick whichever one you can actually reach from where\n"; \
 	printf "  you are connecting:\n\n"; \
 	if [ -z "$$ips" ]; then printf "    (none found — is this host on a network at all?)\n"; \
@@ -21,7 +21,7 @@ urls:
 	printf "  %-18s %s\n" "ClickHouse HTTP"   "<host>:$(call getenv,PROXY_CH_HTTP_PORT,8123)"; \
 	printf "  %-18s %s\n" "ClickHouse native" "<host>:$(call getenv,PROXY_CH_NATIVE_PORT,9000)"; \
 	printf "  %-18s %s\n" "Grafana"           "http://<host>:$(call getenv,PROXY_GRAFANA_PORT,3000)"; \
-	printf "  %-18s %s\n" "HAProxy stats"     "http://<host>:$(call getenv,PROXY_STATS_PORT,8404)/stats"; \
+	printf "  %-18s %s\n" "Tiles"             "http://<host>:$(call getenv,PROXY_TILES_PORT,8080)"; \
 	printf "\n  A SQL client such as DBeaver connects straight to the PostgreSQL and\n"; \
 	printf "  ClickHouse addresses above. Kafka is the one broker below. A client\n"; \
 	printf "  is handed the address set by $(C)KAFKA_ADVERTISED_HOST$(X)\n"; \

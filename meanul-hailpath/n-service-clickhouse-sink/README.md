@@ -80,7 +80,7 @@ here.
 | `SINK_FLUSH_SECONDS` | `5.0` | How long rows may wait, whatever the count. |
 | `SINK_HOTSPOT_REFRESH_SECONDS` | `30.0` | How often demand scores are re-read. |
 | `HOTSPOT_SCORE_THRESHOLD` | `0.6` | The score at which a trip counts as a hotspot trip. |
-| `CH_*` | `hailpath-proxy`, `hailpath` | ClickHouse through the entry tier; password must match piece e. |
+| `CH_*` | `hailpath-clickhouse`, `hailpath` | The one ClickHouse; password must match piece e. |
 | `KAFKA_*`, `REDIS_*` | see `.env.example` | Connections; passwords must match pieces b and c. |
 
 ## Verify

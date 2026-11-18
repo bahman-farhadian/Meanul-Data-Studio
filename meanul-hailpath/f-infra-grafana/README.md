@@ -6,8 +6,7 @@ demand is, hourly/daily stats. It is the only front end in the stack.
 This piece brings Grafana up, connects it, and provisions the Hailpath
 dashboards from files.
 
-Reached through the entry tier on **port 3000** (`hailpath-proxy`). Grafana itself
-publishes no host port.
+Lab host port **3000** is published on this container.
 
 ## What this piece does
 
@@ -55,7 +54,7 @@ directory and run `make grafana-plugin-prepare` again.
 | `docker-compose.yaml` | The `grafana` and `tiles` services. Official Grafana image. |
 | `tiles/` | Self-hosted OSM raster (Planetiler MBTiles + tileserver-gl). |
 | `plugin-prepare.sh` | Downloads the ClickHouse plugin into the host plugin directory. |
-| `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `hailpath-proxy`. |
+| `provisioning/datasources/clickhouse.yaml` | The ClickHouse connection, pointing at `hailpath-clickhouse`. |
 | `provisioning/dashboards/provider.yaml` | File provider; Grafana watches the JSON directory. |
 | `provisioning/dashboards/json/*.json` | The five Hailpath dashboards. |
 | `check-dashboards.py` | Static check: datasource uid and ClickHouse table names. |
@@ -84,9 +83,7 @@ cp .env.example .env                    # change both passwords
 docker compose up -d --build
 ```
 
-Standalone, Grafana has no proxy in front of it, so reach it by exec'ing
-into the container or by running the full stack, where `hailpath-proxy` publishes it
-on port 3000.
+Grafana host port 3000 is published on this container.
 
 ## Verify
 
@@ -103,9 +100,8 @@ docker compose exec hailpath-grafana wget -qO- \
 
 In the browser, open <http://localhost:3000>, go to
 **Connections → Data sources → ClickHouse** and press **Save & test**. It
-should report success. Maps use **self-hosted OSM** at `/tiles/styles/hailpath/{z}/{x}/{y}@2x.png` (same
-origin as Grafana; HAProxy `path_beg /tiles/` selects the tiles backend, which
-strips the prefix). No MapTiler key.
+should report success. Maps use **self-hosted OSM** from `hailpath-tiles`.
+No MapTiler key.
 
 Build the MBTiles once with `make tiles-prepare` (also part of `make prepare`).
 That target is idempotent: existing PBF/jar/extras/`nyc.mbtiles` are kept.
@@ -114,9 +110,8 @@ Planetiler runs with `--download=false` (MapTiler's CDN does not resolve in
 the JRE container).
 
 `make up` starts **grafana and tiles together** (piece f). `make verify`
-runs `tiles-health`: `hailpath-tiles` healthy, then GET `/tiles/styles.json` and a
-real PNG through HAProxy `:3000`. A 503 HTML page means the tiles container
-is not running — not a Grafana bug.
+runs `tiles-health`: `hailpath-tiles` healthy, then GET `/styles.json` and a
+real PNG from `hailpath-tiles:8080`.
 
 Dashboards are under **Dashboards → Hailpath**. If tiles is down on a live stack
 and you must not destroy:

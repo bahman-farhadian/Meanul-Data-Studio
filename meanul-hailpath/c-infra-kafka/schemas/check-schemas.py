@@ -3,8 +3,7 @@
 
 `make schemas` registers every .avsc here. Nothing afterwards checks that
 it worked, and until now the only way to read the answer was a hand-typed
-`docker exec ... curl` against :8081 - which is not exposed through
-hailpath-proxy, and which the schema-registry image cannot even run
+`docker exec ... curl` against :8081 - which the schema-registry image cannot even run
 against itself: it ships neither curl nor wget. Step 12c's Avro bar was
 the one bar in that list with no target behind it.
 

@@ -6,9 +6,8 @@
 # of its schema; the reader asks the Schema Registry what that id means. That
 # keeps messages small and lets a schema change without breaking old readers.
 #
-# External clients still dial the address this broker advertises. HAProxy
-# publishes that one address. It does not hide extra brokers, because there
-# is only this one.
+# External clients dial the address this broker advertises on 9094.
+# There is only this one broker.
 #
 # Standalone test:
 #   docker network create hailpath-net     (once, shared by the whole stack)
@@ -105,16 +104,11 @@ services:
       <<: *kafka-env
       KAFKA_NODE_ID: "1"
       KAFKA_LISTENERS: INTERNAL://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9094
-      # INTERNAL: what other containers are told to connect to — the name
-      # they resolve on hailpath-net, not localhost. EXTERNAL: what a client
-      # on the host network is told, through hailpath-proxy on port 9094.
-      # The port number is not a separate .env knob: HAProxy cannot read
-      # ${VAR} from its own environment (confirmed, not assumed — the same
-      # finding that shaped how Redis's password reaches it), so this has
-      # to match haproxy.cfg's literal bind port exactly. A variable here
-      # that silently drifts from a hardcoded number there is worse than
-      # both being plainly fixed.
+      # INTERNAL: other containers on hailpath-net. EXTERNAL: a client on
+      # the host. The advertised port is this container's published 9094.
       KAFKA_ADVERTISED_LISTENERS: INTERNAL://hailpath-kafka:9092,EXTERNAL://${KAFKA_ADVERTISED_HOST:?set it in .env}:9094
+    ports:
+      - "9094:9094"
     volumes:
       - hailpath-kafka-data:/var/lib/kafka/data
 
@@ -217,8 +211,7 @@ services:
 
   # One-shot: write ksqlDB's HTTP Basic-auth credentials (a JAAS config plus
   # the property file it points at). Neither file format substitutes ${VAR}
-  # on its own - same reason haproxy-config-render exists for Redis's
-  # password - so this writes them from KSQLDB_ADMIN_USER/_PASSWORD in .env.
+  # on its own, so this writes them from KSQLDB_ADMIN_USER/_PASSWORD in .env.
   # Run it BEFORE ksqldb-server's first start.
   ksqldb-secrets-init:
     image: ${BUSYBOX_IMAGE:-busybox:1.38.0}
@@ -328,6 +321,8 @@ services:
       # anywhere outside this container.
       KSQLDB_ADMIN_USER: ${KSQLDB_ADMIN_USER:-admin}
       KSQLDB_ADMIN_PASSWORD: ${KSQLDB_ADMIN_PASSWORD:?set it in .env}
+    ports:
+      - "${PROXY_KSQLDB_PORT:-8089}:8088"
     volumes:
       - hailpath-ksqldb-secrets:/etc/ksqldb-secrets:ro
     healthcheck:

@@ -1,6 +1,6 @@
 # a-infra-postgres — one PostgreSQL. Writes and reads are this process.
-# HAProxy publishes it on the host ports so clients keep a stable address.
-# Debezium tails this same database.
+# Clients on hailpath-net use hailpath-postgres:5432. Lab host port is
+# published here. Debezium tails this same database.
 
 name: a-infra-postgres
 
@@ -53,6 +53,8 @@ services:
       - max_parallel_workers_per_gather=${PG_MAX_PARALLEL_WORKERS_PER_GATHER:-2}
       - -c
       - max_parallel_maintenance_workers=${PG_MAX_PARALLEL_MAINTENANCE_WORKERS:-2}
+    ports:
+      - "${PROXY_PG_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${PG_DATABASE:-hailpath}"]
       interval: 10s

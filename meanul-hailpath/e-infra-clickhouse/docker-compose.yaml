@@ -1,7 +1,7 @@
 # e-infra-clickhouse — the analytics database.
 #
 # One ClickHouse, hailpath-clickhouse. Clients (clickhouse-sink, Grafana)
-# come in through hailpath-proxy on 8123 (HTTP) and 9000 (native).
+# use hailpath-clickhouse:8123 (HTTP) and :9000 (native).
 #
 # Standalone test:
 #   docker network create hailpath-net
@@ -71,6 +71,9 @@ services:
     environment:
       <<: *ch-env
       CH_HOSTNAME: hailpath-clickhouse
+    ports:
+      - "${PROXY_CH_HTTP_PORT:-8123}:8123"
+      - "${PROXY_CH_NATIVE_PORT:-9000}:9000"
     volumes:
       - *ch-config-memory
       - *ch-users

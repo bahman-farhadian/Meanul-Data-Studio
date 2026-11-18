@@ -75,11 +75,10 @@ So:
 
 ## Connecting to the REST API
 
-Connect's REST API is proxied through the entry tier like everything else in
-this stack, so `/connectors/hailpath-pg/status` and friends are reachable without
-shelling into the container:
+Connect's REST API is published on this container, so
+`/connectors/hailpath-pg/status` is reachable without shelling in:
 
-| | via `hailpath-proxy` |
+| | host |
 | --- | --- |
 | Debezium Connect | `<host>:8083` |
 
@@ -121,7 +120,7 @@ gate nothing that isn't already open one layer down.
 | `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.4.Final` | Base image for the build. |
 | `AVRO_CONVERTER_VERSION` | `8.3.3` | Confluent Avro converter version; keep it in step with the Schema Registry. |
 | `PYTHON_IMAGE` | `python:3.13.18-slim` | Image used by the registration one-shot. |
-| `CDC_PG_HOST` / `CDC_PG_PORT` | `hailpath-proxy` / `5432` | The one Postgres, on the write port. |
+| `CDC_PG_HOST` / `CDC_PG_PORT` | `hailpath-postgres` / `5432` | The one Postgres. |
 | `CDC_PG_DATABASE` / `CDC_PG_USER` | `hailpath` / `postgres` | Database and login. The user must be allowed to read the WAL. |
 | `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
 

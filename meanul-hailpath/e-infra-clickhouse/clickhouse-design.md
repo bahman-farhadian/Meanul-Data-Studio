@@ -1,8 +1,8 @@
 # ClickHouse on one host
 
 One ClickHouse process, `hailpath-clickhouse` / `hailpath-clickhouse`. Grafana
-and `clickhouse-sink` query it through HAProxy on 8123 (HTTP) and 9000
-(native). Both ports are that process. `hailpath-proxy` is the stable address.
+and `clickhouse-sink` query it on 8123 (HTTP) and 9000 (native). Both
+ports are that process.
 
 The numbers match the root [README](../../README.md) section 2.9.
 
@@ -11,15 +11,15 @@ The numbers match the root [README](../../README.md) section 2.9.
 | Layer | Containers | CPU | Memory |
 | --- | --- | --- | --- |
 | ClickHouse | 1 (`hailpath-clickhouse`) | 1.3 | 8 GB |
-| Entry tier | 1 (`hailpath-proxy`) | 0.5 | 128 MB |
+
 
 A second data copy on this host is not a second machine. It dies when
 the host dies, and it spends CPU and disk on a copy that does not
 survive the failure you would be buying it for. With one process there is nothing
 for it to coordinate.
 
-The service name stays `hailpath-clickhouse`. `make ch-client`, Compose
-`depends_on`, and the HAProxy server line already use it.
+The service name stays `hailpath-clickhouse`. `make ch-client` and Compose
+`depends_on` already use it.
 
 ## Tables
 
@@ -40,5 +40,4 @@ change when that size does.
 ## Loss
 
 There is one copy. Losing the process loses the warehouse until the
-volume is back and the server starts. HAProxy keeps the host ports
-stable. It does not hide a second server.
+volume is back and the server starts.

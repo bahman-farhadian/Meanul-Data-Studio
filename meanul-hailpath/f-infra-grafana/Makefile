@@ -14,19 +14,11 @@ grafana-health:
 	$(call say,Grafana)
 	@$(COMPOSE) exec -T hailpath-grafana wget -qO- http://localhost:3000/api/health 2>/dev/null || true
 	@printf "\n  Provisioned dashboards live under Dashboards → Hailpath.\n"
-	@printf "  Geomap tiles are same-origin /tiles/ — checked by $(C)make tiles-health$(X).\n"
+	@printf "  Geomap tiles are hailpath-tiles — checked by $(C)make tiles-health$(X).\n"
 
-# The HTTP half runs through HAProxy from inside hailpath-net, never from a
-# host address. It used to curl 127.0.0.1:PROXY_GRAFANA_PORT and reported a
-# tiles failure on a stack whose tiles were perfectly healthy: Docker's
-# published-port DNAT cannot send a loopback destination out to a real
-# interface while net.ipv4.conf.*.route_localnet is 0, so docker-proxy
-# accepts the connection and closes it - an empty reply, not the 503 this
-# check's own message predicted. Confirmed on Dionysus: 127.0.0.1 empty,
-# while ::1, the LAN address, the container IP and in-network all return
-# 200 through the same HAProxy. Every sibling check already goes through a
-# container for this reason; make urls is where host addresses belong, and
-# it lists the real ones and never offers loopback.
+# Hit hailpath-tiles on hailpath-net, not a host loopback. Docker published
+# ports plus route_localnet=0 used to make 127.0.0.1 look like a tiles
+# failure on a healthy stack.
 .PHONY: tiles-health
 tiles-health:
 	$(call say,Tiles)
@@ -39,27 +31,27 @@ tiles-health:
 	printf "  $(G)ok$(X)      nyc.mbtiles %s\n" "$$(du -h "$$mb" | cut -f1)"; \
 	hs=$$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' hailpath-tiles 2>/dev/null || true); \
 	if [ "$$hs" != healthy ]; then \
-		printf "  $(R)FAIL$(X)    hailpath-tiles is '%s' — Grafana maps 503 until: $(C)docker compose up -d tiles$(X)\n" "$${hs:-not running}"; \
+		printf "  $(R)FAIL$(X)    hailpath-tiles is '%s' — start it: $(C)docker compose up -d hailpath-tiles$(X)\n" "$${hs:-not running}"; \
 		exit 1; \
 	fi; \
 	printf "  $(G)ok$(X)      hailpath-tiles healthy\n"; \
-	base="http://hailpath-proxy:3000"; \
-	json=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/tiles/styles.json" 2>&1 || true); \
+	base="http://hailpath-tiles:8080"; \
+	json=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/styles.json" 2>&1 || true); \
 	if ! printf '%s' "$$json" | grep -q ' 200 OK'; then \
-		printf "  $(R)FAIL$(X)    GET /tiles/styles.json did not return 200. 503 means HAProxy has no tiles backend.\n"; \
+		printf "  $(R)FAIL$(X)    GET hailpath-tiles /styles.json did not return 200.\n"; \
 		printf '%s\n' "$$json" | sed -n '1,6p' | sed 's/^/              /'; \
 		exit 1; \
 	fi; \
-	printf "  $(G)ok$(X)      HAProxy /tiles/styles.json 200\n"; \
-	png=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/tiles/styles/hailpath/11/602/768.png" 2>&1 || true); \
+	printf "  $(G)ok$(X)      hailpath-tiles /styles.json 200\n"; \
+	png=$$($(COMPOSE) exec -T hailpath-grafana wget -S -O /dev/null "$$base/styles/hailpath/11/602/768.png" 2>&1 || true); \
 	if printf '%s' "$$png" | grep -q ' 200 OK' && printf '%s' "$$png" | grep -qi 'Content-Type: *image/png'; then \
-		printf "  $(G)ok$(X)      HAProxy /tiles/styles/hailpath/11/602/768.png 200 image/png\n"; \
+		printf "  $(G)ok$(X)      hailpath-tiles /styles/hailpath/11/602/768.png 200 image/png\n"; \
 	else \
-		printf "  $(R)FAIL$(X)    GET /tiles/styles/hailpath/11/602/768.png did not return 200 image/png\n"; \
+		printf "  $(R)FAIL$(X)    GET hailpath-tiles /styles/hailpath/11/602/768.png did not return 200 image/png\n"; \
 		printf '%s\n' "$$png" | sed -n '1,6p' | sed 's/^/              /'; \
 		exit 1; \
 	fi; \
-	printf "  Grafana geomap is same-origin OSM, no MapTiler key.\n"
+	printf "  Grafana geomap uses hailpath-tiles, no MapTiler key.\n"
 
 .PHONY: grafana-check
 grafana-check:

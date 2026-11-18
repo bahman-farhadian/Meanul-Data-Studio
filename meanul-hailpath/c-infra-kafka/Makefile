@@ -37,7 +37,7 @@ schemas:
 # The expected subjects are read out of schemas/*.avsc. schema-init is the
 # container with that directory mounted, and the Registry image's python3 is
 # the only interpreter here that can reach :8081 - the port is not published
-# through hailpath-proxy, and the image itself ships neither curl nor wget.
+# on the host, and the image itself ships neither curl nor wget.
 # Same arrangement verify-ksqldb uses for ksql-init.
 .PHONY: verify-schemas
 verify-schemas:
