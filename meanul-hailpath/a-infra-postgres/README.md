@@ -1,15 +1,19 @@
 # a-infra-postgres — one PostgreSQL
 
 The system of truth for operational state and the NYC road network.
-One process, `hailpath-postgres` / `hailpath-postgres`. HAProxy publishes it on stable host
-ports. Debezium tails this same database.
+One process: `hailpath-postgres`. HAProxy (`hailpath-proxy`) publishes it
+on host port **5432**. Debezium tails this same database.
 
-The image is `postgres:18.6` with PostGIS and pgRouting installed.
-`h-bootstrap` creates the extensions. `wal_level=logical` is set so
-Debezium can open a `pgoutput` slot. Timestamps are UTC.
+The image is the official `pgrouting/pgrouting:18-3.6-3.8.0` (Postgres 18,
+PostGIS 3.6, pgRouting 3.8). Pulled, not built. `h-bootstrap` creates the
+extensions. `wal_level=logical` is set so Debezium can open a `pgoutput`
+slot. Timestamps are UTC.
 
-`shared_buffers` is 4 GB. `.env.example` sets `PG_MEM=16g` for that
-process. A 9 GB cap was not enough: the process was killed near 8.3 GB.
+Memory is `PG_MEM` in the root `.env`, together with `shared_buffers` and
+the other `-c` flags in compose. Laptop: `PG_MEM=3g` and
+`PG_SHARED_BUFFERS=768MB`. Deploy: `PG_MEM=16g` and `shared_buffers=4GB`.
+A 9 GB cap was not enough on the deploy host: the process was killed near
+8.3 GB.
 
 Clients use `PG_HOST=hailpath-proxy`. Port **5432** is
 `hailpath-postgres`. Debezium uses that port.
@@ -35,7 +39,7 @@ does not match `all`, and the logical slot needs that line.
 | `PG_DATABASE` | `hailpath` | Database created on first start. |
 | `PG_SUPERUSER_PASSWORD` | required | `postgres` password. |
 | `PG_CPUS` | `10` | CPU ceiling after bootstrap. |
-| `PG_MEM` | `16g` in the root example | Memory ceiling. Do not set this below 16 GB. |
+| `PG_MEM` | `3g` laptop / `16g` deploy | Memory ceiling. Move with `shared_buffers` in compose. |
 
 The root `.env` is the file `make up` reads. This directory's
 `.env.example` is the standalone copy.
