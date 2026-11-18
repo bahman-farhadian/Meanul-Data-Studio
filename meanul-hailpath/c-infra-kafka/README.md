@@ -14,9 +14,15 @@ partition. `auto.create.topics.enable` is false. Default retention is
 48 hours. ClickHouse is where history lives.
 
 Containers on `hailpath-net` use `hailpath-kafka:9092`. From the host,
-the broker publishes `KAFKA_ADVERTISED_HOST:9094`.
+this container publishes **9094** (`KAFKA_ADVERTISED_HOST:9094`). ksqlDB
+is published as `PROXY_KSQLDB_PORT` (default 8089) onto container 8088.
+Schema Registry stays on the network at 8081.
 
-`make init` fills that hostname from this machine's default-route
+Memory is sized in the root `.env` with the heap. Laptop: `KAFKA_MEM=1280m`
+/ heap 768m, Schema Registry 448m / 256m, ksqlDB 768m / 384m. Deploy:
+Kafka `5.5g` / 3500m, Schema Registry `1g` / 512m, ksqlDB `1.5g` / 1g.
+
+`make init` fills `KAFKA_ADVERTISED_HOST` from this machine's default-route
 interface. Override it if the guess is wrong.
 
 ## ksqlDB
