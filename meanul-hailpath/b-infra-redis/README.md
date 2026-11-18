@@ -5,10 +5,12 @@ ClickHouse sink look up profiles, active trips, hotspot scores, and the
 driver geo index here. They do not query PostgreSQL for those lookups.
 `cache-updater` applies Debezium's CDC stream.
 
-One process, `hailpath-redis` / `hailpath-redis`. Clients use `REDIS_HOST`
-(default `hailpath-redis`, `hailpath-redis` in the root example).
+One process: `hailpath-redis`. Clients on hailpath-net use `REDIS_HOST`
+(default `hailpath-redis`). `make verify-redis` is a PING.
 
-The lab host port is **6379**. `make verify-redis` is a PING.
+Lab host port is `PROXY_REDIS_PORT` (default 6379). On this workstation
+it is 16379 because host 6379 is already taken. Production would not
+publish Redis.
 
 Logical databases are fixed in
 `z-lib/hailpath-common/hailpath_common/redis_client.py`:
@@ -31,10 +33,12 @@ already has that file. To roll a password, edit the live file and
 
 `REDIS_PASSWORD` must not contain whitespace. Redis AUTH splits on spaces.
 
-`maxmemory` defaults to 2560 MB, under the 4 GB container limit, because
-an AOF rewrite forks and there is no swap. The policy is `noeviction`.
-Live keys such as `geo:drivers:available` and `trip:{id}:active` are not
-safe to evict. Persistence is AOF only (`save ""`).
+Memory is `REDIS_MEM` in the root `.env`, with `REDIS_MAXMEMORY` below it
+because an AOF rewrite forks and there is no swap. Laptop: `REDIS_MEM=640m`
+and `REDIS_MAXMEMORY=384mb`. Deploy: `4g` and `2560mb`. The policy is
+`noeviction`. Live keys such as `geo:drivers:available` and
+`trip:{id}:active` are not safe to evict. Persistence is AOF only
+(`save ""`).
 
 ## Files
 
@@ -52,7 +56,7 @@ safe to evict. Persistence is AOF only (`save ""`).
 | `TZ` | `UTC` | Container timezone. |
 | `REDIS_IMAGE` | `redis:8.10.3` | Pinned image. |
 | `REDIS_PASSWORD` | required | `requirepass`. |
-| `REDIS_MAXMEMORY` | `2560mb` | Dataset ceiling, below the container limit. |
+| `REDIS_MAXMEMORY` | `384mb` laptop / `2560mb` deploy | Dataset ceiling, below `REDIS_MEM`. |
 | `REDIS_HOST` | `hailpath-redis` | Address clients open. The root example sets `hailpath-redis`. |
 
 ## Verify
