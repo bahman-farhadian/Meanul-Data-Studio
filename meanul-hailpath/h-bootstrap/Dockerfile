@@ -19,8 +19,8 @@
 # The routable graph is restored by a separate one-shot that uses the
 # published pgRouting image (graph-restore.sh). This image is Python only.
 
-ARG PYTHON_IMAGE=python:3.13.15-slim
-ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.12.9
+ARG PYTHON_IMAGE=python:3.13.18-slim
+ARG UV_IMAGE=ghcr.io/astral-sh/uv:0.13.9
 
 # uv is copied out of its own published image rather than installed with pip:
 # one binary, one pinned version, and no dependency resolution to do first.
