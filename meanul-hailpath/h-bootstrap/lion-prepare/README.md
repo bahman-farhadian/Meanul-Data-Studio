@@ -14,7 +14,7 @@ routing topology depend on nothing this project generates — only on the
 external LION release. That work is identical on every run, so it is done
 once and cached (`HAILPATH_VOLUME_ROOT/hailpath-lion-data/routable-graph.dump`) rather
 than repeated on every `make destroy && make up` cycle. `h-bootstrap`'s own
-`osm.py::import_map()` only ever restores that cached result.
+`graph.py::import_map()` only ever confirms that cached result is in PostgreSQL.
 
 ## What runs
 

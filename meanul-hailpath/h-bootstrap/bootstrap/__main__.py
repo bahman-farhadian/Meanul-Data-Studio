@@ -31,7 +31,7 @@ from hailpath_common import clickhouse, postgres, redis_client
 from hailpath_common.lifecycle import BOOTSTRAP_DONE_KEY, wait_for
 from hailpath_common.logging import get_logger, setup_logging
 
-from bootstrap import database, demand_calibration, history, migrate, osm, people
+from bootstrap import database, demand_calibration, graph, history, migrate, people
 from bootstrap import settings as settings_module
 from bootstrap import warehouse, zones
 
@@ -73,7 +73,7 @@ def main() -> int:
     # The bootstrap marker is the one thing every service checks before it
     # starts - it lives in DB_SYSTEM, the same db every other service's own
     # wait_for_bootstrap() call now reads explicitly.
-    redis = redis_client.primary(redis_client.DB_SYSTEM)
+    redis = redis_client.client(redis_client.DB_SYSTEM)
     wait_for(lambda: redis.ping() is True, "Redis", attempts=60, delay_seconds=5)
     wait_for(clickhouse.ping, "ClickHouse", attempts=60, delay_seconds=5)
 
@@ -94,7 +94,7 @@ def main() -> int:
         return 0
 
     # --- 3. the street graph, restored from the precomputed dump ---------
-    osm.import_map(settings)
+    graph.import_map(settings)
 
     # --- 4 and 5. the city and the people -------------------------------
     zones.seed()
