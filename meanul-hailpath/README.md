@@ -264,7 +264,7 @@ answers "will this host actually take the stack" before any image is pulled:
 - `.env` exists, holds no `change-me` placeholders, defines every required
   setting, and defines none of them twice
 - all fourteen components resolve from it
-- every host port the entry tier publishes is free
+- every published host port is free
 
 ## What `make up` does, in order
 
@@ -275,14 +275,15 @@ happened, which is the whole reason this is a Makefile and not one
 | Step | Command | Why here |
 | --- | --- | --- |
 | 1 | `make volume-perms` | The volumes are bind mounts and take the host directory's ownership, so each is handed to the user that writes to it **before** anything starts. |
-| 2 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
-| 3 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
-| 4 | `up` pieces a–f | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`. Waited on until every healthcheck passes. Debezium is not in that wait. |
-| 5 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
-| 6 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `hailpath.trip_events`. |
-| 7 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
-| 8 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` through the write port. |
-| 9 | `up` pieces i–o | The services, which were waiting on the marker. |
+| 2 | `make kafka-certs` | Local CA, broker PKCS12, and SASL client file. Kafka listens with SASL_SSL. |
+| 3 | `make ksqldb-secrets` | Writes the ksqlDB basic-auth file before `ksqldb-server` starts. |
+| 4 | start Debezium Connect | Started but **not** waited for: it spends minutes scanning its plugins, and nothing needs it until `cdc-register`. |
+| 5 | `up` pieces a–f | One Postgres, one Redis, one Kafka broker with Schema Registry and ksqlDB, one ClickHouse, Grafana **and** `hailpath-tiles`. Waited on until every healthcheck passes. Debezium is not in that wait. |
+| 6 | `make topics`, `make schemas`, `make ksql-ddl` | Auto-creation is off. Topics are replication factor 1. Schemas register with Schema Registry. ksqlDB is the SQL reader of that broker. |
+| 7 | `make ch-ddl` | **Before bootstrap**, which writes the seeded week into `hailpath.trip_events`. |
+| 8 | `make bootstrap` | Migrations, the street graph (restored, already prepared by `make prepare`), the people, history, then the `system:bootstrap:done` marker. |
+| 9 | `make cdc-register` | The connector names the tables it follows, so they must exist first — and Connect has had the whole bootstrap to become ready. It tails `hailpath-postgres` on `PG_PORT`. |
+| 10 | `up` pieces i–o | The services, which were waiting on the marker. |
 
 Each of those is also a target of its own, so a failed run is resumed by
 fixing the cause and running the step again — every one of them is
@@ -354,7 +355,7 @@ The pieces can still be brought up individually, in the alphabetic build
 order, which is how each was written and tested:
 
 ```bash
-make up-piece PIECE=a   # one PostgreSQL, behind the entry tier
+make up-piece PIECE=a   # one PostgreSQL
 make up-piece PIECE=b   # one Redis
 make up-piece PIECE=c   # one Kafka broker, Schema Registry, ksqlDB
 make up-piece PIECE=d   # Debezium Connect               (register the connector after piece h)

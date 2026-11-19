@@ -71,7 +71,7 @@ services:
       SIM_TIMEZONE: ${SIM_TIMEZONE:-America/New_York}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
-      # PostgreSQL, through the entry tier - never a pg-* container by name.
+      # One PostgreSQL.
       PG_HOST: ${PG_HOST:-hailpath-postgres}
       PG_PORT: ${PG_PORT:-5432}
       PG_DATABASE: ${PG_DATABASE:-hailpath}
@@ -79,17 +79,16 @@ services:
       PG_PASSWORD: ${PG_PASSWORD:?must match PG_SUPERUSER_PASSWORD in a-infra-postgres/.env}
       # Raised above the code's own default (5): the threaded routing pass
       # below checks out HISTORY_ROUTING_WORKERS connections at once. Its
-      # own variable, not the shared PG_POOL_SIZE: postgres.py opens a read
-      # and a write pool of that size per process, so sizing the shared one
-      # for this container would put the running stack over
-      # max_connections. Nothing else is connected while bootstrap runs.
+      # own variable, not the shared PG_POOL_SIZE, so this container does
+      # not size the rest of the stack. Nothing else is connected while
+      # bootstrap runs.
       PG_POOL_SIZE: ${BOOTSTRAP_PG_POOL_SIZE:-32}
 
       # Redis.
       REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
-      # ClickHouse, through the entry tier.
+      # One ClickHouse.
       CH_HOST: ${CH_HOST:-hailpath-clickhouse}
       CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
       CH_DATABASE: ${CH_DATABASE:-hailpath}
@@ -160,7 +159,7 @@ services:
         condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
-      # Direct to the database. A dump restore does not need the proxy.
+      # Direct to hailpath-postgres.
       PGHOST: hailpath-postgres
       PGPORT: "5432"
       PGDATABASE: ${PG_DATABASE:-hailpath}
