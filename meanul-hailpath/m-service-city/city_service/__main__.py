@@ -30,7 +30,7 @@ from hailpath_common.lifecycle import Shutdown, wait_for_bootstrap
 from hailpath_common.logging import get_logger, setup_logging
 
 from city_service.counters import ZoneCounter, surge_from_score
-from city_service.drain import drain_budget_seconds
+from city_service.drain import drain_budget_seconds, drain_queue_dry
 
 log = get_logger(__name__)
 
@@ -107,10 +107,19 @@ def main() -> int:
                 # becoming a busy loop when the city is quiet.
                 handled = 0
                 deadline = time.monotonic() + drain_budget_seconds(score_seconds)
-                while time.monotonic() < deadline:
-                    message = consumer.poll_once(timeout=0.2 if handled == 0 else 0.0)
-                    if message is None:
+                empty_since = None
+                while True:
+                    now = time.monotonic()
+                    if now >= deadline:
                         break
+                    message = consumer.poll_once(timeout=min(0.2, deadline - now))
+                    if message is None:
+                        if empty_since is None:
+                            empty_since = now
+                        elif drain_queue_dry(empty_since, now):
+                            break
+                        continue
+                    empty_since = None
                     handled += 1
                     topic, _, value = message
                     if not value:
