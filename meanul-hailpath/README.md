@@ -73,8 +73,8 @@ make build && make destroy && make up
 ```
 
 Skip `make prepare` unless `routable-graph.dump` or `nyc.mbtiles` is missing.
-Piece f is Grafana **and** the tileserver; omitting tiles leaves Grafana maps
-at HTTP 503 (`No server is available to handle this request`).
+Piece f is Grafana **and** the tileserver. Geomap tiles come from
+`hailpath-tiles` on `PROXY_TILES_PORT`.
 
 Every step of `make up` is also a target of its own, and every one is
 idempotent, so a failed run is resumed by fixing the cause and running that
