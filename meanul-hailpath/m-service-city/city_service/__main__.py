@@ -30,6 +30,7 @@ from hailpath_common.lifecycle import Shutdown, wait_for_bootstrap
 from hailpath_common.logging import get_logger, setup_logging
 
 from city_service.counters import ZoneCounter, surge_from_score
+from city_service.drain import drain_budget_seconds
 
 log = get_logger(__name__)
 
@@ -101,10 +102,12 @@ def main() -> int:
     try:
         while not shutdown.requested:
             try:
-                # Read for a moment, then do the periodic work. The timeout is
-                # what stops this becoming a busy loop when the city is quiet.
+                # Drain until empty or the budget runs out, then do the
+                # periodic work. The timeout on the first poll stops this
+                # becoming a busy loop when the city is quiet.
                 handled = 0
-                while handled < 5000:
+                deadline = time.monotonic() + drain_budget_seconds(score_seconds)
+                while time.monotonic() < deadline:
                     message = consumer.poll_once(timeout=0.2 if handled == 0 else 0.0)
                     if message is None:
                         break

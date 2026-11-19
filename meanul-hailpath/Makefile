@@ -329,8 +329,8 @@ _need-uv:
 verify-walk: _need-uv
 	$(call say,Walk checks)
 	@cd z-lib/hailpath-common && uv sync --extra test >/dev/null
-	@PYTHONPATH="z-lib/hailpath-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink" \
-		z-lib/hailpath-common/.venv/bin/pytest -c pytest.ini z-lib/hailpath-common/tests j-service-driver/tests l-service-dispatch/tests
+	@PYTHONPATH="z-lib/hailpath-common:j-service-driver:l-service-dispatch:n-service-clickhouse-sink:m-service-city" \
+		z-lib/hailpath-common/.venv/bin/pytest -c pytest.ini z-lib/hailpath-common/tests j-service-driver/tests l-service-dispatch/tests m-service-city/tests
 
 .PHONY: verify-sample
 verify-sample: _need-uv
