@@ -1,8 +1,8 @@
 # f-infra-grafana — the live view of the platform.
 #
 # Grafana answers "what is happening right now": trips finishing, position
-# events arriving, where demand is. It is the only front end: the
-# analytical view. Both read the same ClickHouse cluster.
+# events arriving, where demand is. It is the only front end. It reads
+# the one ClickHouse, hailpath-clickhouse.
 #
 # The ClickHouse connection and the Hailpath dashboards are provisioned from
 # files in this directory, so a rebuilt container comes back exactly the
@@ -46,14 +46,18 @@ services:
       CH_USER: ${CH_USER:-hailpath}
       CH_PASSWORD: ${CH_PASSWORD:?set it in f-infra-grafana/.env}
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/json/hailpath-live-ops.json
-      # OSM raster from hailpath-tiles. Grafana piece will switch this to LION.
-      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"Hailpath OSM","config":{"url":"/styles/hailpath/{z}/{x}/{y}@2x.png","attribution":"© OpenStreetMap","minZoom":0,"maxZoom":14}}'
+      # OSM raster from hailpath-tiles on the published host port. HAProxy
+      # /tiles/ is gone. LION streets replace this later.
+      GF_GEOMAP_DEFAULT_BASELAYER_CONFIG: '{"type":"xyz","name":"Hailpath OSM","config":{"url":"http://127.0.0.1:${PROXY_TILES_PORT:-8080}/styles/hailpath/{z}/{x}/{y}@2x.png","attribution":"© OpenStreetMap","minZoom":0,"maxZoom":14}}'
     ports:
       - "${PROXY_GRAFANA_PORT:-3000}:3000"
     volumes:
       - ./provisioning:/etc/grafana/provisioning:ro
       - hailpath-grafana-data:/var/lib/grafana
       - ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-grafana-plugins:/var/lib/grafana/plugins:ro
+    depends_on:
+      hailpath-clickhouse:
+        condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health >/dev/null || exit 1"]
       interval: 15s
@@ -64,7 +68,7 @@ services:
       - backbone
 
   # Raster OSM for Grafana geomap. Data is the Planetiler MBTiles from
-  # `make tiles-prepare`. Grafana piece will replace this with LION.
+  # `make tiles-prepare`. LION streets replace this later.
   hailpath-tiles:
     image: ${TILESERVER_IMAGE:-maptiler/tileserver-gl:v5.7.0}
     container_name: hailpath-tiles

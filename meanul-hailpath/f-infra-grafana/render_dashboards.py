@@ -9,18 +9,35 @@ validates the written files, not this module.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 DS = {"type": "grafana-clickhouse-datasource", "uid": "hailpath-clickhouse"}
 PLUGIN = "4.23.5"
-OUT = Path(__file__).resolve().parent / "provisioning" / "dashboards" / "json"
-# OSM raster from hailpath-tiles. Grafana piece will switch this to LION.
+ROOT = Path(__file__).resolve().parent
+OUT = ROOT / "provisioning" / "dashboards" / "json"
+
+
+def _tiles_xyz_url() -> str:
+    """Browser loads tiles from the published host port. HAProxy /tiles/ is gone."""
+    port = os.environ.get("PROXY_TILES_PORT", "")
+    env = ROOT.parent / ".env"
+    if not port and env.is_file():
+        for line in env.read_text().splitlines():
+            if line.startswith("PROXY_TILES_PORT="):
+                port = line.split("=", 1)[1].strip()
+                break
+    port = port or "8080"
+    return f"http://127.0.0.1:{port}/styles/hailpath/{{z}}/{{x}}/{{y}}@2x.png"
+
+
+# OSM raster from hailpath-tiles. LION streets replace this later.
 # No MapTiler, no API key, no third-party CDN.
 LOCAL_XYZ = {
     "type": "xyz",
     "name": "Hailpath OSM",
     "config": {
-        "url": "/tiles/styles/hailpath/{z}/{x}/{y}@2x.png",
+        "url": _tiles_xyz_url(),
         "attribution": "© OpenStreetMap",
         "minZoom": 0,
         "maxZoom": 14,

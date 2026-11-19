@@ -248,7 +248,7 @@ up:
 	$(call say,Starting the services — pieces i to o)
 	@$(COMPOSE) up -d $(SERVICES)
 	@printf "\n$(G)$(B)The stack is up.$(X)\n\n"
-	@printf "  Grafana maps are same-origin OSM at /tiles/ (hailpath-tiles). No MapTiler key.\n"
+	@printf "  Grafana maps use hailpath-tiles on PROXY_TILES_PORT. No MapTiler key.\n"
 	@printf "  $(C)make up$(X) does not rebuild images — that was $(C)make build$(X).\n\n"
 	@printf "  Then: $(C)make verify$(X) (includes tiles), $(C)make urls$(X), $(C)make lag$(X)\n"
 	@printf "  After a few minutes of live trips: $(C)make verify-positions$(X)\n\n"

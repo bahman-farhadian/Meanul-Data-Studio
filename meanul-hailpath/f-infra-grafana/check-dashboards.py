@@ -353,10 +353,14 @@ def check() -> list[str]:
     for path in JSON_DIR.glob("*.json"):
         blob = path.read_text()
         if '"type": "geomap"' in blob:
-            if "/tiles/styles/hailpath/" not in blob or '"type": "xyz"' not in blob:
+            if "/styles/hailpath/" not in blob or '"type": "xyz"' not in blob:
                 errors.append(
-                    f"{path.name}: geomap must use same-origin /tiles/styles/hailpath "
+                    f"{path.name}: geomap must use hailpath-tiles /styles/hailpath "
                     "(self-hosted OSM; no MapTiler key)"
+                )
+            if "/tiles/styles/" in blob:
+                errors.append(
+                    f"{path.name}: geomap still uses HAProxy /tiles/; use the tiles host port"
                 )
             if "maptiler" in blob.lower() or "cartocdn.com" in blob:
                 errors.append(
