@@ -140,11 +140,11 @@ def _direct(db: int) -> Redis:
     )
 
 
-def primary(db: int = DB_SYSTEM) -> Redis:
+def client(db: int = DB_SYSTEM) -> Redis:
     """The one Redis, for one numbered database (see the DB_* constants)."""
     return _direct(db)
 
 
-def replica(db: int = DB_SYSTEM) -> Redis:
-    """Same connection as primary()."""
-    return primary(db)
+def primary(db: int = DB_SYSTEM) -> Redis:
+    """Same connection as client(). Kept for callers not yet renamed."""
+    return client(db)
