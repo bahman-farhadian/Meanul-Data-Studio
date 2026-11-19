@@ -33,17 +33,24 @@ fi
 dir="${root}/hailpath-grafana-plugins"
 plugin="${dir}/grafana-clickhouse-datasource"
 stamp="${dir}/VERSION"
+busybox="$(val BUSYBOX_IMAGE)"
+busybox="${busybox:-busybox:1.38.0}"
 mkdir -p "$dir"
 
 have="$(cat "$stamp" 2>/dev/null || true)"
-if [ -d "$plugin" ] && [ "$have" = "$ver" ]; then
+installed=""
+if [ -f "${plugin}/plugin.json" ]; then
+  installed="$(python3 -c "import json; print(json.load(open('${plugin}/plugin.json')).get('info',{}).get('version',''))" 2>/dev/null || true)"
+fi
+if [ -d "$plugin" ] && { [ "$have" = "$ver" ] || [ "$installed" = "$ver" ]; }; then
+  docker run --rm --user 0:0 --memory 64m --memory-swap 64m \
+    -v "${dir}:/plugins" "$busybox" \
+    sh -c "printf '%s\n' '$ver' > /plugins/VERSION && chown -R 472:0 /plugins"
   printf '  ok      %s (%s)\n' "$plugin" "$ver"
   exit 0
 fi
 if [ -d "$plugin" ]; then
-  printf '  old     %s (have %s, want %s) — replacing plugin\n' "$plugin" "${have:-unknown}" "$ver"
-  busybox="$(val BUSYBOX_IMAGE)"
-  busybox="${busybox:-busybox:1.38.0}"
+  printf '  old     %s (have %s, want %s) — replacing plugin\n' "$plugin" "${have:-${installed:-unknown}}" "$ver"
   # Grafana writes the plugin as uid 472. Host rm fails; busybox as root
   # on the same bind mount does not.
   docker run --rm --user 0:0 --memory 64m --memory-swap 64m \
@@ -65,6 +72,7 @@ if [ ! -d "$plugin" ]; then
   exit 1
 fi
 
-printf '%s\n' "$ver" > "$stamp"
-chown -R 472:0 "$dir" 2>/dev/null || true
+docker run --rm --user 0:0 --memory 64m --memory-swap 64m \
+  -v "${dir}:/plugins" "$busybox" \
+  sh -c "printf '%s\n' '$ver' > /plugins/VERSION && chown -R 472:0 /plugins"
 printf '  ok      %s (%s)\n' "$plugin" "$ver"
