@@ -49,7 +49,7 @@ ENGINE = MergeTree
 -- three days; under a monthly partition that expiry can never drop a
 -- part, so ClickHouse has to rewrite the whole month minus the expired
 -- rows, every time, on the heaviest table in the stack. Measured on a
--- real cluster: every position table held exactly one partition.
+-- a monthly partition: every position table held exactly one part.
 --
 -- The 365-day tables keep monthly partitions on purpose - daily would
 -- give them 365 parts apiece for no benefit, since their expiry drops a

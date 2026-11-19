@@ -7,13 +7,9 @@
 <clickhouse>
     <profiles>
         <default>
-            <!-- One query may use at most 4 GB. Well below the server
-                 ceiling, so one heavy dashboard query cannot starve the
-                 inserts arriving from clickhouse-sink. From the
-                 environment for the same reason as the server ceiling in
-                 config.d/memory.xml: it is a fraction of CH_MEM, and a
-                 fraction written as a literal stops being one as soon as
-                 CH_MEM changes. -->
+            <!-- One query stays well below the server ceiling, so a heavy
+                 dashboard query cannot starve inserts from clickhouse-sink.
+                 From the environment: it is a fraction of CH_MEM. -->
             <max_memory_usage from_env="CH_MAX_QUERY_MEMORY"/>
 
             <!-- A dashboard query that runs longer than a minute is a

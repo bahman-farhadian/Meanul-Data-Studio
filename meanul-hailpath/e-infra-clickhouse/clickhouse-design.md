@@ -1,43 +1,18 @@
 # ClickHouse on one host
 
-One ClickHouse process, `hailpath-clickhouse` / `hailpath-clickhouse`. Grafana
-and `clickhouse-sink` query it on 8123 (HTTP) and 9000 (native). Both
-ports are that process.
+One process: `hailpath-clickhouse`. Grafana and `clickhouse-sink` use
+HTTP 8123 and native 9000 on that process.
 
-The numbers match the root [README](../../README.md) section 2.9.
+A second data copy on this host dies with the host. It does not buy
+availability. There is nothing to coordinate.
 
-## Why one process
+Query names are the tables (`hailpath.trip_events`,
+`hailpath.driver_positions`). There is no `*_local` table. Raw streams
+are `MergeTree`. Rollups are `SummingMergeTree`, `AggregatingMergeTree`,
+or `ReplacingMergeTree(event_time)`. `ch-ddl-init` applies `ddl/` against
+this one server.
 
-| Layer | Containers | CPU | Memory |
-| --- | --- | --- | --- |
-| ClickHouse | 1 (`hailpath-clickhouse`) | 1.3 | 8 GB |
-
-
-A second data copy on this host is not a second machine. It dies when
-the host dies, and it spends CPU and disk on a copy that does not
-survive the failure you would be buying it for. With one process there is nothing
-for it to coordinate.
-
-The service name stays `hailpath-clickhouse`. `make ch-client` and Compose
-`depends_on` already use it.
-
-## Tables
-
-The names services and dashboards query are the tables. `hailpath.trip_events`
-and `hailpath.driver_positions` store the rows. There is no `*_local` table.
-
-Raw streams use `MergeTree`. Rollups use `SummingMergeTree`,
-`AggregatingMergeTree`, or `ReplacingMergeTree(event_time)`.
-DDL is plain `CREATE TABLE` in `ddl/`. `ch-ddl-init` applies it once
-against `hailpath-clickhouse`.
-
-`max_server_memory_usage` is 6.5 GB inside the 8 GB container limit, so
-a heavy query fails with a memory error instead of the cgroup killing
-the process. Both numbers come from `.env` — `CH_MAX_SERVER_MEMORY` and
-`CH_MEM` — because a ceiling written against a container size has to
-change when that size does.
-
-## Loss
-
-There is one copy. Losing the process loses the warehouse until the
-volume is back and the server starts.
+Container and server memory come from `.env` (`CH_MEM`,
+`CH_MAX_SERVER_MEMORY`, `CH_MAX_QUERY_MEMORY`) so the cgroup and the
+server ceiling move together. Losing the process loses the warehouse
+until the volume is back.

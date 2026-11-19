@@ -3,9 +3,9 @@
   Memory ceiling for the server process.
 
   ClickHouse sizes itself generously by default. Inside a container with a
-  hard 8 GB limit and no swap, that ends with the container being killed
-  rather than a query being refused. 6.5 GB leaves room for everything the
-  process does outside this budget (caches, page cache use, connections).
+  hard memory limit and no swap, that ends with the container being killed
+  rather than a query being refused. The server ceiling stays under CH_MEM
+  so caches, page cache, and connections still fit.
 
   A query that would cross the line fails with a clear "memory limit
   exceeded" error, which is a fixable problem; an OOM kill is not.
@@ -19,7 +19,7 @@
   /var/lib/clickhouse/preprocessed_configs/config.xml.
 -->
 <clickhouse>
-    <!-- 6.5 GiB, well under the 8 GB container limit -->
+    <!-- Under CH_MEM. Laptop and deploy set different values in .env. -->
     <max_server_memory_usage from_env="CH_MAX_SERVER_MEMORY"/>
 
     <!-- Caches, sized small on purpose: this server answers dashboards, not
