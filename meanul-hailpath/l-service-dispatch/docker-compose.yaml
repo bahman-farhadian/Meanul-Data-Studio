@@ -52,6 +52,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-SASL_SSL}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-kafka}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:?set it in .env}
+      KAFKA_SSL_CA: ${KAFKA_SSL_CA:-/etc/kafka/secrets/ca.crt}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://hailpath-schema-registry:8081}
       KAFKA_GROUP_ID: ${DISPATCH_GROUP_ID:-hailpath-dispatch}
 
@@ -88,8 +92,19 @@ services:
       CANCEL_BY_PASSENGER_CHANCE: ${CANCEL_BY_PASSENGER_CHANCE:-0.07}
       TRIP_ACTIVE_TTL_SECONDS: ${TRIP_ACTIVE_TTL_SECONDS:-7200}
       RANDOM_SEED: ${RANDOM_SEED:-20250824}
+    volumes:
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     networks:
       - backbone
+
+volumes:
+  hailpath-kafka-secrets:
+    name: hailpath-kafka-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-secrets
 
 networks:
   backbone:

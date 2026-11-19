@@ -46,6 +46,10 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-SASL_SSL}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-kafka}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:?set it in .env}
+      KAFKA_SSL_CA: ${KAFKA_SSL_CA:-/etc/kafka/secrets/ca.crt}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://hailpath-schema-registry:8081}
       KAFKA_GROUP_ID: ${CACHE_UPDATER_GROUP_ID:-hailpath-cache-updater}
       # A pattern, so a table added to CDC later needs no change here.
@@ -57,8 +61,19 @@ services:
       # How often the collected changes are written and the position saved.
       CACHE_BATCH_SIZE: ${CACHE_BATCH_SIZE:-500}
       CACHE_FLUSH_SECONDS: ${CACHE_FLUSH_SECONDS:-2.0}
+    volumes:
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     networks:
       - backbone
+
+volumes:
+  hailpath-kafka-secrets:
+    name: hailpath-kafka-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-secrets
 
 networks:
   backbone:

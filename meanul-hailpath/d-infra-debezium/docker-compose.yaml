@@ -38,6 +38,27 @@ services:
       TZ: ${TZ:-UTC}
       BOOTSTRAP_SERVERS: hailpath-kafka:9092
       GROUP_ID: hailpath-connect
+      CONNECT_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_SASL_MECHANISM: PLAIN
+      CONNECT_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_SASL_USERNAME:-kafka}" password="${KAFKA_SASL_PASSWORD:?set it in .env}";
+      CONNECT_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/trust.p12
+      CONNECT_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+      CONNECT_SSL_TRUSTSTORE_TYPE: PKCS12
+      CONNECT_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
+      CONNECT_PRODUCER_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_CONSUMER_SECURITY_PROTOCOL: SASL_SSL
+      CONNECT_PRODUCER_SASL_MECHANISM: PLAIN
+      CONNECT_CONSUMER_SASL_MECHANISM: PLAIN
+      CONNECT_PRODUCER_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_SASL_USERNAME:-kafka}" password="${KAFKA_SASL_PASSWORD:?set it in .env}";
+      CONNECT_CONSUMER_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_SASL_USERNAME:-kafka}" password="${KAFKA_SASL_PASSWORD:?set it in .env}";
+      CONNECT_PRODUCER_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/trust.p12
+      CONNECT_CONSUMER_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/trust.p12
+      CONNECT_PRODUCER_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+      CONNECT_CONSUMER_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+      CONNECT_PRODUCER_SSL_TRUSTSTORE_TYPE: PKCS12
+      CONNECT_CONSUMER_SSL_TRUSTSTORE_TYPE: PKCS12
+      CONNECT_PRODUCER_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
+      CONNECT_CONSUMER_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
       # Connect keeps its own state in Kafka: which connectors exist, how far
       # each one has read, and whether they are running. The image
       # entrypoint copies CONNECT_* into the worker config and does not
@@ -68,8 +89,12 @@ services:
       start_period: 240s
     ports:
       - "${PROXY_DEBEZIUM_PORT:-8083}:8083"
+    depends_on:
+      hailpath-kafka:
+        condition: service_healthy
     volumes:
       - ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-connect-plugins/confluent-avro-converter:/kafka/connect/confluent-avro-converter:ro
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     networks:
       - backbone
 
@@ -101,8 +126,14 @@ services:
     networks:
       - backbone
 
-# No volumes: Connect keeps everything it needs in Kafka topics, so the
-# container itself holds nothing worth saving.
+volumes:
+  hailpath-kafka-secrets:
+    name: hailpath-kafka-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-secrets
 
 networks:
   backbone:

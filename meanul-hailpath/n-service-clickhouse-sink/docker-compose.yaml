@@ -48,13 +48,17 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
 
       KAFKA_BOOTSTRAP: ${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}
+      KAFKA_SECURITY_PROTOCOL: ${KAFKA_SECURITY_PROTOCOL:-SASL_SSL}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-kafka}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:?set it in .env}
+      KAFKA_SSL_CA: ${KAFKA_SSL_CA:-/etc/kafka/secrets/ca.crt}
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL:-http://hailpath-schema-registry:8081}
       KAFKA_GROUP_ID: ${SINK_GROUP_ID:-hailpath-clickhouse-sink}
 
       REDIS_HOST: ${REDIS_HOST:-hailpath-redis}
       REDIS_PASSWORD: ${REDIS_PASSWORD:?must match b-infra-redis/.env}
 
-      # ClickHouse through the one proxy.
+      # One ClickHouse.
       CH_HOST: ${CH_HOST:-hailpath-clickhouse}
       CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
       CH_DATABASE: ${CH_DATABASE:-hailpath}
@@ -71,8 +75,19 @@ services:
       # deduplicate for us - see clickhouse_sink/seen.py.
       SINK_SEEN_EVENTS: ${SINK_SEEN_EVENTS:-500000}
       HOTSPOT_SCORE_THRESHOLD: ${HOTSPOT_SCORE_THRESHOLD:-0.6}
+    volumes:
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     networks:
       - backbone
+
+volumes:
+  hailpath-kafka-secrets:
+    name: hailpath-kafka-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-secrets
 
 networks:
   backbone:

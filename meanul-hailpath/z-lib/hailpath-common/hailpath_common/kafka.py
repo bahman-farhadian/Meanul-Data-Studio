@@ -35,6 +35,23 @@ def _bootstrap() -> str:
     return config.optional("KAFKA_BOOTSTRAP", "hailpath-kafka:9092")
 
 
+def _security() -> dict:
+    """SASL_SSL is the stack default. Sample tests set PLAINTEXT."""
+    protocol = config.optional("KAFKA_SECURITY_PROTOCOL", "SASL_SSL")
+    if protocol == "PLAINTEXT":
+        return {}
+    cfg = {
+        "security.protocol": protocol,
+        "sasl.mechanisms": config.optional("KAFKA_SASL_MECHANISM", "PLAIN"),
+        "sasl.username": config.required("KAFKA_SASL_USERNAME"),
+        "sasl.password": config.required("KAFKA_SASL_PASSWORD"),
+    }
+    ca = config.optional("KAFKA_SSL_CA", "/etc/kafka/secrets/ca.crt")
+    if protocol.endswith("SSL") or protocol.endswith("ssl"):
+        cfg["ssl.ca.location"] = ca
+    return cfg
+
+
 def _registry() -> SchemaRegistryClient:
     return SchemaRegistryClient(
         {"url": config.optional("SCHEMA_REGISTRY_URL", "http://hailpath-schema-registry:8081")}
@@ -91,6 +108,7 @@ class AvroTopicProducer:
         self._producer = Producer(
             {
                 "bootstrap.servers": _bootstrap(),
+                **_security(),
                 "acks": "all",
                 "enable.idempotence": True,
                 "compression.type": "lz4",
@@ -213,6 +231,7 @@ class AvroTopicConsumer:
         self._consumer = Consumer(
             {
                 "bootstrap.servers": _bootstrap(),
+                **_security(),
                 "group.id": group_id,
                 "enable.auto.commit": False,
                 "auto.offset.reset": "earliest" if from_beginning else "latest",

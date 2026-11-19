@@ -89,6 +89,7 @@ def sample_env():
             "CH_PASSWORD": passwords["HAILPATH_SAMPLE_CH_PASSWORD"],
             "CH_DATABASE": "hailpath",
             "KAFKA_BOOTSTRAP": "127.0.0.1:19092",
+            "KAFKA_SECURITY_PROTOCOL": "PLAINTEXT",
             "SCHEMA_REGISTRY_URL": "http://127.0.0.1:18081",
             "SCHEMA_DIR": str(REPO / "c-infra-kafka" / "schemas"),
             "MAX_SNAP_KM": "0.5",
