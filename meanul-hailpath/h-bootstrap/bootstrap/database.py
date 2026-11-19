@@ -2,7 +2,7 @@
 
 Every other module in this stack — hailpath_common.postgres included — connects
 to whatever PG_DATABASE says. That is a problem for exactly one step: the
-very first thing this container does. On a brand new cluster, PG_DATABASE
+very first thing this container does. On a brand new volume, PG_DATABASE
 (now "hailpath", not Postgres's default "postgres") does not exist yet, so the
 pooled connections hailpath_common.postgres hands out would fail before bootstrap
 even gets to wait_for(postgres.ping, ...).
@@ -10,7 +10,7 @@ even gets to wait_for(postgres.ping, ...).
 This module solves it with one raw, unpooled connection to the "postgres"
 database that always exists, used only to create "hailpath" and point it at its
 own schema. After that, every other module in the repo - migrations, the
-OSM import, every service's queries - keeps working completely unmodified:
+graph restore, every service's queries - keeps working completely unmodified:
 ALTER DATABASE ... SET search_path makes "hailpath" the default schema for any
 future connection to this database, from any client, without a single query
 anywhere needing to be schema-qualified.
@@ -48,9 +48,9 @@ def ensure_ready() -> None:
 
     wait_for(_can_reach_postgres, "PostgreSQL (postgres database)")
 
-    # A pg-* restart just before this (h-bootstrap's own PG_CPUS boost, or an
-    # operator-triggered one) can run this step before the write port accepts
-    # CREATE DATABASE. SELECT 1 is not proof the statements below can run.
+    # A postgres restart just before this (h-bootstrap's own PG_CPUS boost,
+    # or an operator-triggered one) can run this step before CREATE DATABASE
+    # is accepted. SELECT 1 is not proof the statements below can run.
     wait_for(
         lambda: _create_database_and_schema(database, user),
         "a writable PostgreSQL",
