@@ -72,7 +72,7 @@ def main() -> int:
         postgres.reset_pools()
 
 
-def _run(settings) -> int:
+def _run(settings: settings_module.Settings) -> int:
     # --- 0. the application database and schema -------------------------
     database.ensure_ready()
 
