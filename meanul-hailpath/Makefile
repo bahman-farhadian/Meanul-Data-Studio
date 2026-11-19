@@ -381,7 +381,7 @@ lag:
 	@for g in $(GROUPS); do \
 		printf "\n  $(B)%s$(X)\n" "$$g"; \
 		$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
-			--bootstrap-server hailpath-kafka:9092 --describe --group "$$g" 2>/dev/null \
+			--bootstrap-server hailpath-kafka:9092 --command-config /etc/kafka/secrets/client.properties --describe --group "$$g" 2>/dev/null \
 			| awk 'NR==1 || $$6 != "-"' | sed 's/^/    /' || printf "    (no such group yet)\n"; \
 	done
 	@printf "\n  Lag that stays small, or returns to small after a burst, is healthy.\n"
