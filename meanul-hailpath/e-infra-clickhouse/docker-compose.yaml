@@ -1,7 +1,5 @@
-# e-infra-clickhouse — the analytics database.
-#
-# One ClickHouse, hailpath-clickhouse. Clients (clickhouse-sink, Grafana)
-# use hailpath-clickhouse:8123 (HTTP) and :9000 (native).
+# e-infra-clickhouse — one ClickHouse. Clients use hailpath-clickhouse:8123
+# (HTTP) and :9000 (native). clickhouse-sink writes; Grafana reads.
 #
 # Standalone test:
 #   docker network create hailpath-net
@@ -14,70 +12,54 @@
 
 name: e-infra-clickhouse
 
-x-ch-node: &ch-node
-  image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:26.8.38.9}
-  restart: unless-stopped
-  cpus: ${CH_CPUS:-1.3}
-  mem_limit: ${CH_MEM:-8g}
-  memswap_limit: ${CH_MEM:-8g}
-  # ClickHouse opens many files at once; the default container limit is far
-  # too low for a merge-heavy table engine.
-  ulimits:
-    nofile:
-      soft: 262144
-      hard: 262144
-  healthcheck:
-    test:
-      - CMD-SHELL
-      - clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1" >/dev/null || exit 1
-    interval: 15s
-    timeout: 10s
-    retries: 5
-    start_period: 40s
-  networks:
-    - backbone
-
-x-ch-env: &ch-env
-  TZ: ${TZ:-UTC}
-  # The image creates this login on first start, so no password is written
-  # into any file in this repository.
-  CLICKHOUSE_USER: ${CH_USER:-hailpath}
-  CLICKHOUSE_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
-  # Read by from_env in config.d/memory.xml and users.d/profiles.xml. Bytes,
-  # because that is what ClickHouse wants there. The defaults are the 8g
-  # production sizes those files used to hold as literals; they sit here so
-  # that CH_MEM above and the ceilings underneath it cannot drift apart.
-  CH_MAX_SERVER_MEMORY: ${CH_MAX_SERVER_MEMORY:-6979321856}
-  CH_MARK_CACHE_SIZE: ${CH_MARK_CACHE_SIZE:-1073741824}
-  CH_UNCOMPRESSED_CACHE_SIZE: ${CH_UNCOMPRESSED_CACHE_SIZE:-1073741824}
-  CH_MAX_QUERY_MEMORY: ${CH_MAX_QUERY_MEMORY:-4294967296}
-  CH_MAX_THREADS: ${CH_MAX_THREADS:-4}
-
-# Individual files, not the two directories. The image's entrypoint writes
-# its own default-user.xml into users.d to create CLICKHOUSE_USER, and it
-# writes into config.d as well — so mounting either directory read-only
-# stops the node before it starts ("Read-only file system"), and mounting
-# them writable would let a container write into the repository. Mounting
-# the files leaves both directories writable and ours read-only.
-x-ch-config-memory: &ch-config-memory ./config/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
-x-ch-users: &ch-users ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-server/users.d/profiles.xml:ro
-
 services:
-  # The only server.
   hailpath-clickhouse:
-    <<: *ch-node
+    image: ${CH_SERVER_IMAGE:-clickhouse/clickhouse-server:26.8.38.9}
     container_name: hailpath-clickhouse
     hostname: hailpath-clickhouse
+    restart: unless-stopped
+    cpus: ${CH_CPUS:-1.3}
+    mem_limit: ${CH_MEM:-8g}
+    memswap_limit: ${CH_MEM:-8g}
+    # ClickHouse opens many files at once; the default container limit is far
+    # too low for a merge-heavy table engine.
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
     environment:
-      <<: *ch-env
-      CH_HOSTNAME: hailpath-clickhouse
+      TZ: ${TZ:-UTC}
+      # The image creates this login on first start, so no password is written
+      # into any file in this repository.
+      CLICKHOUSE_USER: ${CH_USER:-hailpath}
+      CLICKHOUSE_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
+      # Read by from_env in config.d/memory.xml and users.d/profiles.xml.
+      # Bytes. Compose defaults are the 8g deploy sizes; the laptop .env
+      # lowers CH_MEM and these together.
+      CH_MAX_SERVER_MEMORY: ${CH_MAX_SERVER_MEMORY:-6979321856}
+      CH_MARK_CACHE_SIZE: ${CH_MARK_CACHE_SIZE:-1073741824}
+      CH_UNCOMPRESSED_CACHE_SIZE: ${CH_UNCOMPRESSED_CACHE_SIZE:-1073741824}
+      CH_MAX_QUERY_MEMORY: ${CH_MAX_QUERY_MEMORY:-4294967296}
+      CH_MAX_THREADS: ${CH_MAX_THREADS:-4}
     ports:
       - "${PROXY_CH_HTTP_PORT:-8123}:8123"
       - "${PROXY_CH_NATIVE_PORT:-9000}:9000"
     volumes:
-      - *ch-config-memory
-      - *ch-users
+      # Individual files, not the two directories. The image entrypoint writes
+      # default-user.xml into users.d; a read-only directory mount stops it.
+      - ./config/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
+      - ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-server/users.d/profiles.xml:ro
       - hailpath-clickhouse-data:/var/lib/clickhouse
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - clickhouse-client --user "$$CLICKHOUSE_USER" --password "$$CLICKHOUSE_PASSWORD" --query "SELECT 1" >/dev/null || exit 1
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - backbone
 
   # One-shot: create the tables. Run it after the server is healthy. Every
   # statement uses IF NOT EXISTS, so re-running is safe and is how a newly
