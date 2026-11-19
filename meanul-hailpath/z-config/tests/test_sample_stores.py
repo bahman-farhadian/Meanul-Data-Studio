@@ -78,8 +78,7 @@ def sample_env():
     os.environ.update(
         {
             "PG_HOST": "127.0.0.1",
-            "PG_WRITE_PORT": "15432",
-            "PG_READ_PORT": "15432",
+            "PG_PORT": "15432",
             "PG_USER": "postgres",
             "PG_PASSWORD": passwords["HAILPATH_SAMPLE_PG_PASSWORD"],
             "PG_DATABASE": "hailpath",

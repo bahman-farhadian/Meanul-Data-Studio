@@ -641,6 +641,9 @@ def test_no_haproxy_in_front_of_one_process_stores():
     assert not (HAILPATH / "z-config" / "haproxy").exists()
     pg = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "postgres.py").read_text()
     assert 'config.optional("PG_HOST", "hailpath-postgres")' in pg
+    assert 'config.integer("PG_PORT", 5432)' in pg
+    assert "PG_READ_PORT" not in pg
+    assert "PG_WRITE_PORT" not in pg
     ch = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "clickhouse.py").read_text()
     assert 'config.optional("CH_HOST", "hailpath-clickhouse")' in ch
     postgres = (HAILPATH / "a-infra-postgres" / "docker-compose.yaml").read_text()

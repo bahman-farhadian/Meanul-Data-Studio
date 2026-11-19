@@ -27,7 +27,7 @@ log = get_logger(__name__)
 
 def _admin_connection_string(dbname: str) -> str:
     host = config.optional("PG_HOST", "hailpath-postgres")
-    port = config.integer("PG_WRITE_PORT", 5432)
+    port = config.integer("PG_PORT", 5432)
     user = config.optional("PG_USER", "postgres")
     password = config.required("PG_PASSWORD")
     return (

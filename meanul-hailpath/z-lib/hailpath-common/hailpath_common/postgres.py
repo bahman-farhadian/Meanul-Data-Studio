@@ -23,8 +23,7 @@ from hailpath_common.logging import get_logger
 
 log = get_logger(__name__)
 
-_write_pool: ConnectionPool | None = None
-_read_pool: ConnectionPool | None = None
+_pool: ConnectionPool | None = None
 
 
 def _connection_string(port: int) -> str:
@@ -48,7 +47,7 @@ def _connection_string(port: int) -> str:
     )
 
 
-def _pool(port: int, size: int) -> ConnectionPool:
+def _make_pool(port: int, size: int) -> ConnectionPool:
     return ConnectionPool(
         conninfo=_connection_string(port),
         min_size=1,
@@ -73,11 +72,18 @@ def _pool(port: int, size: int) -> ConnectionPool:
     )
 
 
+def _get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        port = config.integer("PG_PORT", 5432)
+        _pool = _make_pool(port, config.integer("PG_POOL_SIZE", 5))
+        log.info("postgres pool ready", extra={"port": port})
+    return _pool
+
+
 @contextmanager
 def write_connection():
-    """A connection that can change data. Goes to the write port.
-
-    Used as:
+    """A connection that can change data.
 
         with write_connection() as conn, conn.cursor() as cur:
             cur.execute("INSERT INTO ...", params)
@@ -85,30 +91,17 @@ def write_connection():
     The transaction is committed when the block ends without an error, and
     rolled back if something is raised.
     """
-    global _write_pool
-    if _write_pool is None:
-        port = config.integer("PG_WRITE_PORT", 5432)
-        _write_pool = _pool(port, config.integer("PG_POOL_SIZE", 5))
-        log.info("postgres write pool ready", extra={"port": port})
-
-    with _write_pool.connection() as conn:
+    with _get_pool().connection() as conn:
         yield conn
 
 
 @contextmanager
 def read_connection():
-    """A connection that should not be the one that just wrote.
+    """A connection from the same pool as write_connection.
 
-    Same PostgreSQL, same listen. Use write_connection to read a row
-    inside the transaction that wrote it.
+    Use write_connection to read a row inside the transaction that wrote it.
     """
-    global _read_pool
-    if _read_pool is None:
-        port = config.integer("PG_READ_PORT", 5432)
-        _read_pool = _pool(port, config.integer("PG_POOL_SIZE", 5))
-        log.info("postgres read pool ready", extra={"port": port})
-
-    with _read_pool.connection() as conn:
+    with _get_pool().connection() as conn:
         yield conn
 
 
@@ -131,7 +124,7 @@ def fetch_one(conn: Connection, sql: str, params: tuple | dict | None = None) ->
 
 
 def ping() -> bool:
-    """True when the write path answers. Used by the waiting helpers."""
+    """True when Postgres answers. Used by the waiting helpers."""
     with write_connection() as conn, conn.cursor() as cur:
         cur.execute("SELECT 1")
         return cur.fetchone() is not None
@@ -140,13 +133,11 @@ def ping() -> bool:
 def reset_pools() -> None:
     """Drop cached pools so the next checkout reads PG_* from the environment.
 
-    Tests point PG_HOST/PG_WRITE_PORT at a throwaway node after this module
+    Tests point PG_HOST/PG_PORT at a throwaway node after this module
     has already been imported. Without this, the first checkout in the
     process would pin every later test to the wrong host.
     """
-    global _write_pool, _read_pool
-    for pool in (_write_pool, _read_pool):
-        if pool is not None:
-            pool.close()
-    _write_pool = None
-    _read_pool = None
+    global _pool
+    if _pool is not None:
+        _pool.close()
+    _pool = None
