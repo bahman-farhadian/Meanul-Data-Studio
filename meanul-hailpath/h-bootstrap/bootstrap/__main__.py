@@ -64,7 +64,15 @@ def main() -> int:
     setup_logging("bootstrap")
     settings = settings_module.load()
     log.info("bootstrap starting")
+    try:
+        return _run(settings)
+    finally:
+        # One-shot: close the pool so the process does not sit 20s on
+        # worker threads after the work is done.
+        postgres.reset_pools()
 
+
+def _run(settings) -> int:
     # --- 0. the application database and schema -------------------------
     database.ensure_ready()
 
