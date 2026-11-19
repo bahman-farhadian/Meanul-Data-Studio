@@ -37,7 +37,8 @@ preflight:
 		missing=""; \
 		for v in PG_SUPERUSER_PASSWORD REDIS_PASSWORD \
 		         CH_PASSWORD GRAFANA_ADMIN_PASSWORD \
-		         KAFKA_CLUSTER_ID KSQLDB_ADMIN_PASSWORD; do \
+		         KAFKA_CLUSTER_ID KAFKA_SASL_PASSWORD KAFKA_SSL_STORE_PASSWORD \
+		         KSQLDB_ADMIN_PASSWORD; do \
 			grep -qE "^$$v=.+" $(ENV_FILE) || missing="$$missing $$v"; done; \
 		[ -z "$$missing" ] && printf "  $(G)ok$(X)      every required setting has a value\n" \
 			|| { printf "  $(R)FAIL$(X)    missing or empty:%s\n" "$$missing"; fail=1; }; \

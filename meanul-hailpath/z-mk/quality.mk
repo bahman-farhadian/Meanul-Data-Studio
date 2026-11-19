@@ -59,7 +59,7 @@ profile:
 	$(call say,Kafka — how many messages each topic actually holds)
 	@printf "  %-28s %10s %10s\n" TOPIC PARTITIONS MESSAGES
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-get-offsets.sh \
-		--bootstrap-server hailpath-kafka:9092 2>/dev/null \
+		--bootstrap-server hailpath-kafka:9092 --command-config /etc/kafka/secrets/client.properties 2>/dev/null \
 		| awk -F: '$$1 !~ /^(__|_schemas|connect_)/ {parts[$$1]++; total[$$1]+=$$3} \
 		           END{for (t in total) printf "  %-28s %10d %10d\n", t, parts[t], total[t]}' \
 		| sort || true
@@ -68,7 +68,7 @@ profile:
 	@printf "  while doing nothing at all.\n\n"
 	@for g in $(GROUPS); do \
 		$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
-			--bootstrap-server hailpath-kafka:9092 --describe --group "$$g" 2>/dev/null \
+			--bootstrap-server hailpath-kafka:9092 --command-config /etc/kafka/secrets/client.properties --describe --group "$$g" 2>/dev/null \
 			| awk -v g="$$g" 'NR>1 && $$6 != "-" {lag+=$$6; n++} END{if(n) printf "  %-24s partitions=%d total_lag=%d\n", g, n, lag}' || true; \
 	done
 	$(call say,Redis — what the services put in the cache)

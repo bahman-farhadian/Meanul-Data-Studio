@@ -9,6 +9,11 @@
 # Kafka
 # =============================================================================
 
+.PHONY: kafka-certs
+kafka-certs:
+	$(call say,Kafka TLS + SASL files)
+	@$(COMPOSE) run --rm kafka-certs
+
 .PHONY: ksqldb-secrets
 ksqldb-secrets:
 	$(call say,ksqlDB credentials)
@@ -23,10 +28,10 @@ topics:
 verify-kafka:
 	$(call say,Kafka)
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-broker-api-versions.sh \
-		--bootstrap-server hailpath-kafka:9092 2>/dev/null | grep -E '^hailpath-kafka' || true
+		--bootstrap-server hailpath-kafka:9092 --command-config /etc/kafka/secrets/client.properties 2>/dev/null | grep -E '^hailpath-kafka' || true
 	@echo
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server hailpath-kafka:9092 --describe 2>/dev/null | grep -E 'Topic:' || true
+		--bootstrap-server hailpath-kafka:9092 --command-config /etc/kafka/secrets/client.properties --describe 2>/dev/null | grep -E 'Topic:' || true
 	@printf "\n  Every partition has one replica. That replica is in sync.\n"
 
 .PHONY: schemas

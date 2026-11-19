@@ -2,7 +2,7 @@
 # the Schema Registry for every topic's Avro schema, and ksqlDB so a SQL
 # client can read that broker.
 #
-# Every event on this cluster is binary Avro. A message carries only the id
+# Every event on this broker is binary Avro. A message carries only the id
 # of its schema; the reader asks the Schema Registry what that id means. That
 # keeps messages small and lets a schema change without breaking old readers.
 #
@@ -29,10 +29,11 @@ x-kafka-broker: &kafka-broker
   memswap_limit: ${KAFKA_MEM:-5.5g}
   healthcheck:
     # Asking the broker for its API versions proves it is not merely running
-    # but actually answering on the client port.
+    # but actually answering on the client port. SASL_SSL needs the client
+    # file written by kafka-certs.
     test:
       - CMD-SHELL
-      - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1
+      - /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 --command-config /etc/kafka/secrets/client.properties >/dev/null 2>&1
     interval: 15s
     timeout: 10s
     retries: 5
@@ -42,13 +43,26 @@ x-kafka-broker: &kafka-broker
 
 x-kafka-env: &kafka-env
   TZ: ${TZ:-UTC}
-  # Every broker in one cluster must share this id. It is generated once and
-  # then never changed - see .env.example.
+  # KRaft storage UUID. One broker still needs it. Never change it once
+  # hailpath-kafka-data exists. See .env.example.
   CLUSTER_ID: ${KAFKA_CLUSTER_ID:?set it in c-infra-kafka/.env}
   KAFKA_PROCESS_ROLES: broker,controller
   KAFKA_CONTROLLER_QUORUM_VOTERS: 1@hailpath-kafka:9093
   KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:SASL_SSL,CONTROLLER:PLAINTEXT,EXTERNAL:SASL_SSL
+  KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+  KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+  KAFKA_LISTENER_NAME_INTERNAL_SASL_ENABLED_MECHANISMS: PLAIN
+  KAFKA_LISTENER_NAME_EXTERNAL_SASL_ENABLED_MECHANISMS: PLAIN
+  KAFKA_OPTS: -Djava.security.auth.login.config=/etc/kafka/secrets/kafka.jaas
+  KAFKA_SSL_KEYSTORE_LOCATION: /etc/kafka/secrets/kafka.p12
+  KAFKA_SSL_KEYSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+  KAFKA_SSL_KEYSTORE_TYPE: PKCS12
+  KAFKA_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/trust.p12
+  KAFKA_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+  KAFKA_SSL_TRUSTSTORE_TYPE: PKCS12
+  KAFKA_SSL_CLIENT_AUTH: none
+  KAFKA_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
   KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
   KAFKA_LOG_DIRS: /var/lib/kafka/data
   # One broker. A topic copy on the same host would not survive the host
@@ -96,6 +110,27 @@ services:
     networks:
       - backbone
 
+  # One-shot: local CA, broker PKCS12, client.properties. Run before kafka.
+  kafka-certs:
+    image: ${KAFKA_IMAGE:-apache/kafka:4.3.2}
+    profiles: ["init"]
+    cpus: ${KAFKA_CERTS_CPUS:-0.25}
+    mem_limit: ${KAFKA_CERTS_MEM:-256m}
+    memswap_limit: ${KAFKA_CERTS_MEM:-256m}
+    user: "0:0"
+    environment:
+      TZ: ${TZ:-UTC}
+      KAFKA_ADVERTISED_HOST: ${KAFKA_ADVERTISED_HOST:?set it in .env}
+      KAFKA_SASL_USERNAME: ${KAFKA_SASL_USERNAME:-kafka}
+      KAFKA_SASL_PASSWORD: ${KAFKA_SASL_PASSWORD:?set it in .env}
+      KAFKA_SSL_STORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+    entrypoint: ["/bin/sh", "/generate.sh"]
+    volumes:
+      - ./security/generate.sh:/generate.sh:ro
+      - hailpath-kafka-secrets:/secrets
+    networks:
+      - backbone
+
   hailpath-kafka:
     <<: *kafka-broker
     container_name: hailpath-kafka
@@ -111,6 +146,7 @@ services:
       - "9094:9094"
     volumes:
       - hailpath-kafka-data:/var/lib/kafka/data
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
 
   # The Schema Registry keeps every topic's Avro schema and hands out the ids
   # that travel inside each message. It stores them in a Kafka topic, so it
@@ -130,7 +166,14 @@ services:
       TZ: ${TZ:-UTC}
       SCHEMA_REGISTRY_HOST_NAME: hailpath-schema-registry
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://hailpath-kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: SASL_SSL://hailpath-kafka:9092
+      SCHEMA_REGISTRY_KAFKASTORE_SECURITY_PROTOCOL: SASL_SSL
+      SCHEMA_REGISTRY_KAFKASTORE_SASL_MECHANISM: PLAIN
+      SCHEMA_REGISTRY_KAFKASTORE_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_SASL_USERNAME:-kafka}" password="${KAFKA_SASL_PASSWORD:?set it in .env}";
+      SCHEMA_REGISTRY_KAFKASTORE_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/trust.p12
+      SCHEMA_REGISTRY_KAFKASTORE_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+      SCHEMA_REGISTRY_KAFKASTORE_SSL_TRUSTSTORE_TYPE: PKCS12
+      SCHEMA_REGISTRY_KAFKASTORE_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR: "1"
       # Confluent's own default here is 500ms, and it is the whole budget
       # for writing a schema into the _schemas topic and reading it back.
@@ -161,6 +204,8 @@ services:
       # The registry runs its own preflight against every broker before it
       # listens, so give it room on a cold start.
       start_period: 60s
+    volumes:
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     networks:
       - backbone
 
@@ -177,10 +222,12 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       KAFKA_BOOTSTRAP: hailpath-kafka:9092
+      KAFKA_CLIENT_PROPS: /etc/kafka/secrets/client.properties
       KAFKA_RETENTION_HOURS: ${KAFKA_RETENTION_HOURS:-48}
     volumes:
       - ./topics/create-topics.sh:/create-topics.sh:ro
       - ./topics/topics.tsv:/topics.tsv:ro
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     networks:
       - backbone
 
@@ -237,15 +284,14 @@ services:
     networks:
       - backbone
 
-  # The SQL layer over the cluster. DBeaver's own Kafka support only speaks
-  # ksqlDB's REST API, not the raw broker protocol used by hailpath-kafka/2/3 above
-  # — this is what makes a topic queryable from a SQL client at all.
+  # The SQL layer over the broker. DBeaver's Kafka support speaks ksqlDB's
+  # REST API, not the raw broker protocol.
   # Verified locally before this shipped: CREATE STREAM over a real topic,
   # then SELECT ... EMIT CHANGES returned a real row back.
   #
-  # HTTP Basic auth is on: Kafka itself has none, and DBeaver's ksqlDB driver
-  # requires a login regardless, so this is the one place in the cluster that
-  # actually gates access. The package for the JAAS login module moved in
+  # HTTP Basic auth is on for the REST API. Kafka itself uses SASL_SSL.
+  # DBeaver's ksqlDB driver requires a login regardless. The package for
+  # the JAAS login module moved in
   # Jetty 12 from org.eclipse.jetty.jaas.spi to org.eclipse.jetty.security.jaas.spi
   # - Confluent's own docs still show the old one; confirmed by testing
   # against this exact pinned image, not assumed.
@@ -265,6 +311,13 @@ services:
     environment:
       TZ: ${TZ:-UTC}
       KSQL_BOOTSTRAP_SERVERS: hailpath-kafka:9092
+      KSQL_SECURITY_PROTOCOL: SASL_SSL
+      KSQL_SASL_MECHANISM: PLAIN
+      KSQL_SASL_JAAS_CONFIG: org.apache.kafka.common.security.plain.PlainLoginModule required username="${KAFKA_SASL_USERNAME:-kafka}" password="${KAFKA_SASL_PASSWORD:?set it in .env}";
+      KSQL_SSL_TRUSTSTORE_LOCATION: /etc/kafka/secrets/trust.p12
+      KSQL_SSL_TRUSTSTORE_PASSWORD: ${KAFKA_SSL_STORE_PASSWORD:?set it in .env}
+      KSQL_SSL_TRUSTSTORE_TYPE: PKCS12
+      KSQL_SSL_ENDPOINT_IDENTIFICATION_ALGORITHM: HTTPS
       KSQL_LISTENERS: http://0.0.0.0:8088
       KSQL_KSQL_SERVICE_ID: hailpath_ksqldb_
       KSQL_KSQL_SCHEMA_REGISTRY_URL: http://hailpath-schema-registry:8081
@@ -325,6 +378,7 @@ services:
       - "${PROXY_KSQLDB_PORT:-8089}:8088"
     volumes:
       - hailpath-ksqldb-secrets:/etc/ksqldb-secrets:ro
+      - hailpath-kafka-secrets:/etc/kafka/secrets:ro
     healthcheck:
       # python3, not curl - same finding as schema-registry: this image has
       # neither curl nor wget nor nc, so a curl healthcheck never passes.
@@ -374,6 +428,14 @@ volumes:
       type: none
       o: bind
       device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-data
+
+  hailpath-kafka-secrets:
+    name: hailpath-kafka-secrets
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${HAILPATH_VOLUME_ROOT:?set it in meanul-hailpath/.env}/hailpath-kafka-secrets
 
   hailpath-ksqldb-secrets:
     name: hailpath-ksqldb-secrets

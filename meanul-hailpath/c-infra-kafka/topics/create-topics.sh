@@ -11,15 +11,21 @@
 set -eu
 
 BOOTSTRAP="${KAFKA_BOOTSTRAP:-hailpath-kafka:9092}"
+PROPS="${KAFKA_CLIENT_PROPS:-}"
 RETENTION_MS=$(( ${KAFKA_RETENTION_HOURS:-48} * 3600 * 1000 ))
 KAFKA_TOPICS=/opt/kafka/bin/kafka-topics.sh
 TAB=$(printf '\t')
+cfg() {
+    if [ -n "$PROPS" ]; then
+        echo --command-config "$PROPS"
+    fi
+}
 
-echo "waiting for the brokers at ${BOOTSTRAP} ..."
+echo "waiting for the broker at ${BOOTSTRAP} ..."
 attempt=1
 while [ "$attempt" -le 30 ]; do
     if /opt/kafka/bin/kafka-broker-api-versions.sh \
-        --bootstrap-server "$BOOTSTRAP" >/dev/null 2>&1; then
+        --bootstrap-server "$BOOTSTRAP" $(cfg) >/dev/null 2>&1; then
         break
     fi
     echo "  not ready yet (attempt ${attempt}/30)"
@@ -27,12 +33,12 @@ while [ "$attempt" -le 30 ]; do
     sleep 5
 done
 if [ "$attempt" -gt 30 ]; then
-    echo "brokers never answered - is the cluster up?" >&2
+    echo "broker never answered - is hailpath-kafka up?" >&2
     exit 1
 fi
-echo "brokers are answering"
+echo "broker is answering"
 
-existing=$("$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" --list)
+existing=$("$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" $(cfg) --list)
 
 # IFS is set to a tab so the columns of topics.tsv are read as they are
 # written. Lines starting with # and empty lines are skipped.
@@ -62,7 +68,7 @@ while IFS="$TAB" read -r name partitions retention_hours key purpose; do
     # regardless of which one a given line lands on; a genuine failure
     # still shows everything, unfiltered, and still fails the run.
     out=$(mktemp)
-    if "$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" \
+    if "$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" $(cfg) \
         --create --if-not-exists \
         --topic "$name" \
         --partitions "$partitions" \
@@ -78,5 +84,5 @@ while IFS="$TAB" read -r name partitions retention_hours key purpose; do
 done < /topics.tsv
 
 echo
-echo "topics now on the cluster:"
-"$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" --list
+echo "topics now on the broker:"
+"$KAFKA_TOPICS" --bootstrap-server "$BOOTSTRAP" $(cfg) --list

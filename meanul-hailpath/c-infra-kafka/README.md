@@ -10,9 +10,13 @@ Declared topics use replication factor 1 and `min.insync.replicas=1`.
 `auto.create.topics.enable` is false. Default retention is 48 hours.
 ClickHouse is where history lives.
 
-On `hailpath-net`: `hailpath-kafka:9092`. Host: this container on **9094**
-(`KAFKA_ADVERTISED_HOST`). ksqlDB: `PROXY_KSQLDB_PORT` (default 8089) onto
-8088. Schema Registry: 8081 on the network only.
+On `hailpath-net`: `hailpath-kafka:9092` with **SASL_SSL** (self-signed CA
+in `hailpath-kafka-secrets`). Host: **9094**. ksqlDB: `PROXY_KSQLDB_PORT`
+(default 8089) onto 8088. Schema Registry: 8081 on the network only.
+
+`make kafka-certs` writes the CA, broker PKCS12, and client.properties
+before the broker starts. `KAFKA_CLUSTER_ID` is the KRaft disk UUID — one
+broker still needs it.
 
 Image pins, heaps, and memory are in the root `.env`.
 
@@ -51,6 +55,7 @@ not in the file; Debezium creates those.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | Broker, Schema Registry, ksqlDB, init one-shots. |
+| `security/generate.sh` | Local CA, broker PKCS12, SASL client.properties. |
 | `topics/topics.tsv` | Name, partitions, retention, key. |
 | `topics/create-topics.sh` | Creates missing topics. RF 1. |
 | `schemas/*.avsc` | Avro for each declared topic. |

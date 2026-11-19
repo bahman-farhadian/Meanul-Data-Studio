@@ -233,6 +233,7 @@ up:
 	@$(MAKE) --no-print-directory _mk-data-tree
 	@$(MAKE) --no-print-directory preflight
 	@$(MAKE) --no-print-directory volume-perms
+	@$(MAKE) --no-print-directory kafka-certs
 	@$(MAKE) --no-print-directory ksqldb-secrets
 	$(call say,Starting the infrastructure — pieces a to f)
 	@$(COMPOSE) up -d $(PIECE_D)

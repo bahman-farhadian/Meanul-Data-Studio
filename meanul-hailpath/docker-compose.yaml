@@ -84,7 +84,7 @@ services:
         own 999:999 hailpath-pgdata \
                     hailpath-redis-data
         # Kafka's uid is configurable because the image has changed it before.
-        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} hailpath-kafka-data
+        own ${KAFKA_UID:-1000}:${KAFKA_GID:-1000} hailpath-kafka-data hailpath-kafka-secrets
         # Grafana runs as 472 with group 0; tileserver-gl as 1000.
         own 472:0 hailpath-grafana-data hailpath-grafana-plugins
         own 1000:1000 hailpath-tiles-data

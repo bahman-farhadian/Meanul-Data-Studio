@@ -25,7 +25,7 @@ verify-cdc:
 	@$(COMPOSE) exec -T hailpath-debezium curl -sS http://localhost:8083/connectors/hailpath-pg/status 2>/dev/null || true
 	@echo
 	@$(COMPOSE) exec -T hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
-		--bootstrap-server hailpath-kafka:9092 --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
+		--bootstrap-server hailpath-kafka:9092 --command-config /etc/kafka/secrets/client.properties --list 2>/dev/null | grep '^cdc\.' || printf "  no cdc.* topics yet\n"
 	@echo
 	@$(COMPOSE) exec -T hailpath-postgres psql "host=hailpath-postgres port=5432 user=postgres password=$(call getenv,PG_SUPERUSER_PASSWORD) dbname=$(call getenv,PG_DATABASE,hailpath)" -c \
 		"SELECT slot_name, plugin, active, wal_status FROM pg_replication_slots;" 2>/dev/null || true
