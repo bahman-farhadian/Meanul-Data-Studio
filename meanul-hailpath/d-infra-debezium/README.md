@@ -22,7 +22,7 @@ publication.
 | File | Purpose |
 | --- | --- |
 | `docker-compose.yaml` | `hailpath-debezium` and `connector-register`. |
-| `converter-prepare.sh` | Downloads Confluent Avro converter jars. |
+| `converter-prepare.sh` | Downloads Avro converter jars matching `AVRO_CONVERTER_VERSION`. |
 | `connectors/hailpath-pg.json` | Connector config, no password. |
 | `connectors/register.py` | PUT to Connect. |
 | `.env.example` | Standalone copy of the settings this piece reads. |

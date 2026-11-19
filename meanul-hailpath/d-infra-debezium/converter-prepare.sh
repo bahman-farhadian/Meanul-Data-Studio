@@ -20,11 +20,17 @@ fi
 
 dir="${root}/hailpath-connect-plugins/confluent-avro-converter"
 mkdir -p "$dir"
+stamp="${dir}/VERSION"
 
 jars=$(find "$dir" -name '*.jar' 2>/dev/null | wc -l)
-if [ "$jars" -gt 0 ]; then
-  printf '  ok      already there: %s (%s jars)\n' "$dir" "$jars"
+have="$(cat "$stamp" 2>/dev/null || true)"
+if [ "$jars" -gt 0 ] && [ "$have" = "$ver" ]; then
+  printf '  ok      %s (%s jars, %s)\n' "$dir" "$jars" "$ver"
   exit 0
+fi
+if [ "$jars" -gt 0 ]; then
+  printf '  old     %s (have %s, want %s) — replacing jars\n' "$dir" "${have:-unknown}" "$ver"
+  find "$dir" -name '*.jar' -delete
 fi
 
 url="https://hub-downloads.confluent.io/api/plugins/confluentinc/kafka-connect-avro-converter/versions/${ver}/confluentinc-kafka-connect-avro-converter-${ver}.zip"
@@ -49,5 +55,6 @@ if [ "$jars" -eq 0 ]; then
   printf '  FAIL    no jars extracted into %s\n' "$dir" >&2
   exit 1
 fi
+printf '%s\n' "$ver" > "$stamp"
 chmod -R a+rX "$dir"
-printf '  ok      %s (%s jars)\n' "$dir" "$jars"
+printf '  ok      %s (%s jars, %s)\n' "$dir" "$jars" "$ver"
