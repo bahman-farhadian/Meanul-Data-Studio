@@ -32,11 +32,17 @@ fi
 
 dir="${root}/hailpath-grafana-plugins"
 plugin="${dir}/grafana-clickhouse-datasource"
+stamp="${dir}/VERSION"
 mkdir -p "$dir"
 
-if [ -d "$plugin" ]; then
-  printf '  ok      already there: %s\n' "$plugin"
+have="$(cat "$stamp" 2>/dev/null || true)"
+if [ -d "$plugin" ] && [ "$have" = "$ver" ]; then
+  printf '  ok      %s (%s)\n' "$plugin" "$ver"
   exit 0
+fi
+if [ -d "$plugin" ]; then
+  printf '  old     %s (have %s, want %s) — replacing plugin\n' "$plugin" "${have:-unknown}" "$ver"
+  rm -rf "$plugin"
 fi
 
 printf '  from    grafana cli grafana-clickhouse-datasource %s\n' "$ver"
@@ -53,5 +59,6 @@ if [ ! -d "$plugin" ]; then
   exit 1
 fi
 
+printf '%s\n' "$ver" > "$stamp"
 chown -R 472:0 "$dir" 2>/dev/null || true
-printf '  ok      %s\n' "$plugin"
+printf '  ok      %s (%s)\n' "$plugin" "$ver"
