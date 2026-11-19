@@ -1,130 +1,65 @@
 # e-infra-clickhouse — one ClickHouse
 
-One server, `hailpath-clickhouse` / `hailpath-clickhouse`. `clickhouse-sink` writes events
-here, `h-bootstrap` loads history here, and Grafana reads
-here.
+One process: `hailpath-clickhouse`. `clickhouse-sink` writes events here,
+`h-bootstrap` loads history here, Grafana reads here.
 
-Why a second copy on this host is not a second machine:
-[`clickhouse-design.md`](clickhouse-design.md).
+Image, memory, and query ceilings are in the root `.env` (from
+`.env.example`). Laptop: `CH_MEM=2g`. Deploy: `CH_MEM=8g`. UTC.
 
-## Tables
-
-The query name is the table. `hailpath.driver_positions` and
-`hailpath.trip_events` store the rows. Engines:
-
-| Engine | Used for |
-| --- | --- |
-| `MergeTree` | Raw streams: positions, trip events, hotspots, offers, segment traffic. |
-| `SummingMergeTree` | Additive rollups such as `trip_stats_hourly`. |
-| `AggregatingMergeTree` | Rollups that need a state combinator. |
-| `ReplacingMergeTree(event_time)` | `trip_facts`, collapsed on `event_time` at merge time. |
-
-Read and write those names. There is no `*_local` suffix.
-
-`SummingMergeTree` adds matching rows when it merges, not on every
-insert. A query still aggregates:
-
-```sql
-SELECT hour,
-       sum(completed_trips) AS trips,
-       sum(revenue) AS revenue,
-       sum(surge_sum) / sum(completed_trips) AS avg_surge
-FROM hailpath.trip_stats_hourly
-WHERE hour >= now() - INTERVAL 24 HOUR
-GROUP BY hour
-ORDER BY hour;
-```
-
-`trip_events` carries columns Kafka does not: the pickup zone's demand
-score, whether the trip was a hotspot trip, and how far the real
-duration drifted from the prediction. `clickhouse-sink` fills those
-from Redis.
-
-| Table | Holds |
-| --- | --- |
-| `driver_positions` | Driver position reports. |
-| `rider_positions` | Rider position reports. |
-| `trip_events` | Trip status changes, enriched by the sink. |
-| `hotspot_history` | Demand score of each zone over time. |
-| `trip_stats_hourly` | Completed trips summed per hour and pickup zone. |
-
-TTL on each table is what bounds disk. The full list is `ddl/`.
-
-## Memory
-
-`max_server_memory_usage` is 6.5 GB against an 8 GB container limit.
-One query may use at most 4 GB. A refused query says "memory limit
-exceeded". An OOM kill does not.
-
-Every one of those numbers is set in `.env`, not in the XML:
-`CH_MEM` is the container, `CH_MAX_SERVER_MEMORY` the server,
-`CH_MAX_QUERY_MEMORY` one query, `CH_MARK_CACHE_SIZE` and
-`CH_UNCOMPRESSED_CACHE_SIZE` the caches, `CH_MAX_THREADS` the per-query
-thread count. ClickHouse pulls them in with `from_env`; the merged
-result is in `/var/lib/clickhouse/preprocessed_configs/config.xml`.
-
-## Ports
-
-**8123** (HTTP) and **9000** (native) are `hailpath-clickhouse`. Clients use
-`CH_HOST=hailpath-clickhouse`.
+Engines are MergeTree (raw), SummingMergeTree / AggregatingMergeTree /
+ReplacingMergeTree (rollups). Query names are the tables. There is no
+`*_local` suffix. TTL on each table bounds disk. Full list: `ddl/`.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | `hailpath-clickhouse`, plus `ch-ddl-init`. |
+| `docker-compose.yaml` | `hailpath-clickhouse` and `ch-ddl-init`. |
 | `config/clickhouse/config.d/memory.xml` | Server memory ceiling. Mounted. |
 | `config/clickhouse/users.d/profiles.xml` | Per-query limits. Mounted. |
 | `ddl/*.sql` | Tables, in name order. `IF NOT EXISTS`. |
 | `ddl/apply-ddl.sh` | Applies those files. Safe to re-run. |
-| `clickhouse-design.md` | Why this is one process. |
-| `.env.example` | Image pin and login. |
-
-## Environment
-
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `TZ` | `UTC` | Container timezone. |
-| `CH_SERVER_IMAGE` | `clickhouse/clickhouse-server:26.8.38.9` | Server image, also used by the DDL one-shot. |
-| `CH_USER` | `hailpath` | Login every client uses. |
-| `CH_PASSWORD` | required | Created by the image on first start. |
-| `CH_CPUS` | `1.3` | CPU ceiling. Set in the root `.env`. |
-| `CH_MEM` | `8g` | Memory ceiling. |
+| `.env.example` | Standalone copy of the settings this piece reads. |
 
 ## Verify
+
+From `meanul-hailpath/`:
 
 ```bash
 make verify-ch
 ```
 
-That lists `name, engine` from `system.tables` for the `hailpath` database
-where the engine is a MergeTree. The line under it is: one ClickHouse.
-The engines are MergeTree.
+Lists MergeTree tables in database `hailpath`.
 
-From this directory alone:
+## Connecting
+
+User `CH_USER` (default `hailpath`), database `hailpath`, password
+`CH_PASSWORD`. On the network: `hailpath-clickhouse:8123` (HTTP) and
+`:9000` (native). On the host: `PROXY_CH_HTTP_PORT` and
+`PROXY_CH_NATIVE_PORT`.
+
+```bash
+make ch-client
+```
+
+Standalone:
 
 ```bash
 docker network create hailpath-net
 cp .env.example .env
 docker compose up -d
 docker compose run --rm ch-ddl-init
-docker compose exec hailpath-clickhouse clickhouse-client --user hailpath --password "$CH_PASSWORD" \
-  --query "SELECT name, engine FROM system.tables WHERE database='hailpath' AND engine LIKE '%MergeTree' ORDER BY name"
 ```
 
 ## Adding a table
 
-Add a numbered file under `ddl/` and run:
-
-```bash
-docker compose run --rm ch-ddl-init
-```
+Add a numbered file under `ddl/` and run `make ch-ddl`.
 
 ## Teardown
 
 ```bash
-docker compose down
-docker compose down -v
+docker compose down      # keep the data volume
+docker compose down -v   # drop the volume entry; bind-mount files stay until make destroy
 ```
 
-After a volume wipe, run `ch-ddl-init` again on the next start.
+After a volume wipe, run `make ch-ddl` again on the next start.
