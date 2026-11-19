@@ -1,177 +1,54 @@
-# d-infra-debezium — change data capture from PostgreSQL
+# d-infra-debezium — PostgreSQL CDC into Kafka
 
-Kafka Connect running the **Debezium PostgreSQL connector**. It turns every
-insert, update and delete in the OLTP database into a Kafka message, so the
-rest of the stack can react to database changes without anyone writing
-extra code into the services.
+Kafka Connect with the Debezium PostgreSQL connector. WAL changes become
+Avro messages on `cdc.<table>`. `cache-updater` applies those to Redis.
 
-## How it works, in short
+The worker can start as soon as Kafka and Schema Registry are up. Register
+the connector only after `h-bootstrap` has created the OLTP tables.
 
-PostgreSQL writes every change into a journal before applying it — the
-**write-ahead log**, or WAL. Debezium asks PostgreSQL for a copy of that
-journal as it is written, using the same mechanism a replica uses. So:
+## Connector
 
-- nothing polls the database with `SELECT` loops;
-- the services do not have to publish "I changed a row" messages;
-- the order of changes is exactly the order the database applied them.
+Definition: `connectors/hailpath-pg.json`. Password is injected at
+`make cdc-register`. Slot `hailpath_debezium`, publication `hailpath_pub`,
+`pgoutput`. Geometry column `hailpath.trips.route` is excluded. Topics
+`cdc.*` are compacted, RF 1.
 
-The first time it connects, Debezium takes a **snapshot**: it reads the
-tables as they are and emits one message per existing row. After that it
-only streams changes. That snapshot is what fills Redis after
-`h-bootstrap` seeds the database — nobody has to preload the cache.
-
-Each change becomes a message on `cdc.<table>`, keyed by the row's primary
-key, and `i-service-cache-updater` applies it to Redis.
-
-## Message shape
-
-The messages keep Debezium's full envelope: `before`, `after`, `op`
-(`c` create, `u` update, `d` delete, `r` read-during-snapshot) and `source`
-metadata. The envelope is not flattened on purpose — a consumer that can see
-both the old and the new row, and the operation itself, can handle a delete
-correctly instead of guessing from an empty field.
-
-A delete is followed by a **tombstone**: a message with the same key and no
-value. That is the marker `cache-updater` turns into a Redis `DEL`, and it
-is also what lets Kafka forget the key when it compacts the topic.
-
-## Why the cdc.* topics are compacted
-
-Ordinary topics keep 48 hours of messages and then drop the oldest. The
-`cdc.*` topics are **compacted** instead: Kafka keeps the newest message per
-key for as long as the key exists. The result is that the topic always holds
-a complete, current copy of the table, so the cache can be rebuilt from
-Kafka alone at any time, without touching the OLTP database.
-
-## Order of operations
-
-The connector names the tables it follows, so those tables must exist before
-it is registered.
-
-1. piece `d`: bring `debezium-connect` up (this file);
-2. piece `h`: let `h-bootstrap` create and seed the tables;
-3. then run `docker compose run --rm connector-register`.
-
-Running the one-shot too early fails with a clear error from Connect, which
-is better than a connector that silently follows nothing.
-
-## The replication slot — the thing to watch
-
-To keep a copy of the journal for Debezium, PostgreSQL creates a
-**replication slot** (`hailpath_debezium`). While that slot exists, PostgreSQL
-**refuses to delete WAL that the slot has not read yet**. That is exactly
-what makes CDC reliable, and also the one way this component can hurt the
-database: if Connect is stopped for a long time and the slot is left behind,
-WAL piles up until the disk fills.
-
-So:
-
-- while the stack runs, check the slot's lag now and then (see
-  [Verify](#verify));
-- if this component is removed for good, **drop the slot**, do not just stop
-  the container (see [Teardown](#teardown));
-- `heartbeat.interval.ms` is set so an idle stack still moves the slot
-  forward instead of looking stuck.
-
-## Connecting to the REST API
-
-Connect's REST API is published on this container, so
-`/connectors/hailpath-pg/status` is reachable without shelling in:
-
-| | host |
-| --- | --- |
-| Debezium Connect | `<host>:8083` |
-
-One backend, no authentication — Connect's REST API has none of its own, and
-the raw Kafka ports it depends on have none either, so a login here would
-gate nothing that isn't already open one layer down.
-
-## Connector settings that matter
-
-| Setting | Value | Why |
-| --- | --- | --- |
-| `plugin.name` | `pgoutput` | PostgreSQL's built-in logical decoding output. Nothing extra to install in the database image. |
-| `slot.name` / `publication.name` | `hailpath_debezium` / `hailpath_pub` | Named on purpose, so an operator can find and drop them by hand. |
-| `publication.autocreate.mode` | `filtered` | Debezium publishes only the listed tables, not everything. This keeps the huge OSM routing tables out of Kafka. |
-| `table.include.list` | drivers, passengers, trips, city_zones, vehicles, trip_ratings, driver_sessions | OLTP tables the cache and the warehouse need. Routing graph tables stay out. |
-| `column.exclude.list` | `hailpath.trips.route` | PostGIS `geometry`. Debezium cannot convert it (`Failed to properly convert data value for 'hailpath.trips.route' of type geometry`, confirmed on the second Dionysus run). The cache and sink never read the line. |
-| `snapshot.mode` | `initial` | Read what is already there once, then stream. This is what fills the cache after seeding. |
-| `tombstones.on.delete` | `true` | A delete leaves a null-valued message, which becomes a Redis `DEL` and lets Kafka compact the key away. |
-| `decimal.handling.mode` | `double` | Fares arrive as plain numbers instead of encoded decimals, so consumers need no special decoding. |
-| `time.precision.mode` | `connect` | Timestamps arrive as ordinary millisecond values. |
-| `transforms.route` | `hailpath.hailpath.X` -> `cdc.X` | Debezium's default topic name carries the server and schema — both are named hailpath here. The rename gives the short `cdc.*` names used everywhere else in the stack. |
-| `topic.creation.*` | 3 partitions, replication factor 1, compacted | Broker-side auto-creation is off, so Connect must create its own topics with the right settings. |
+While the slot exists, Postgres keeps WAL the slot has not read. If this
+piece is removed for good, delete the connector, then drop the slot and
+publication.
 
 ## Files
 
 | File | Purpose |
 | --- | --- |
-| `docker-compose.yaml` | Official Connect plus the `connector-register` one-shot behind the `init` profile. |
-| `converter-prepare.sh` | Downloads Confluent's Avro converter jars; Connect mounts them. |
-| `connectors/hailpath-pg.json` | The connector definition. No password: it is injected at registration. |
-| `connectors/register.py` | Sends the definition to Connect (PUT, so re-running updates it) and prints the resulting status. |
-| `.env.example` | Template for the untracked `.env` (image pins, database connection, password). |
+| `docker-compose.yaml` | `hailpath-debezium` and `connector-register`. |
+| `converter-prepare.sh` | Downloads Confluent Avro converter jars. |
+| `connectors/hailpath-pg.json` | Connector config, no password. |
+| `connectors/register.py` | PUT to Connect. |
+| `.env.example` | Standalone copy of the settings this piece reads. |
 
-## Environment variables (`.env`)
+Host port: `PROXY_DEBEZIUM_PORT` (default 8083). Image and heap are in the
+root `.env`.
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `TZ` | `UTC` | Container timezone — the whole stack runs UTC. |
-| `CONNECT_IMAGE` | `quay.io/debezium/connect:3.6.4.Final` | Base image for the build. |
-| `AVRO_CONVERTER_VERSION` | `8.3.3` | Confluent Avro converter version; keep it in step with the Schema Registry. |
-| `PYTHON_IMAGE` | `python:3.13.18-slim` | Image used by the registration one-shot. |
-| `CDC_PG_HOST` / `CDC_PG_PORT` | `hailpath-postgres` / `5432` | The one Postgres. |
-| `CDC_PG_DATABASE` / `CDC_PG_USER` | `hailpath` / `postgres` | Database and login. The user must be allowed to read the WAL. |
-| `CDC_PG_PASSWORD` | — (required) | Must match `PG_SUPERUSER_PASSWORD` in `a-infra-postgres/.env`. |
-
-## Verify
+## Verify (worker)
 
 ```bash
-# the connector exists and is RUNNING, and so is its task
-docker compose exec hailpath-debezium curl -s http://localhost:8083/connectors/hailpath-pg/status
-
-# the cdc.* topics Debezium created
-docker compose exec hailpath-kafka /opt/kafka/bin/kafka-topics.sh \
-  --bootstrap-server hailpath-kafka:9092 --list | grep '^cdc\.'
-
-# watch a change arrive: update a row, then read the topic
-docker compose exec hailpath-postgres psql -U postgres -c \
-  "update drivers set status = 'idle' where driver_id = (select driver_id from drivers limit 1);"
-
-docker compose exec hailpath-schema-registry kafka-avro-console-consumer \
-  --bootstrap-server hailpath-kafka:9092 \
-  --property schema.registry.url=http://hailpath-schema-registry:8081 \
-  --topic cdc.drivers --max-messages 1
+make verify-cdc
 ```
 
-Slot health, from the database side:
-
-```bash
-# active should be true, and the lag should stay small and steady
-docker compose exec hailpath-postgres psql -U postgres -c \
-  "select slot_name, active, pg_size_pretty(
-     pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) as behind
-   from pg_replication_slots;"
-```
-
-A slot with `active = false` and a growing `behind` value means Connect is
-not reading. That is the situation to fix quickly.
+Until `cdc-register`, expect no `cdc.*` topics and no slot. The worker
+itself answers `GET http://hailpath-debezium:8083/`.
 
 ## Teardown
 
 ```bash
-# stop the connector but keep its read position (normal restarts)
 docker compose down
 ```
 
-Removing this component for good takes one extra step, or PostgreSQL will
-keep journal files for a reader that never returns:
+To remove CDC for good (Postgres running):
 
 ```bash
-# 1. delete the connector so it cannot recreate the slot
 docker compose exec hailpath-debezium curl -X DELETE http://localhost:8083/connectors/hailpath-pg
-
-# 2. drop the slot and the publication in PostgreSQL
 docker compose exec hailpath-postgres psql -U postgres -c "select pg_drop_replication_slot('hailpath_debezium');"
 docker compose exec hailpath-postgres psql -U postgres -c "drop publication if exists hailpath_pub;"
 ```
