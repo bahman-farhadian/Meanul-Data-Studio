@@ -132,7 +132,7 @@
           "type": "xyz",
           "name": "Hailpath OSM",
           "config": {
-            "url": "http://127.0.0.1:18080/styles/hailpath/{z}/{x}/{y}@2x.png",
+            "url": "http://127.0.0.1:8080/styles/hailpath/{z}/{x}/{y}@2x.png",
             "attribution": "\u00a9 OpenStreetMap",
             "minZoom": 0,
             "maxZoom": 14
