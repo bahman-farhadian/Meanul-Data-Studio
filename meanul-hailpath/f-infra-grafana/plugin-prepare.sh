@@ -42,7 +42,13 @@ if [ -d "$plugin" ] && [ "$have" = "$ver" ]; then
 fi
 if [ -d "$plugin" ]; then
   printf '  old     %s (have %s, want %s) — replacing plugin\n' "$plugin" "${have:-unknown}" "$ver"
-  rm -rf "$plugin"
+  busybox="$(val BUSYBOX_IMAGE)"
+  busybox="${busybox:-busybox:1.38.0}"
+  # Grafana writes the plugin as uid 472. Host rm fails; busybox as root
+  # on the same bind mount does not.
+  docker run --rm --user 0:0 --memory 64m --memory-swap 64m \
+    -v "${dir}:/plugins" "$busybox" \
+    rm -rf /plugins/grafana-clickhouse-datasource
 fi
 
 printf '  from    grafana cli grafana-clickhouse-datasource %s\n' "$ver"
