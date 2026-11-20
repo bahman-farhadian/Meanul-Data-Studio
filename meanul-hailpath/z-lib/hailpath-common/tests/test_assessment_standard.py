@@ -550,6 +550,13 @@ def test_minted_id_types_match_warehouse():
     assert re.search(r"\bdriver_id\s+integer\b", migrations)
     assert re.search(r"\btrip_id\s+bigint\b", migrations)
     assert re.search(r"\bzone_id\s+smallint\b", migrations)
+    zones_seed = (HAILPATH / "h-bootstrap" / "bootstrap" / "zones.py").read_text()
+    # city_zones_source.zone_id is text in the LION dump; city_zones is smallint.
+    assert "zone_id::smallint" in zones_seed
+    cache = (HAILPATH / "i-service-cache-updater" / "cache_updater" / "__main__.py").read_text()
+    assert "topics = list(TOPIC_MAP)" in cache
+    assert '"cdc.vehicles"' in cache
+    assert "^cdc" not in cache
     schemas = HAILPATH / "c-infra-kafka" / "schemas"
     avro = "\n".join(path.read_text() for path in sorted(schemas.glob("*.avsc")))
     assert '"name": "driver_id", "type": "int"' in avro or '"name": "driver_id", "type": ["null", "int"]' in avro
@@ -592,6 +599,23 @@ def test_one_clickhouse_merge_tree():
     assert "ch-secrets-init" not in compose
     assert not (HAILPATH / "e-infra-clickhouse" / "config" / "keeper" / "keeper.xml").exists()
     assert not (HAILPATH / "e-infra-clickhouse" / "config" / "clickhouse" / "config.d" / "cluster.xml").exists()
+    assert "CLICKHOUSE_DB: hailpath" in compose
+    grants = (
+        HAILPATH / "e-infra-clickhouse" / "config" / "clickhouse" / "users.d" / "grants.xml"
+    ).read_text()
+    assert "GRANT SELECT, INSERT, ALTER, CREATE, DROP, TRUNCATE, SHOW ON hailpath.*" in grants
+    assert "ON *.*" not in grants
+    # XML comments cannot contain '--'; ClickHouse SAX-fails the merge.
+    for block in re.findall(r"<!--(.*?)-->", grants, re.S):
+        assert "--" not in block, block
+    # Image default-user.xml already removes default. Re-declaring it
+    # without an auth method makes ClickHouse 26.8 refuse to start.
+    assert not re.search(r"<default[\s>]", grants)
+    # Image init creates CLICKHOUSE_DB as CLICKHOUSE_USER. If that user's
+    # default database is hailpath before the database exists, login fails
+    # and CREATE DATABASE never runs.
+    assert "<default_database>" not in grants
+
 
 
 def test_one_postgres_and_no_patroni():
@@ -965,6 +989,24 @@ def test_raw_telemetry_is_rolled_up_before_it_expires():
         )
         assert "TTL" not in rolled, (
             f"{rollup} expires; it is the thing that is supposed to outlive the raw rows"
+        )
+
+
+def test_simple_sum_storage_matches_clickhouse_sum_return():
+    """SimpleAggregateFunction(sum, T) must store what sum() returns.
+
+    ClickHouse sum() on unsigned integers returns UInt64. Storing UInt32
+    is a Code 36 BAD_ARGUMENTS on CREATE TABLE.
+    """
+    ddl = "\n".join(
+        path.read_text()
+        for path in sorted((HAILPATH / "e-infra-clickhouse" / "ddl").glob("*.sql"))
+    )
+    for match in re.finditer(r"SimpleAggregateFunction\(sum,\s*(\w+)\)", ddl):
+        stored = match.group(1)
+        assert stored in {"UInt64", "Int64", "Float64", "Float32"}, (
+            f"SimpleAggregateFunction(sum, {stored}) cannot be created: "
+            "sum() does not return that type"
         )
 
 

@@ -474,13 +474,13 @@ not a table, and is not listed.
 | --- | --- |
 | `hour` | DateTime('UTC') |
 | `zone_id` | UInt16 |
-| `positions` | SimpleAggregateFunction(sum, UInt32) |
+| `positions` | SimpleAggregateFunction(sum, UInt64) |
 | `drivers` | AggregateFunction(uniq, UInt32) |
-| `idle_positions` | SimpleAggregateFunction(sum, UInt32) |
-| `en_route_positions` | SimpleAggregateFunction(sum, UInt32) |
-| `on_trip_positions` | SimpleAggregateFunction(sum, UInt32) |
+| `idle_positions` | SimpleAggregateFunction(sum, UInt64) |
+| `en_route_positions` | SimpleAggregateFunction(sum, UInt64) |
+| `on_trip_positions` | SimpleAggregateFunction(sum, UInt64) |
 | `speed_kmh_sum` | SimpleAggregateFunction(sum, Float64) |
-| `speed_samples` | SimpleAggregateFunction(sum, UInt32) |
+| `speed_samples` | SimpleAggregateFunction(sum, UInt64) |
 | `max_speed_kmh` | SimpleAggregateFunction(max, Float32) |
 
 ### `hailpath.rider_activity_hourly`
@@ -489,8 +489,8 @@ not a table, and is not listed.
 | --- | --- |
 | `hour` | DateTime('UTC') |
 | `zone_id` | UInt16 |
-| `positions` | SimpleAggregateFunction(sum, UInt32) |
+| `positions` | SimpleAggregateFunction(sum, UInt64) |
 | `riders` | AggregateFunction(uniq, UInt32) |
 | `trips` | AggregateFunction(uniq, UInt64) |
 | `accuracy_m_sum` | SimpleAggregateFunction(sum, Float64) |
-| `accuracy_samples` | SimpleAggregateFunction(sum, UInt32) |
+| `accuracy_samples` | SimpleAggregateFunction(sum, UInt64) |

@@ -190,6 +190,13 @@ class AvroTopicProducer:
         return remaining
 
 
+def _cdc_subscription_waits(topics: list[str]) -> bool:
+    """True when missing topics are a Debezium startup race, not a typo."""
+    if any(name.startswith("^") for name in topics):
+        return True
+    return bool(topics) and all(name.startswith("cdc.") for name in topics)
+
+
 class AvroTopicConsumer:
     """Reads messages from one or more topics, decoded from Avro.
 
@@ -215,33 +222,37 @@ class AvroTopicConsumer:
         self.topics = topics
         # A regex subscription matches nothing until the topics exist, and
         # librdkafka reports that as UNKNOWN_TOPIC_OR_PART rather than as
-        # an empty assignment. For cache-updater's "^cdc\\..*" that is the
-        # normal startup order - Debezium creates those topics only once
-        # its connector registers - and raising it cost five crash-restarts
-        # and about five minutes on every bring-up, which every service
-        # waiting on the cache then inherited. A literal topic that does
-        # not exist is still an error worth raising: that is a typo, not a
-        # race.
-        self._pattern_subscription = any(name.startswith("^") for name in topics)
+        # an empty assignment. cache-updater reads cdc.* topics that
+        # Debezium creates only after its connector registers. Raising
+        # that used to cost five crash-restarts on every bring-up.
+        # A regex also does not pick up topics created after the first
+        # metadata fetch until topic.metadata.refresh.interval.ms
+        # (default 5 minutes), so cache-updater would apply cdc.drivers
+        # and never see cdc.vehicles. Literal cdc.* names plus a short
+        # refresh interval close both races. A literal non-cdc topic
+        # that does not exist is still an error: that is a typo.
+        self._pattern_subscription = _cdc_subscription_waits(topics)
         self._missing_topics_logged = False
         self._deserializer = AvroDeserializer(_registry())
         self._key_deserializer = (
             AvroDeserializer(_registry()) if avro_keys else StringDeserializer("utf_8")
         )
         self._avro_keys = avro_keys
-        self._consumer = Consumer(
-            {
-                "bootstrap.servers": _bootstrap(),
-                **_security(),
-                "group.id": group_id,
-                "enable.auto.commit": False,
-                "auto.offset.reset": "earliest" if from_beginning else "latest",
-                # A consumer that stops answering is removed from the group
-                # after this long, and its partitions go to somebody else.
-                "session.timeout.ms": 45000,
-                "max.poll.interval.ms": 300000,
-            }
-        )
+        consumer_conf = {
+            "bootstrap.servers": _bootstrap(),
+            **_security(),
+            "group.id": group_id,
+            "enable.auto.commit": False,
+            "auto.offset.reset": "earliest" if from_beginning else "latest",
+            # A consumer that stops answering is removed from the group
+            # after this long, and its partitions go to somebody else.
+            "session.timeout.ms": 45000,
+            "max.poll.interval.ms": 300000,
+        }
+        if self._pattern_subscription:
+            # Default 300000 ms. cdc.* topics appear during the snapshot.
+            consumer_conf["topic.metadata.refresh.interval.ms"] = 5000
+        self._consumer = Consumer(consumer_conf)
         self._consumer.subscribe(topics)
         log.info("consumer subscribed", extra={"topics": topics, "group": group_id})
 

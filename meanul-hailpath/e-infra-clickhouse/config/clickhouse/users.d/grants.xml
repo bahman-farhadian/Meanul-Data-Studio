@@ -1,24 +1,23 @@
 <?xml version="1.0"?>
 <!--
-  Product user may SELECT/INSERT/DDL on hailpath only. The image still
-  writes users.d/default-user.xml with the password; this file restricts
-  grants. default is localhost-only so a published 8123 cannot log in as
-  the unnamed default user.
+  Product user may SELECT/INSERT/DDL on hailpath only. The image
+  entrypoint writes users.d/default-user.xml: it removes the unnamed
+  default user and creates CLICKHOUSE_USER with the password. Do not
+  re-declare the unnamed default user here. ClickHouse 26.8 refuses a
+  user with no authentication method, and the image already deleted it.
+
+  Do not set default_database to hailpath here. The image creates
+  CLICKHOUSE_DB by logging in as CLICKHOUSE_USER; that login fails if
+  the user's default database does not exist yet. Clients that need
+  hailpath pass database hailpath (make ch-client, Grafana).
 -->
 <clickhouse>
     <users>
         <hailpath>
-            <default_database>hailpath</default_database>
             <access_management>0</access_management>
             <grants>
                 <query>GRANT SELECT, INSERT, ALTER, CREATE, DROP, TRUNCATE, SHOW ON hailpath.*</query>
             </grants>
         </hailpath>
-        <default>
-            <networks>
-                <ip>::1</ip>
-                <ip>127.0.0.1</ip>
-            </networks>
-        </default>
     </users>
 </clickhouse>

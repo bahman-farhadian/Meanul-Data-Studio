@@ -21,7 +21,7 @@ from hailpath_common.logging import get_logger
 log = get_logger(__name__)
 
 ZONE_SOURCE_SQL = """
-    SELECT zone_id, zone_name, borough,
+    SELECT zone_id::smallint AS zone_id, zone_name, borough,
            ST_Y(ST_Centroid(boundary)) AS centre_lat,
            ST_X(ST_Centroid(boundary)) AS centre_lon
       FROM city_zones_source
@@ -29,7 +29,7 @@ ZONE_SOURCE_SQL = """
 
 INSERT_ZONES_SQL = """
     INSERT INTO city_zones (zone_id, name, borough, boundary, centroid, servicable)
-    SELECT zone_id, zone_name, borough, boundary, ST_Centroid(boundary), true
+    SELECT zone_id::smallint, zone_name, borough, boundary, ST_Centroid(boundary), true
       FROM city_zones_source
     ON CONFLICT (zone_id) DO NOTHING
 """
@@ -92,12 +92,12 @@ def seed() -> int:
     return len(rows)
 
 
-def all_zone_ids() -> list[str]:
+def all_zone_ids() -> list[int]:
     """Every servicable zone id, without going back to the database."""
     return grid().all_zone_ids()
 
 
-def random_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
+def random_point_in_zone(zone_id: int, rng) -> tuple[float, float]:
     """A random latitude and longitude inside one zone's real polygon.
 
     Raw polygon arithmetic, no road awareness - use
@@ -107,7 +107,7 @@ def random_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
     return grid().random_point_in(zone_id, rng)
 
 
-def random_road_point_in_zone(zone_id: str, rng, attempts: int = 5) -> tuple[float, float]:
+def random_road_point_in_zone(zone_id: int, rng, attempts: int = 5) -> tuple[float, float]:
     """A random point inside one zone, snapped to the real, connected road
     network. See hailpath_common.routing.random_road_point_in_zone - this is
     just that, with bootstrap's own shared grid.
@@ -123,7 +123,7 @@ def build_road_point_pools(pool_size: int, workers: int, seed_value: int = 20250
     routing.build_road_point_pools(grid(), pool_size, workers, seed_value)
 
 
-def pooled_road_point_in_zone(zone_id: str, rng) -> tuple[float, float]:
+def pooled_road_point_in_zone(zone_id: int, rng) -> tuple[float, float]:
     """A real, road-snapped point in this zone, sampled from the pool
     build_road_point_pools already built - no database round trip. See
     hailpath_common.routing.pooled_road_point_in_zone - this is just that, with

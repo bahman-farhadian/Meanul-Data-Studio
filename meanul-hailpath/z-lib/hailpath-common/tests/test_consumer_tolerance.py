@@ -7,16 +7,15 @@ raised as errors when they are neither surprising nor harmful:
   commits on a timer, so this fires on any quiet tick; the raise skipped
   the rest of the tick, which is where the traffic update lived.
   segment_traffic_updates held zero messages for the life of the stack.
-- UNKNOWN_TOPIC_OR_PART from a regex subscription whose topics do not
-  exist yet. cache-updater subscribes to "^cdc\\..*" and Debezium creates
-  those topics only after its connector registers, so this is the normal
-  order of events. It cost five crash-restarts and about five minutes on
-  every bring-up, and every service waiting on the cache inherited the
-  delay.
+- UNKNOWN_TOPIC_OR_PART from a cdc.* subscription whose topics do not
+  exist yet. cache-updater reads the mapped cdc.* names and Debezium
+  creates those topics only after its connector registers, so this is
+  the normal order of events. A regex over cdc.* had the same race and
+  also missed topics created after the first metadata fetch.
 
-What must still raise: a literal topic that does not exist. That is a
-typo, not a race, and swallowing it would mean a consumer that reads
-nothing forever while looking healthy.
+What must still raise: a literal non-cdc topic that does not exist. That
+is a typo, not a race, and swallowing it would mean a consumer that
+reads nothing forever while looking healthy.
 """
 
 from __future__ import annotations
@@ -29,7 +28,7 @@ sys.path.insert(0, str(HAILPATH / "z-lib" / "hailpath-common"))
 
 from confluent_kafka import KafkaError  # noqa: E402
 
-from hailpath_common.kafka import AvroTopicConsumer  # noqa: E402
+from hailpath_common.kafka import AvroTopicConsumer, _cdc_subscription_waits  # noqa: E402
 
 
 class _Bare:
@@ -43,7 +42,7 @@ class _Bare:
     def __new__(cls, topics: list[str]):
         consumer = object.__new__(AvroTopicConsumer)
         consumer.topics = topics
-        consumer._pattern_subscription = any(t.startswith("^") for t in topics)
+        consumer._pattern_subscription = _cdc_subscription_waits(topics)
         consumer._missing_topics_logged = False
         return consumer
 
@@ -56,6 +55,11 @@ def test_partition_eof_is_news_on_any_subscription():
 
 def test_a_pattern_waits_for_topics_that_do_not_exist_yet():
     consumer = _Bare(["^cdc\\..*"])
+    assert consumer._tolerable(KafkaError(KafkaError.UNKNOWN_TOPIC_OR_PART))
+
+
+def test_literal_cdc_topics_wait_until_debezium_creates_them():
+    consumer = _Bare(["cdc.drivers", "cdc.vehicles", "cdc.passengers"])
     assert consumer._tolerable(KafkaError(KafkaError.UNKNOWN_TOPIC_OR_PART))
 
 

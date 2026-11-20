@@ -72,9 +72,11 @@ def main() -> int:
     setup_logging("hailpath-cache-updater")
     shutdown = Shutdown()
 
-    # A pattern, not a list: Debezium creates one topic per table, and a new
-    # table should be picked up without editing this service.
-    pattern = config.optional("CDC_TOPIC_PATTERN", "^cdc\\..*")
+    # The mapped topics, not a regex over every cdc.* name. A regex
+    # subscription does not pick up topics Debezium creates after the
+    # first metadata fetch, so vehicles never reached Redis while
+    # drivers did. A table with no reader is not in TOPIC_MAP.
+    topics = list(TOPIC_MAP)
     batch_size = config.integer("CACHE_BATCH_SIZE", 500)
     flush_seconds = config.number("CACHE_FLUSH_SECONDS", 2.0)
 
@@ -85,14 +87,14 @@ def main() -> int:
     connections = {db: redis_client.primary(db) for db in dbs}
     pipelines = {db: connections[db].pipeline() for db in dbs}
     consumer = AvroTopicConsumer(
-        topics=[pattern],
+        topics=topics,
         group_id=config.optional("KAFKA_GROUP_ID", "hailpath-cache-updater"),
         from_beginning=True,
         # Debezium encodes its keys as Avro, unlike the stack's own producers.
         avro_keys=True,
     )
 
-    log.info("watching the change stream", extra={"pattern": pattern, "dbs": dbs})
+    log.info("watching the change stream", extra={"topics": topics, "dbs": dbs})
 
     pending: dict[int, int] = {db: 0 for db in dbs}
     applied = 0
