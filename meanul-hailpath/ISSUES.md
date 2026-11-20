@@ -1,152 +1,116 @@
 # Hailpath issues
 
-Single open-work list. Measured 2026-11-20 on this laptop
-(`SEED_DRIVERS=1060`, ClickHouse cgroup 2g). The loop runs. This is why
-the warehouse and the front end are not ready to show.
+Single open-work list. Measured 2026-11-21 on this laptop after
+`make destroy` then `make build && make up` (`SEED_DRIVERS=1060`,
+ClickHouse cgroup 2g). The loop runs with integer keys.
 
 Work top to bottom. Schema first, then the services that fill it. One
 issue per change.
 
-**Source 2026-11-21.** Integer keys, last-known GPS, ReplacingMergeTree,
-CDC list, Connect loopback, cert skip, Grafana live-ops UTC/30s/15m,
-`CLICKHOUSE_DB`, grants.xml, quality.sql without `uniqExact` on
-positions. Live warehouse still has the 2026-11-20 string/FixedString
-parts until `make destroy` then `make build && make up`. Do not wipe
-without confirmation.
+**Live 2026-11-21.** Integer keys, last-known GPS, ReplacingMergeTree,
+CDC include-list, Connect loopback, cert skip, Grafana live-ops
+UTC/30s/15m, `CLICKHOUSE_DB=hailpath`, grants on `hailpath.*` only,
+`quality.sql` without `uniqExact` on positions.
+
+Still open: unused warehouse MVs (2.4), leftover rollup journals (2.5),
+city GPS firehose ingest (3.6), panel-probe `rows > 0` (4.2), LION
+tiles (4.3), Debezium RSS still filling its 640m cgroup (5.1).
 
 ---
 
 ## 1. ClickHouse schema — keys and types as stored
 
 ### 1.1 `trip_id` is `FixedString(21)` (Postgres `text`)
-Live sample `trp-20261118-01xleNJo`. 21 bytes on every join key.
-ClickHouse `ORDER BY (trip_id, event_time)` on `trip_events`,
-`dispatch_offers`, `trip_facts`. Avro type is `string`. Mint:
-`ids.new_trip_id` → `trp-YYYYMMDD-` + 8 random chars.
-
-There is no warehouse benefit. `trp-` is the column name. The date is
-`event_time`. The random tail exists because the mint refused a
-sequence, then collided at full-scale seed (`ids.py`). A `UInt64` is 8
-bytes and compares in one register.
+Was live sample `trp-20261118-01xleNJo`. 21 bytes on every join key.
+A `UInt64` is 8 bytes and compares in one register.
 
 **Do:** Mint `bigint` / `UInt64` in `ids.py`, Avro `long`, Postgres
 `bigint`, ClickHouse `UInt64`, Redis int. Format a display string only
 in logs.
 
-**Status:** done in source (`ids.new_trip_id` returns int; Avro `long`;
-PG `bigint`; CH `UInt64`). Live unverifiable until volume wipe.
+**Status:** done. Live `trip_events.trip_id` sample `202611190005556`
+(`UInt64` = `YYYYMMDD * 10_000_000 + seq`). PG `bigint`. Avro `long`.
 
 ### 1.2 `driver_id` / `passenger_id` / `vehicle_id` are formatted ints
-Live `drv-0000180`, `psg-0005313`. Stored `FixedString(11)` / PG `text`.
-`driver_id(n)` already takes `int` and returns `drv-{n:07d}`.
-`vehicles.vehicle_id` is `'veh-' || right(driver_id, 6)`
-(`005_vehicles.sql`). 1060 drivers; 106000 still fits `UInt32` (4 bytes
-vs 11).
+Was live `drv-0000180`, `psg-0005313`. Stored `FixedString(11)` / PG
+`text`.
 
 **Do:** Store `integer` / `UInt32`. Print `drv-` / `psg-` / `veh-` only
 when printing.
 
-**Status:** done in source. Live unverifiable until volume wipe.
+**Status:** done. Live `driver_last_known.driver_id` 1..5 `UInt32`. PG
+`drivers.driver_id` / `vehicles.vehicle_id` `integer`. Redis
+`driver:526`, `vehicle:168`.
 
 ### 1.3 `zone_id` is text for TLC 1..263
-Live pickup zones `147`, `26`, `61`. CH `LowCardinality(String)`, PG
-`text`, Avro `string`. Cardinality is 263.
+Was CH `LowCardinality(String)`, PG `text`, Avro `string`. Cardinality
+is 263.
 
 **Do:** `UInt16` in PG, Avro, CH. Parse TLC LocationID at ingest.
 
-**Status:** done in source (PG `smallint`, Avro `int`, CH `UInt16`).
-Live unverifiable until volume wipe.
+**Status:** done. Live CH `UInt16`, PG `smallint`, Avro `int`. Sample
+pickup zones 184, 181, 260. `city_zones.zone_id` 1 = Newark Airport.
 
 ### 1.4 `event_id` is UUID (16 bytes) on every fact row
-Columns on `driver_positions`, `rider_positions`, `trip_events`,
+Was on `driver_positions`, `rider_positions`, `trip_events`,
 `dispatch_offers`, `hotspot_history`, `segment_traffic_history`,
-`trip_facts`. Avro carries it as `string` (not uuid logical type)
-because `json.dumps` cannot write a UUID object.
-
-On `driver_positions` that is 16 bytes × 12.39 million rows. Kafka
-`(partition, offset)` is already unique per message.
+`trip_facts`. 16 bytes × 12.39 million GPS rows.
 
 **Do:** Stop storing UUID on position rows. Keep a cheaper idempotency
 key (offset, or `UInt64`) if the sink still needs one.
 
-**Status:** done in source. GPS rows have no `event_id`. Last-known is
-`(driver_id, event_time)`. Live unverifiable until volume wipe.
+**Status:** done. Live `driver_positions` / `driver_last_known` have no
+`event_id`. `trip_events` and `dispatch_offers` still use UUID
+`event_id` as the ReplacingMergeTree version key.
 
 ### 1.5 Rollup counts are `UInt64` for values of 10–29
-`trip_stats_hourly.completed_trips` max = 10.
-`dispatch_funnel_hourly.offers_made` max = 29. Same `UInt64` on
-fulfilment, utilization ticks, daily completed. Full-scale 655k
-trips/day still fits `UInt32`.
+Was `trip_stats_hourly.completed_trips` max = 10.
 
 **Do:** `UInt32` when those tables are rebuilt with 1.1–1.3.
 
-**Status:** done in source for rollup count columns. Live unverifiable
-until volume wipe.
+**Status:** done. SummingMergeTree count columns are `UInt32`.
+`SimpleAggregateFunction(sum, …)` stores `UInt64` because ClickHouse
+`sum()` returns `UInt64` (Code 36 if stored as `UInt32`).
 
 ---
 
 ## 2. ClickHouse tables, size, correctness
 
 ### 2.1 `driver_positions` is the warehouse
-Live `system.parts`: **12,388,084 rows**, 467 MiB on disk, **1.01 GiB
-uncompressed**, on a 2g cgroup. `countIf(trip_id IS NULL)` = 11,494,581
-(**92.8%**). Those rows still occupy `Nullable(FixedString(21))`.
-`uniqExact(event_id)` on this table was killed at 1.20 GiB
-(`MEMORY_LIMIT_EXCEEDED`). Kafka `driver_location` high-watermark
-**12,304,017** messages. TTL is 2 days; the table is already this size
-in hours.
+Was **12,388,084** rows, 92.8% idle `trip_id` NULL, Grafana folding
+that table every 10s.
 
-Services read Redis (`driver:*`, GEO sets). Grafana does not. Live-ops
-geomap “Last driver positions (2 minutes)” and “Fleet last status (2
-minutes)” query `hailpath.driver_positions` every 10s with
-`argMax` / `GROUP BY driver_id` over `INTERVAL 2 MINUTE`
-(`hailpath-live-ops.json`). The DDL comment that the live map reads
-Redis is wrong for Grafana.
+**Do:** Integer `driver_id`. Do not store `trip_id` on idle ticks. Give
+Grafana a last-known table, not 12M raw ticks.
 
-**Do:** Integer `driver_id`. Do not store `trip_id` on idle ticks. Do not
-land every GPS tick in MergeTree. Sampling the warehouse is not enough
-if Grafana still folds this table every 10s: give the dashboard a
-last-known table (or Redis), not 12M raw ticks.
-
-**Status:** done in source. `driver_last_known` ReplacingMergeTree;
-`driver_positions` only when `trip_id` is set. Grafana map reads
-last-known. Live unverifiable until volume wipe.
+**Status:** done. Live `driver_positions` **35,859** rows (history with
+a trip). `driver_last_known` **1,647** rows (ReplacingMergeTree,
+~1060 drivers). Grafana map reads last-known. Kafka `driver_location`
+is the GPS firehose; MergeTree is not.
 
 ### 2.2 `hotspot_history` is a 30-second snapshot dump
-570,624 rows, 9.5 MiB disk. Kafka `city_hotspots` **564,992** messages.
-City publishes **every zone every 30s** (`city_service/__main__.py`).
-256 zones × 2/min ≈ 30k rows/hour. TTL 30 days.
+Was 570,624 rows; city published every zone every 30s.
 
 **Do:** Write a row when the score changes, or at 5 minutes. Redis
-already holds the current value (`hotspot:{zone}:{period}`, 6h TTL).
+already holds the current value.
 
-**Status:** done in source. Redis every 30s; Kafka/CH on change or 5 min.
+**Status:** done. Live `hotspot_history` **6,656** rows (seed 6,144 plus
+a short live window). City log: most 30s ticks `kafka_rows=0`; one
+5-minute dump `kafka_rows=256`; then 1. Kafka `city_hotspots` grew
+**1** message in 30s (513 → 514), not 256.
 
 ### 2.3 Duplicate `event_id` on `trip_events`
-29,803 rows, `uniq(event_id)` = 29,466. **332** ids appear more than
-once (**669** extra rows). `z-config/quality.sql` counts
-`count() - uniqExact(event_id)` as a FAIL bar — and that same file also
-runs `uniqExact(event_id)` on `driver_positions`, which OOMs this host.
+Was 29,803 rows, 669 extra. `uniqExact` on `driver_positions` OOM.
 
-Sink (`seen.py`) keeps ids **in process memory**, empty on restart.
-Consumer uses `auto.offset.reset=earliest` (`from_beginning=True`).
-Crash or recreate between insert and `commit()` replays the batch;
-SeenEvents is empty; ClickHouse has no UNIQUE.
+**Do:** ReplacingMergeTree on `event_id`. Stop `uniqExact` on
+`driver_positions` in `quality.sql`.
 
-**Do:** Idempotent insert in ClickHouse (ReplacingMergeTree on
-`event_id`, or `INSERT` with a keep-last table), or persist seen ids.
-Stop using `uniqExact` on `driver_positions` in `quality.sql`.
-
-**Status:** done in source. `trip_events` and `dispatch_offers` are
-ReplacingMergeTree on `event_id`. `quality.sql` uses `uniq` on small
-tables only. Live unverifiable until volume wipe.
+**Status:** done. Live `trip_events` 6,592 rows, `count() - uniq(event_id)
+= 0`. `dispatch_offers` extra = 0.
 
 ### 2.4 Twenty-nine objects; Grafana uses about fourteen
 29 tables/MVs in `hailpath`. Dashboard JSON references ~14 names.
-Every insert into `trip_events` / `driver_positions` fans into MVs on
-2g RAM (`trip_stats_*`, `fulfilment_*`, `driver_activity_*`,
-`driver_utilization_*`, `od_matrix_*`, `trip_duration_percentiles_*`,
-`active_entities_*`).
+Every insert fans into MVs on 2g RAM.
 
 **Do:** Raw facts + the rollups the home dashboard reads. Add MVs when a
 panel needs them.
@@ -155,143 +119,122 @@ panel needs them.
 `driver_last_known`. Unused MVs were not dropped in this pass.
 
 ### 2.5 DDL files are a capacity journal
-`002_positions.sql` is mostly 79 GiB / monthly-part history for a 106k
+`002_positions.sql` used to be 79 GiB / monthly-part history for a 106k
 fleet. This host is `CH_MEM=2g`.
 
 **Do:** Engine, partition, TTL. One line each. Measurements out of
 `ddl/`.
 
-**Status:** partial. Position and trip DDL comments were cut. Some
-rollup files still carry measurement notes.
+**Status:** partial. Position, trip, and `012_position_rollups.sql`
+comments were cut. Some other rollup files still carry measurement
+notes.
 
 ### 2.6 Login opens database `default`
-`SELECT currentUser(), currentDatabase()` → `hailpath`, **`default`**.
-Tables are in `hailpath`. Compose never sets `CLICKHOUSE_DB` (the
-sample-stack does). Grafana `defaultDatabase: hailpath` hides this;
-`clickhouse-client` and DBeaver do not.
+Was `currentUser(), currentDatabase()` → `hailpath`, **`default`**.
 
-**Do:** `CLICKHOUSE_DB=hailpath` on the server. Recreate if the user was
-created without it. Confirm `currentDatabase() = hailpath`.
+**Do:** `CLICKHOUSE_DB=hailpath` on the server. Confirm
+`currentDatabase() = hailpath`.
 
-**Status:** done in source (`CLICKHOUSE_DB=hailpath`,
-`default_database` in `users.d/grants.xml`). Live needs container
-recreate; may need volume wipe if the user was created against
-`default`.
+**Status:** done with a limit. Compose sets `CLICKHOUSE_DB=hailpath`;
+the database exists; Grafana and `make ch-client` open it.
+`SELECT currentUser(), currentDatabase()` as user `hailpath` with no
+`--database` is still `hailpath` / `default` because the image always
+keeps an empty `default` database. Setting `<default_database>hailpath`
+in `grants.xml` makes the image's first-boot `CREATE DATABASE` fail
+(the user cannot log in until that database exists). Do not put it
+back.
 
 ### 2.7 User `hailpath` has `GRANT … ON *.*`
-Live grants: FILE, S3, URL, DROP, SYSTEM, CLUSTER, `MOVE PARTITION
-BETWEEN SHARDS` on every database. Grafana needs SELECT. Sink needs
-INSERT. `ch-ddl-init` needs CREATE.
+Was FILE, S3, URL, DROP, SYSTEM, CLUSTER on every database.
 
-**Do:** `users.d`: only `hailpath.*`. Disable the image `default` user
-(the entrypoint still writes `users.d/default-user.xml`).
+**Do:** `users.d`: only `hailpath.*`. The image entrypoint already
+removes the unnamed `default` user when `CLICKHOUSE_USER=hailpath`.
 
-**Status:** done in source (`grants.xml`: `hailpath.*` only; `default`
-localhost). Live needs recreate.
+**Status:** done. Live `SHOW GRANTS`: SELECT/INSERT/ALTER/CREATE/DROP/
+TRUNCATE/SHOW **ON hailpath.*** only. Re-declaring `<default>` in
+`grants.xml` without an auth method made ClickHouse 26.8 refuse to
+start (SAX / BAD_ARGUMENTS). The image's `default-user.xml` already
+deletes that user.
 
 ---
 
 ## 3. Services (they produce this schema)
 
 ### 3.1 Driver last-seen sync every 30s → CDC storm
-Movement tick is `DRIVER_TICK_SECONDS` (default 3s) and writes Kafka
-`driver_location` (12.3M messages). Postgres is separate:
-`DRIVER_DB_SYNC_SECONDS` (default **30s**) runs `sync_to_database`
-(`UPDATE drivers SET last_lat, last_lon, status …` for dirty rows).
-The log line `"tick"` with `database_rows_updated` ~600 is inside that
-30s timer (`driver_service/__main__.py`), not the 3s movement loop.
-
-~600 dirty rows / 30s × ~18h ≈ **`cdc.drivers` 1,343,555 messages**
-for **1060** driver rows (696 kB in Postgres). Debezium tails every
-`UPDATE`. The change stream is last-seen copied into WAL on a 30s
-clock, not every 3s GPS tick.
+Was ~600 dirty rows / 30s → `cdc.drivers` 1.3M messages for 1060
+driver rows.
 
 **Do:** Persist last-seen on a long timer (minutes) or on status change
-only. Keep GPS on Kafka. That cuts WAL and `cdc.drivers`.
+only. Keep GPS on Kafka.
 
-**Status:** done in source. Movement ticks do not mark dirty.
-`DRIVER_DB_SYNC_SECONDS` default 300. GPS stays on Kafka.
+**Status:** done. Movement ticks do not mark dirty.
+`DRIVER_DB_SYNC_SECONDS` default 300. Live first tick wrote 670 last-
+seen rows (initial load); the next two ticks wrote 102 and 100 (status
+changes). `cdc.drivers` grew **100** messages in 30s (1,832 → 1,932),
+not ~600. GPS is `driver_location` (~7k–18k messages after a minute of
+ticks).
 
 ### 3.2 CDC tables nobody consumes
-Connector `table.include.list` has `driver_sessions` and `trip_ratings`.
-`cache_updater.TOPIC_MAP` has drivers, vehicles, passengers, trips,
-city_zones only.
+Was `driver_sessions` and `trip_ratings` on the connector with no
+Redis reader.
 
-Kafka: `cdc.driver_sessions` **227,986** messages;
-`cdc.trip_ratings` **33,600**. Nothing applies them to Redis. WAL still
-moves.
+**Do:** Drop those tables from the connector, or add consumers.
 
-**Do:** Drop those tables from the connector, or add consumers. Do not
-CDC a table with no reader.
-
-**Status:** done in source. Include list is drivers, passengers, trips,
-city_zones, vehicles. Re-register the connector after up.
+**Status:** done. Live include-list:
+`drivers,passengers,trips,city_zones,vehicles`. No `cdc.driver_sessions`
+or `cdc.trip_ratings` topics. Slot `hailpath_debezium`. cache-updater
+subscribes to `TOPIC_MAP` keys (a `^cdc\\..*` regex missed
+`cdc.vehicles` after the first metadata fetch; 0 `vehicle:*` keys,
+driver wait stuck). Live Redis `vehicle:*` = 1,060 after that fix.
 
 ### 3.3 Sink idempotency is RAM
-See 2.3. `SeenEvents` default 500_000 ids, process-local.
-`from_beginning=True` means a new consumer group replays the whole
-log into ClickHouse.
+See 2.3.
 
-**Do:** Commit offsets and/or use a CH engine that collapses on
-`event_id`. Do not rely on RAM across `docker compose up --force-recreate`.
+**Do:** ReplacingMergeTree on `event_id`. Do not rely on RAM across
+recreate.
 
-**Status:** done in source. ReplacingMergeTree on `event_id` for
-business events. SeenEvents remains a first net for the in-flight
-window.
+**Status:** done. Live extra `event_id` rows = 0 on `trip_events` and
+`dispatch_offers`.
 
 ### 3.4 City writes 256 hotspot rows every 30s
-See 2.2. Redis already has the current score. The warehouse does not
-need a row per zone per tick.
+See 2.2.
 
-**Do:** Publish Kafka/CH on change, or every 5 minutes (same clock as
-traffic). Keep Redis at 30s if drivers need it.
-
-**Status:** done in source. Same as 2.2.
+**Status:** done. Live same as 2.2.
 
 ### 3.5 `driver_sessions`: 114,163 rows / 18 MB for 1060 drivers
-Same disk as `trips` (18 MB). PK is `bigint` (good). `driver_id` is
-still `text`. CDC'd, not cached (3.2). ClickHouse utilization is
-sourced from `driver_positions`, not this table (`008_driver_utilization.sql`).
+Was CDC'd, `driver_id` text.
 
-**Do:** If nothing reads it except WAL, stop writing it every shift
-flicker, or stop CDCing it. Keep `session_id bigint`.
+**Do:** Stop CDCing it. Keep `session_id bigint`.
 
-**Status:** done in source. `driver_sessions` is not in the CDC include
-list. Shift rows still write to Postgres. `driver_id` is `integer`.
+**Status:** done. Not in the CDC include-list. Live `driver_id`
+`integer`.
 
 ### 3.6 City drain vs 12M `driver_location`
-City consumes `driver_location` (12 partitions, 12M messages) to score
-demand. A 5000-message cap fell behind (~6700 positions/tick). Time-
-budget drain (`drain.py`) was added; lag still spikes then falls.
+City consumes `driver_location` to score demand. Time-budget drain
+(`drain.py`) was added; lag still spikes then falls.
 
 **Do:** Score from a sample or last-per-driver. Do not require the
 demand service to ingest the full GPS firehose.
 
-**Status:** open. Time-budget drain remains. Not changed in this pass.
+**Status:** open. Time-budget drain remains. Live `driver_location` is
+already thousands of messages per minute with 1060 drivers.
 
 ---
 
 ## 4. Grafana
 
 ### 4.1 Home dashboard scans six hours of events every 10s
-`hailpath-live-ops.json`: refresh 10s. Panel “Open trips by last
-status” is `argMax(status, event_time)` grouped by string `trip_id`
-over 6 hours of `trip_events`. Timezone `America/New_York`; the stack
-is UTC. Six of nine live-ops panels have empty `description`.
-Datasource `defaultDatabase` is `hailpath` (correct); the server user
-is not (2.6).
+Was refresh 10s, 6h `argMax` on `trip_events`, timezone
+`America/New_York`.
 
 **Do:** Home: trips/min, lag, open count, map. 15-minute window. 30s
-refresh. UTC. Last-status from a small table, not a 6h fold.
+refresh. UTC. Last-status from a small table.
 
-**Status:** done in source. Live-ops is UTC, 30s, 15m. Open trips and
-in-progress read `trip_last_status`. Map and fleet status read
-`driver_last_known`.
+**Status:** done. Live-ops JSON is UTC, 30s, 15m. Open trips read
+`trip_last_status` (6,587 rows). Map reads `driver_last_known`.
 
 ### 4.2 Forty-six panels, no first question
-Marketplace 14 KPIs. History 10. Trip inspector is empty until a
-template variable is set. `panel-probe.py` / `verify-grafana` treat
-any row as success.
+`panel-probe.py` / `verify-grafana` treat any row as success.
 
 **Do:** One incident home page. Drill-down second. Accept a named
 metric, not `rows > 0`.
@@ -300,8 +243,8 @@ metric, not `rows > 0`.
 treats any row as success.
 
 ### 4.3 Map is OSM; router is LION
-Geomap XYZ is `hailpath-tiles` OSM on `:8080`. Routing uses
-`ways` / `ways_vertices_pgr` from LION.
+Geomap XYZ is `hailpath-tiles` OSM on `:8080`. Routing uses `ways` /
+`ways_vertices_pgr` from LION (live 172,512 ways, 110,057 vertices).
 
 **Do:** LION tiles later. Do not call OSM the product map.
 
@@ -312,56 +255,47 @@ Geomap XYZ is `hailpath-tiles` OSM on `:8080`. Routing uses
 ## 5. Runtime
 
 ### 5.1 Debezium RSS 597 MiB / 640m (93%)
-Live `docker stats`. Next snapshot or `cdc.drivers` burst can OOM.
-CDC volume is 3.1 (GPS into `drivers`).
+Was CDC storm (3.1) plus a tight cgroup.
 
 **Do:** Cut the CDC storm first. Then size heap so RSS stays ~70% of
 the cgroup.
 
-**Status:** source of the storm is 3.1 (done in source). Live RSS after
-the CDC cut needs a re-up.
+**Status:** partial. Storm is cut (3.1). Live `docker stats`
+Debezium **637 MiB / 640 MiB (99.5%)**. Heap is still
+`DEBEZIUM_MEM=640m` / `-Xmx384m`. RSS did not drop with the CDC cut;
+the cgroup is sized at the working set. Heap resize is a later knob.
 
 ### 5.2 Connect `:8083` on `0.0.0.0`, no login
-`d-infra-debezium/docker-compose.yaml` publishes
-`${PROXY_DEBEZIUM_PORT:-8083}:8083`. REST PUT can register a connector.
+**Do:** Bind `127.0.0.1` or do not publish.
 
-**Do:** Bind `127.0.0.1` or do not publish. Traffic is on `hailpath-net`.
-
-**Status:** done in source. Compose publishes
-`127.0.0.1:${PROXY_DEBEZIUM_PORT:-8083}:8083`. Recreate the worker.
+**Status:** done. Live `docker port`: `8083/tcp -> 127.0.0.1:8083`.
+`ss` LISTEN `127.0.0.1:8083`. Connector `hailpath-pg` RUNNING.
 
 ### 5.3 `make kafka-certs` rewrites the CA on every `make up`
-`c-infra-kafka/security/generate.sh`: “Regenerates certs each time”.
-`Makefile` `up` always calls `kafka-certs`. Running broker keeps the
-old cert in memory.
-
 **Do:** Generate only when the files are missing.
 
-**Status:** done in source. `generate.sh` exits 0 when `kafka.p12`,
-`ca.crt`, `trust.p12`, and `client.properties` exist.
+**Status:** done. Live `make up` after the wipe regenerated once; the
+next `make up` printed `kafka TLS files already present; skipping
+generate`.
 
 ### 5.4 `z-config/quality.sql` will OOM this host
-It runs `uniqExact(event_id)` on `driver_positions` (12M UUIDs).
-Already killed the 2g server once. `make verify-quality` is unsafe
-until 2.1 / 2.3 are fixed.
+Was `uniqExact(event_id)` on 12M position UUIDs.
 
-**Do:** `count() - uniq(event_id)` on small tables only, or sample.
+**Do:** `count() - uniq(event_id)` on small tables only.
 
-**Status:** done in source. `quality.sql` and `profile.sql` no longer
-run `uniqExact` on position tables.
+**Status:** done. `quality.sql` / `profile.sql` do not
+`uniqExact` positions. Live uniqueness used `uniq` on `trip_events`
+and `dispatch_offers` only.
 
 ---
 
 ## 6. This repository
 
 ### 6.1 Plan documents were a pile
-`TODO.md` was a 1900-line journal (old cluster names, Superset,
-2026-10 bring-ups). `REVIEW.md` was a second list. `z-docs/schema-review.md`
-is a third (now marked archive).
+`TODO.md` was a 1900-line journal. `REVIEW.md` was a second list.
 
 **Do:** This file is the list. `TODO.md` stays a pointer. Do not add
-another review file. `clickhouse-design.md` and `z-docs/DATA_DICTIONARY.md`
-are reference, not the backlog.
+another review file.
 
 **Status:** done. This file is the list. `TODO.md` is a pointer.
 `REVIEW.md` is absent.
@@ -370,10 +304,10 @@ are reference, not the backlog.
 
 ## Order
 
-1.1–1.5 ClickHouse/PG/Avro keys and types (breaking, once).  
-2.1–2.3 positions, hotspots, duplicate events (disk and truth).  
-2.6–2.7 login and grants.  
-3.1–3.3 driver CDC storm, unused CDC, sink RAM.  
-4.1–4.2 Grafana home.  
-5.1–5.4 so it does not die.  
-2.4–2.5, 3.4–3.6, 4.3 when those files are touched.
+1.1–1.5 keys and types (done, live).
+2.1–2.3, 2.6–2.7 positions, hotspots, duplicates, login, grants (done, live).
+3.1–3.5 CDC storm, unused CDC, sink, hotspots, sessions (done, live).
+4.1 home dashboard (done in source).
+5.2–5.4 Connect bind, cert skip, quality.sql (done, live).
+5.1 Debezium RSS (partial).
+2.4–2.5, 3.6, 4.2, 4.3 still open.
