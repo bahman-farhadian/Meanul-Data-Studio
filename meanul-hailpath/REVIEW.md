@@ -1,162 +1,148 @@
 # Hailpath stack review
 
-The one-host loop is up (CDC, cache, driver, passenger, dispatch, city,
-sink, archiver). That is not the same as the warehouse and the front end
-being right. Live facts below were read from this laptop on 2026-11-20.
+The loop runs. The schema is the problem. Ids, types, and Grafana were
+built for log lines, not for a warehouse.
 
-Work these in order. One issue per task. Do not mix a DDL change with a
-Grafana rewrite.
+---
+
+## Identifiers
+
+This is the main issue. `trip_id` is `trp-20261118-01xleNJo`: a 21-byte
+string. `driver_id` is `drv-0001060`: an 11-byte string of a number the
+code already had as `int`. Those values are the join key in Postgres,
+Kafka, Redis, and ClickHouse (`ORDER BY (trip_id, event_time)`).
+
+### ID-1. `trip_id` is a string
+
+There is no warehouse benefit to a string trip id. ClickHouse and
+Postgres compare and group 21 bytes instead of 8. The prefix `trp-` is
+the column name. The date `20261118` is already `event_time`. The random
+8 characters exist because the mint refused a sequence, then hit
+birthday collisions at full-scale seed (documented in `ids.py`).
+
+A `UInt64` (Postgres `bigint`, Avro `long`) is 8 bytes, compares in one
+register, and cannot collide if it is a sequence or a snowflake. Display
+form `trp-…` belongs in a log formatter, not in the primary key.
+
+**Do:** Mint `bigint` / `UInt64` at the source (`ids.py`, Avro, PG,
+ClickHouse). Keep a human form only if a UI needs it, as a generated
+label, not as the join key. This is a breaking change across the stack;
+do it once, in order: mint → Avro → PG → CH → Redis.
+
+### ID-2. `driver_id` / `passenger_id` are zero-padded strings of ints
+
+`driver_id(number: int) -> "drv-0000001"`. The integer is the identity.
+The string is formatting. 11 bytes vs `UInt32` (4 bytes). 1060 drivers
+today, 106000 at deploy: both fit in `UInt32`.
+
+**Do:** Store `UInt32` / PG `integer`. Format `drv-…` only when printing.
+
+### ID-3. `zone_id` is text for TLC 1..263
+
+`LowCardinality(String)` on `"1"`..`"263"`. Cardinality is 263. `UInt16`
+is 2 bytes and groups without a dictionary.
+
+**Do:** `UInt16` in PG, Avro, CH. Map TLC LocationID at ingest if the
+source file is text.
+
+### ID-4. `event_id` is UUID (16 bytes) on every fact row
+
+Used so the sink can skip duplicates. `(topic, partition, offset)` or a
+`UInt64` hash of that is 8 bytes and is already unique per Kafka record.
+
+**Do:** Stop carrying UUID on `driver_positions` (the heaviest table).
+Idempotency can be Kafka offset, not a 16-byte column on every GPS tick.
 
 ---
 
 ## ClickHouse
 
-### CH-1. The `hailpath` user opens `default`
-`SELECT currentDatabase()` as `hailpath` returns `default`. Compose never
-sets `CLICKHOUSE_DB`. DBeaver and `clickhouse-client` land in an empty
-database. Tables live in `hailpath`.
-**Do:** Set `CLICKHOUSE_DB=hailpath` on the server (the image supports it).
-Confirm `currentDatabase()` is `hailpath`. Recreate the container if the
-user was created on first start without it.
+### CH-1. Login opens database `default`
 
-### CH-2. Database `default` is still there
-`SHOW DATABASES` lists `default` next to `hailpath`. `default` has no
-tables. The official image always creates it. The `hailpath` login can
-still `USE default` and has grants on `*.*`.
-**Do:** Stop granting `*.*`. Give `hailpath` only `hailpath.*`. Empty
-`<networks>` on the image `default` user is not enough; lock that user
-out of the product.
+`currentDatabase()` for user `hailpath` is `default`. Tables are in
+`hailpath`. Compose never sets `CLICKHOUSE_DB`. DBeaver starts empty.
 
-### CH-3. `hailpath` is a superuser
-Live `SHOW GRANTS`: `FILE`, `S3`, `URL`, `SYSTEM`, `DROP`, `CLUSTER` on
-`*.*`. Grafana and the sink need SELECT/INSERT on `hailpath`.
-**Do:** Replace image-generated grants with a `users.d` profile: SELECT
-(Grafana), INSERT (sink), CREATE only for `ch-ddl-init`. No FILE/S3/URL.
+**Do:** `CLICKHOUSE_DB=hailpath` on the server (and recreate if the user
+was created without it). Confirm `currentDatabase() = hailpath`.
 
-### CH-4. Rollup columns are `UInt64` for counts that are tens
-`trip_stats_hourly.completed_trips` max is 10. `dispatch_funnel_hourly.offers_made`
-max is 29. Same `UInt64` on every SummingMergeTree count. Even 655k trips
-per day fits in `UInt32`.
-**Do:** Change those count columns to `UInt32` in `ddl/005`–`011`. Recreate
-the rollup tables (they are derived). Leave raw event tables alone unless
-a column is actually wrong.
+### CH-2. Grants are `*.*`
 
-### CH-5. DDL files are a journal
-`002_positions.sql` spends most of its lines on 79 GiB, monthly parts, and
-`make capacity`. `003` and `010` do the same. The running schema is hard
-to read. Comments describe a 106k-driver disk plan as if it were this
-laptop.
-**Do:** Keep one line on engine, partition, TTL. Move the measurement
-notes out of `ddl/`.
+Live grants include FILE, S3, DROP, SYSTEM on every database. Grafana
+needs SELECT on `hailpath`. The sink needs INSERT on `hailpath`.
 
-### CH-6. Too many rollups for what Grafana reads
-29 objects in `hailpath` (tables + MVs). Grafana SQL hits about 14 names.
-`trip_duration_percentiles_hourly`, `od_matrix_daily`, `active_entities_hourly`
-are barely used. Each MV writes on every insert on a 2g cgroup.
-**Do:** Keep `trip_events`, positions, `hotspot_history`, `segment_traffic_history`,
-`dispatch_offers`, plus the rollups the home dashboard actually queries.
-Drop or stop building the rest until a panel needs them.
+**Do:** `users.d`: only `hailpath.*`. No FILE/S3/URL. Disable the image
+`default` user.
 
-### CH-7. Image still writes `users.d/default-user.xml`
-The entrypoint creates a `default` user file with a password even when
-the product user is `hailpath`.
-**Do:** Follow current ClickHouse image docs: disable `default` explicitly
-in a mounted `users.d` file. Do not rely on empty `<networks>`.
+### CH-3. Count columns are `UInt64`
+
+Hourly `completed_trips` max on this host is 10. `offers_made` max is 29.
+`UInt32` holds 655k trips/day with room. This is smaller than ID-1; do it
+when the rollup tables are rebuilt anyway.
+
+**Do:** `UInt32` on SummingMergeTree counts. Recreate those tables.
+
+### CH-4. Too many MVs for the laptop
+
+29 objects in `hailpath`. Grafana queries ~14 names. Every insert fans
+out into MVs on a 2g cgroup.
+
+**Do:** Raw facts + the rollups the home dashboard reads. Add MVs when a
+panel needs them, not before.
+
+### CH-5. DDL comments are a capacity journal
+
+`002_positions.sql` is mostly 79 GiB / monthly-part history. That is not
+the schema.
+
+**Do:** Engine, partition, TTL, one line each. Measurements live in
+capacity notes, not in `ddl/`.
 
 ---
 
 ## Grafana
 
-### GF-1. Live-ops is a scan, not a dashboard
-Home dashboard refresh is 10s. “Open trips by last status” does
-`argMax(status, event_time)` over 6 hours of `trip_events` grouped by
-`trip_id`. Six of nine live-ops panels have empty `description`. Timezone
-is `America/New_York` while the stack is UTC.
-**Do:** One home page: ingest, lag, open trips, map. Query a 15-minute
-window or a last-status table. Refresh 30s. Timezone UTC. Fill descriptions.
+### GF-1. Home dashboard scans facts every 10s
 
-### GF-2. Six dashboards, 46 panels, 15 with no description
-Marketplace is 14 KPIs. History is 10. Trip inspector needs template
-variables and is quiet without a `trip_id`. The front end does not answer
-one question first.
-**Do:** Home = live-ops (cut). Keep driver / trip / city as drill-down.
-Cut marketplace/history to what you actually watch. Every remaining panel
-gets a one-line description.
+“Open trips by last status” is `argMax` over 6 hours of `trip_events`
+grouped by string `trip_id`, refresh 10s. Timezone is `America/New_York`;
+the stack is UTC. Six of nine live-ops panels have no description.
 
-### GF-3. Maps are OSM, not LION
-Geomap XYZ is `hailpath-tiles` OSM on `:8080`. Routing uses LION `ways`.
-The map and the router disagree.
-**Do:** Later piece: serve LION as the Grafana basemap. Do not keep OSM
-once LION tiles exist.
+**Do:** Home page: trips/min, lag, open count, map. Window 15 minutes.
+Refresh 30s. UTC. If you need last-status, maintain it as a table (or
+query `trips` in Postgres), do not fold 6 hours of events on every load.
 
-### GF-4. Panels that “return rows” still fail as a product
-`make verify-grafana` counts any row as success. A trip inspector panel
-can be empty until a variable is set. Live-ops can be green while the
-SQL is unaffordable on a laptop.
-**Do:** Change the bar: named panels must return the metric you care
-about (lag seconds, trips/min), not “rows > 0”.
+### GF-2. 46 panels, no first question
+
+Marketplace 14 KPIs, history 10, trip inspector dead until a variable is
+set. `verify-grafana` treats “any row” as success.
+
+**Do:** One home dashboard you would open in an incident. Drill-down
+pages second. Acceptance: the named metric is present, not `rows > 0`.
+
+### GF-3. Map is OSM; router is LION
+
+Later. Do not treat OSM as the product map.
 
 ---
 
-## Services
+## Runtime (only if it will page you)
 
-### SV-1. City was behind `driver_location` by thousands
-1060 drivers send ~6700 positions per tick. City used to stop after 5000
-polls (`poll_once(0)` treated an empty buffer as EOF). Lag grew. Drain
-was changed to a time budget (`9e69f7c`, `d5662e6`). Still 0.5 CPU vs 12
-partitions of the heaviest topic.
-**Do:** Keep the drain fix. Score demand from a sample or last-per-driver,
-not every position, if lag grows again.
+### RT-1. Debezium RSS is ~94% of 640m
+Heap and cgroup will collide on the next snapshot. Raise mem or cut heap
+so RSS sits near 70% of the cgroup.
 
-### SV-2. Debezium is at 94% of 640m
-RSS ~605 MiB / 640m. Snapshot and lag catch-up will OOM.
-**Do:** Raise `DEBEZIUM_MEM` a little or drop heap so RSS stays under ~70%
-of the cgroup. Do not leave 94% as “healthy”.
+### RT-2. Connect `:8083` is on `0.0.0.0` with no login
+Bind `127.0.0.1` or do not publish it.
 
-### SV-3. Sink comment still says “cluster”
-`clickhouse_sink/__main__.py` talks about turning a “healthy cluster into
-a merge queue”. There is one ClickHouse.
-**Do:** Fix the comment when that file is next touched. Inserts are still
-batched.
-
-### SV-4. `redis_client.primary()` is leftover naming
-`client()` exists. Driver, passenger, dispatch, city, sink, archiver still
-call `primary()`.
-**Do:** Rename at each service when that piece is edited. Do not do it as
-a pile of drive-by diffs.
-
-### SV-5. Connect REST is published with no login
-`:8083` on `0.0.0.0`. Anyone on the LAN can PUT a connector.
-**Do:** Bind Connect to `127.0.0.1` on the laptop, or stop publishing it.
-Product traffic is on `hailpath-net`.
+### RT-3. `make kafka-certs` rewrites the CA on every `make up`
+Generate only when the files are missing.
 
 ---
 
-## Ops / leftover
+## Order
 
-### OP-1. `make kafka-certs` rewrites the CA on every `make up`
-A running broker keeps the old cert in memory. New clients fail until
-recreate.
-**Do:** Generate only when the secret files are missing.
-
-### OP-2. TTL and comments are sized for Dionysus
-Position TTL comments talk 53 GiB. This host is `CH_MEM=2g`.
-**Do:** Keep deploy numbers in `.env.example` comments labelled deploy.
-Laptop TTL can stay short; do not describe 106k disk as current.
-
-### OP-3. Enum8 `arrived = 10`
-Status was appended at the end so old numbers stay valid. The next status
-cannot be inserted in lifecycle order.
-**Do:** Either live with append-only Enum8 and document it, or store
-status as `LowCardinality(String)` matching Postgres text.
-
----
-
-## Suggested order
-
-1. CH-1, CH-2, CH-3 (login and grants).  
-2. CH-4, CH-5, CH-6 (types, readable DDL, fewer MVs).  
-3. GF-1, GF-2, GF-4 (home dashboard that is usable).  
-4. SV-2, SV-5, OP-1 (will not die or leak).  
-5. GF-3 LION map.  
-6. SV-1, SV-4, OP-2, OP-3 as those files are touched.
+1. ID-1 … ID-4 (keys). Everything else is cheaper after ids are integers.  
+2. CH-1, CH-2 (login and grants).  
+3. CH-3, CH-4, CH-5 with the id migration.  
+4. GF-1, GF-2.  
+5. RT-* when they hurt. GF-3 last.
