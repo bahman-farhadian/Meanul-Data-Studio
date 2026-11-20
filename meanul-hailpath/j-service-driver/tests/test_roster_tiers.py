@@ -41,14 +41,14 @@ class FakeRedis:
 
 class Grid:
     def zone_of(self, lat, lon):
-        return "142"
+        return 142
 
 
 def _driver(number: int, tier: str | None) -> dict[str, str]:
-    driver_id = f"drv-{number:07d}"
+    driver_id = number
     rows = {
         redis_client.driver_key(driver_id): json.dumps({
-            "driver_id": driver_id, "home_zone_id": "142",
+            "driver_id": driver_id, "home_zone_id": 142,
             "last_lat": 40.75, "last_lon": -73.98,
         })
     }
@@ -65,7 +65,7 @@ def test_a_missing_vehicle_is_counted_not_swallowed() -> None:
         data.update(_driver(n, None))
     redis = FakeRedis(data)
 
-    drivers, missing = load_roster(redis, Grid(), random.Random(1), ["142"])
+    drivers, missing = load_roster(redis, Grid(), random.Random(1), [142])
     assert len(drivers) == 3
     assert missing == 3, "a driver with no vehicle profile was reported as fine"
 
@@ -76,7 +76,7 @@ def test_the_tier_is_read_when_the_profile_is_there() -> None:
         data.update(_driver(n, tier))
     redis = FakeRedis(data)
 
-    drivers, missing = load_roster(redis, Grid(), random.Random(1), ["142"])
+    drivers, missing = load_roster(redis, Grid(), random.Random(1), [142])
     assert missing == 0
     assert sorted(d.vehicle_type for d in drivers.values()) == [
         "economy", "premium", "xl"

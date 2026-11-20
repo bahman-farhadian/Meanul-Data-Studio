@@ -130,11 +130,12 @@ class AvroTopicProducer:
                 extra={"topic": self.topic, "error": str(err)},
             )
 
-    def send(self, key: str, value: dict, correlation_id: str | None = None) -> None:
+    def send(self, key: str | int, value: dict, correlation_id: str | int | None = None) -> None:
         """Queue one message. Delivery happens in the background.
 
         The key decides the partition, and therefore the order: everything
-        with the same key stays in the order it was sent.
+        with the same key stays in the order it was sent. Integer entity ids
+        are sent as their decimal string; Kafka keys stay UTF-8 text.
 
         `correlation_id` ties every message about one trip together across
         topics - pass the trip_id on anything trip-scoped. It is a separate
@@ -144,7 +145,7 @@ class AvroTopicProducer:
         context = SerializationContext(self.topic, MessageField.VALUE)
         self._producer.produce(
             topic=self.topic,
-            key=self._key_serializer(key),
+            key=self._key_serializer(str(key)),
             value=self._serializer(self._stamped(value, correlation_id), context),
             on_delivery=self._on_delivery,
         )
@@ -169,7 +170,7 @@ class AvroTopicProducer:
             "event_id": str(uuid.uuid4()),
             "event_version": ENVELOPE_VERSION,
             "producer": self.producer_name,
-            "correlation_id": correlation_id,
+            "correlation_id": None if correlation_id is None else str(correlation_id),
         }
         return {**envelope, **value}
 

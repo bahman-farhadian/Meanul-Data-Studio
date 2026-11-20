@@ -39,15 +39,24 @@ DISPATCH_OFFER_COLUMNS = [
     "surge_multiplier", "response_s", "offered_at", "event_time",
 ]
 
+DRIVER_LAST_KNOWN_COLUMNS = [
+    "driver_id", "trip_id", "status", "lat", "lon",
+    "heading_deg", "speed_kmh", "zone_id", "event_time",
+]
+
 DRIVER_POSITION_COLUMNS = [
-    "event_id",
     "driver_id", "trip_id", "status", "lat", "lon",
     "heading_deg", "speed_kmh", "zone_id", "event_time",
 ]
 
 RIDER_POSITION_COLUMNS = [
-    "event_id",
     "rider_id", "trip_id", "lat", "lon", "accuracy_m", "zone_id", "event_time",
+]
+
+TRIP_LAST_STATUS_COLUMNS = [
+    "trip_id", "rider_id", "driver_id", "status",
+    "pickup_zone_id", "dropoff_zone_id",
+    "predicted_duration_s", "fare_estimate", "event_time",
 ]
 
 HOTSPOT_COLUMNS = [
@@ -92,10 +101,38 @@ def load_week(week) -> dict[str, int]:
         "driver_positions": _load(
             "hailpath.driver_positions", week.driver_positions, DRIVER_POSITION_COLUMNS
         ),
+        "driver_last_known": _load(
+            "hailpath.driver_last_known",
+            _last_known(week.driver_positions),
+            DRIVER_LAST_KNOWN_COLUMNS,
+        ),
         "rider_positions": _load(
             "hailpath.rider_positions", week.rider_positions, RIDER_POSITION_COLUMNS
         ),
         "hotspot_history": _load(
             "hailpath.hotspot_history", week.hotspots, HOTSPOT_COLUMNS
         ),
+        "trip_last_status": _load(
+            "hailpath.trip_last_status",
+            _last_status(week.trip_events),
+            TRIP_LAST_STATUS_COLUMNS,
+        ),
     }
+
+
+def _last_known(positions: list[list]) -> list[list]:
+    """One last GPS row per driver, same column order as driver_positions."""
+    latest: dict = {}
+    for row in positions:
+        latest[row[0]] = row
+    return list(latest.values())
+
+
+def _last_status(events: list[list]) -> list[list]:
+    """One last lifecycle row per trip, shaped for trip_last_status."""
+    latest: dict = {}
+    for row in events:
+        latest[row[1]] = [
+            row[1], row[2], row[3], row[4], row[5], row[6], row[10], row[17], row[-1],
+        ]
+    return list(latest.values())

@@ -29,7 +29,7 @@ from concurrent.futures import ProcessPoolExecutor
 from faker import Faker
 
 from hailpath_common import postgres, redis_client
-from hailpath_common.ids import driver_id, passenger_id
+from hailpath_common.ids import driver_id, passenger_id, vehicle_id
 from hailpath_common.logging import get_logger
 
 from bootstrap import zones
@@ -115,7 +115,7 @@ def _driver_chunk(args: tuple[int, int, int, list[str]]) -> tuple[list[dict], li
         )
         vehicles.append(
             {
-                "vehicle_id": f"veh-{number:06d}",
+                "vehicle_id": vehicle_id(number),
                 "driver_id": this_driver_id,
                 "vehicle_type": vehicle_type,
                 "seats": seats,

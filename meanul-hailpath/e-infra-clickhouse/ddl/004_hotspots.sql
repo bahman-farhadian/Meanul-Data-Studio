@@ -4,7 +4,7 @@
 
 CREATE TABLE IF NOT EXISTS hailpath.hotspot_history
 (
-    -- LowCardinality(String)/Enum8 - same reasoning as 002_positions.sql
+    -- UInt16/Enum8 - same reasoning as 002_positions.sql
     -- and 003_trips.sql: zone_id is TLC's own variable-width LocationID,
     -- not a fixed-width format this codebase mints; period is a closed set
     -- already enforced by the Avro schema (DayPeriod) and by Postgres's
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS hailpath.hotspot_history
     -- a partition, and only on merge - so uniqueness has to hold before the
     -- warehouse or no count here can be trusted.
     event_id           UUID,
-    zone_id            LowCardinality(String),
+    zone_id            UInt16,
     period             Enum8('night' = 1, 'morning' = 2, 'afternoon' = 3, 'evening' = 4),
     demand_score       Float64,
     open_requests      UInt32,

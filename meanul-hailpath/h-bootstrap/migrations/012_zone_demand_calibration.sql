@@ -15,7 +15,7 @@
 -- which this table was built with): 0 = Monday .. 6 = Sunday.
 
 CREATE TABLE IF NOT EXISTS zone_demand_calibration (
-    zone_id      text    NOT NULL REFERENCES city_zones(zone_id),
+    zone_id      smallint NOT NULL REFERENCES city_zones(zone_id),
     hour_of_day  smallint NOT NULL,
     day_of_week  smallint NOT NULL,
     -- Relative to the overall average trip volume across every zone/hour/
@@ -32,8 +32,8 @@ CREATE TABLE IF NOT EXISTS zone_demand_calibration (
 -- likely" (the existing distance-decay model, which stays as the
 -- fallback for a pair this real sample never saw).
 CREATE TABLE IF NOT EXISTS od_pair_calibration (
-    pickup_zone_id   text NOT NULL REFERENCES city_zones(zone_id),
-    dropoff_zone_id  text NOT NULL REFERENCES city_zones(zone_id),
+    pickup_zone_id   smallint NOT NULL REFERENCES city_zones(zone_id),
+    dropoff_zone_id  smallint NOT NULL REFERENCES city_zones(zone_id),
     -- Share of this pickup zone's own trips that went to this dropoff
     -- zone - sums to ~1.0 within one pickup_zone_id, so it composes with
     -- however many trips a zone actually generates rather than carrying

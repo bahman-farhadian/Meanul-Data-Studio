@@ -6,7 +6,7 @@ from driver_service.fleet import IDLE, Driver
 
 class _Grid:
     def zone_of(self, _lat, _lon):
-        return "1"
+        return 1
 
 
 class _Producer:
@@ -32,11 +32,11 @@ def test_opening_paths_publish_before_the_pass_returns(monkeypatch):
     monkeypatch.setattr(driver_main.routing, "drive_path", drive_path)
     monkeypatch.setattr(driver_main.routing, "pooled_road_point_in_zone", pooled)
 
-    driver = Driver("drv-0000001", 40.7500, -73.9900, "1", status=IDLE)
+    driver = Driver(1, 40.7500, -73.9900, 1, status=IDLE)
     producer = _Producer()
     install_opening_paths([driver], producer, _Grid(), "morning", __import__("random").Random(1))
 
     assert order == ["path"]
     assert len(producer.sent) == 1
-    assert producer.sent[0]["key"] == "drv-0000001"
-    assert producer.sent[0]["value"]["driver_id"] == "drv-0000001"
+    assert producer.sent[0]["key"] == 1
+    assert producer.sent[0]["value"]["driver_id"] == 1

@@ -162,15 +162,15 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
 
     from dispatch_service.__main__ import ALREADY_HANDLED, handle_one_request
 
-    trip_id = "trp-20261006-replay01"
+    trip_id = 2026100600000001
     migration = (REPO / "h-bootstrap" / "migrations" / "015_dispatch_offers.sql").read_text()
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "CREATE TABLE IF NOT EXISTS drivers (driver_id text PRIMARY KEY)"
+                "CREATE TABLE IF NOT EXISTS drivers (driver_id integer PRIMARY KEY)"
             )
             cur.execute(
-                "INSERT INTO drivers (driver_id) VALUES ('drv-0000001') "
+                "INSERT INTO drivers (driver_id) VALUES (1) "
                 "ON CONFLICT DO NOTHING"
             )
             cur.execute(migration)
@@ -192,7 +192,7 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
                     trip_id, driver_id, sequence, offered_at, expires_at,
                     responded_at, status, eta_seconds, distance_to_pickup_m
                 ) VALUES (
-                    %s, 'drv-0000001', 1, now(), now() + interval '20 seconds',
+                    %s, 1, 1, now(), now() + interval '20 seconds',
                     now(), 'accepted', 30, 200
                 )
                 """,
@@ -221,7 +221,7 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
             "pickup_lon": LONS[0],
             "dropoff_lat": LATS[1],
             "dropoff_lon": LONS[1],
-            "pickup_zone_id": "1",
+            "pickup_zone_id": 1,
         },
         consumer,
         None, None, None, None,
@@ -240,7 +240,7 @@ def test_replayed_accept_stays_one_row_and_commits(sample_env):
 
     now = datetime.now(timezone.utc)
     second = Offer(
-        driver_id="drv-0000001",
+        driver_id=1,
         sequence=2,
         status="accepted",
         eta_seconds=40,
@@ -282,7 +282,7 @@ def test_generation_never_returns_a_harbour_point(sample_env):
     grid = CityGrid.load(from_leader=True)
     rng = random.Random(20250824)
     for _ in range(40):
-        lat, lon = routing.random_road_point_in_zone(grid, "1", rng)
+        lat, lon = routing.random_road_point_in_zone(grid, 1, rng)
         assert _metres_to_ways(lat, lon) <= 75, (lat, lon)
 
 
@@ -353,17 +353,17 @@ def test_broker_cache_and_databases(sample_env):
 
     now = utc_now()
     trip = ActiveTrip(
-        trip_id="trp-20260918-abcd1234",
-        rider_id="psg-0000001",
-        driver_id="drv-0000001",
+        trip_id=2026091800000001,
+        rider_id=1,
+        driver_id=1,
         pickup_lat=from_lat,
         pickup_lon=from_lon,
         dropoff_lat=to_lat,
         dropoff_lon=to_lon,
         driver_lat=from_lat,
         driver_lon=from_lon,
-        pickup_zone_id="1",
-        dropoff_zone_id="1",
+        pickup_zone_id=1,
+        dropoff_zone_id=1,
         route_km=route_km,
         predicted_duration_s=predicted_s,
         surge_multiplier=1.0,
@@ -378,7 +378,7 @@ def test_broker_cache_and_databases(sample_env):
     store_live_state(redis, trip, now, ttl_seconds=600)
     cached = json.loads(redis.get(redis_client.trip_active_key(trip.trip_id)))
     assert cached["route_wkt"] == wkt
-    assert cached["driver_id"] == "drv-0000001"
+    assert cached["driver_id"] == 1
 
     with postgres.write_connection() as conn:
         with conn.cursor() as cur:
@@ -408,7 +408,7 @@ def test_broker_cache_and_databases(sample_env):
     assert on_network["dropoff_off_network"] == 0
     assert on_network["long_two_point_routes"] == 0
 
-    driver = Driver("drv-0000001", from_lat, from_lon, "1")
+    driver = Driver(1, from_lat, from_lon, 1)
     driver.set_status(ON_TRIP, trip.trip_id)
     driver.follow(verts)
     rng = random.Random(7)
@@ -426,16 +426,16 @@ def test_broker_cache_and_databases(sample_env):
     event_time = to_millis(now)
     for i, (lat, lon, heading, speed) in enumerate(trail):
         producer.send(
-            key="drv-0000001",
+            key=1,
             value={
-                "driver_id": "drv-0000001",
+                "driver_id": 1,
                 "trip_id": trip.trip_id,
                 "status": "on_trip",
                 "lat": lat,
                 "lon": lon,
                 "heading_deg": float(heading),
                 "speed_kmh": float(speed),
-                "zone_id": "1",
+                "zone_id": 1,
                 "event_time": event_time + i * 3000,
             },
         )
@@ -457,7 +457,7 @@ def test_broker_cache_and_databases(sample_env):
             seen.append(value)
     consumer.close()
     assert seen, "kafka driver_location was empty"
-    assert seen[0]["driver_id"] == "drv-0000001"
+    assert seen[0]["driver_id"] == 1
     assert abs(seen[0]["lat"] - trail[0][0]) < 1e-6
 
     clickhouse.client().command("CREATE DATABASE IF NOT EXISTS hailpath")
@@ -469,15 +469,14 @@ def test_broker_cache_and_databases(sample_env):
     clickhouse.client().command(
         """
         CREATE TABLE IF NOT EXISTS hailpath.driver_positions (
-            event_id UUID,
-            driver_id String,
-            trip_id Nullable(String),
+            driver_id UInt32,
+            trip_id UInt64,
             status Enum8('offline' = 1, 'idle' = 2, 'en_route_pickup' = 3, 'on_trip' = 4),
             lat Float64,
             lon Float64,
             heading_deg Nullable(Float32),
             speed_kmh Nullable(Float32),
-            zone_id String,
+            zone_id UInt16,
             event_time DateTime64(3, 'UTC')
         )
         ENGINE = MergeTree
@@ -489,15 +488,14 @@ def test_broker_cache_and_databases(sample_env):
         batches.add(
             "hailpath.driver_positions",
             [
-                str(uuid.uuid4()),
-                "drv-0000001",
+                1,
                 trip.trip_id,
                 "on_trip",
                 lat,
                 lon,
                 float(heading),
                 float(speed),
-                "1",
+                1,
                 datetime.fromtimestamp((event_time + i * 3000) / 1000, tz=timezone.utc),
             ],
         )
@@ -506,7 +504,7 @@ def test_broker_cache_and_databases(sample_env):
 
     rows = clickhouse.client().query(
         "SELECT lat, lon, status FROM hailpath.driver_positions "
-        "WHERE driver_id = 'drv-0000001' AND status = 'on_trip' "
+        "WHERE driver_id = 1 AND status = 'on_trip' "
         "ORDER BY event_time"
     ).result_rows
     assert len(rows) == len(trail)
@@ -560,7 +558,7 @@ def test_on_network_sql_fails_a_sea_pickup_and_chord_route(sample_env):
                     trip_id, pickup_point, dropoff_point, route, route_km, ended_at
                 )
                 VALUES (
-                    'trp-20260918-sea00001',
+                    2026091800000002,
                     ST_SetSRID(ST_MakePoint(%s, %s), 4326),
                     ST_SetSRID(ST_MakePoint(%s, %s), 4326),
                     ST_GeomFromText('LINESTRING(-73.99 40.75, -73.972 40.7515)', 4326),

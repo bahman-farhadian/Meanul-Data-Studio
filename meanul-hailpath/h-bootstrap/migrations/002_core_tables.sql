@@ -11,14 +11,14 @@
 --    latitude/longitude system a phone reports.
 
 CREATE TABLE IF NOT EXISTS drivers (
-    driver_id     text PRIMARY KEY,
+    driver_id     integer PRIMARY KEY,
     full_name     text        NOT NULL,
     phone         text,
     rating        numeric(2,1) NOT NULL DEFAULT 5.0,
     status        text        NOT NULL DEFAULT 'offline',
     -- The zone this driver usually works in. Used when seeding and when a
     -- driver has nowhere better to go.
-    home_zone_id  text,
+    home_zone_id  smallint,
     last_lat      double precision,
     last_lon      double precision,
     last_seen_at  timestamptz,
@@ -33,11 +33,11 @@ CREATE TABLE IF NOT EXISTS drivers (
 );
 
 CREATE TABLE IF NOT EXISTS passengers (
-    passenger_id  text PRIMARY KEY,
+    passenger_id  integer PRIMARY KEY,
     full_name     text        NOT NULL,
     phone         text,
     rating        numeric(2,1) NOT NULL DEFAULT 5.0,
-    home_zone_id  text,
+    home_zone_id  smallint,
     preferences   jsonb       NOT NULL DEFAULT '{}'::jsonb,
     device        jsonb       NOT NULL DEFAULT '{}'::jsonb,
     created_at    timestamptz NOT NULL DEFAULT now(),
@@ -45,17 +45,17 @@ CREATE TABLE IF NOT EXISTS passengers (
 );
 
 CREATE TABLE IF NOT EXISTS trips (
-    trip_id              text PRIMARY KEY,
-    rider_id             text        NOT NULL REFERENCES passengers(passenger_id),
+    trip_id              bigint PRIMARY KEY,
+    rider_id             integer     NOT NULL REFERENCES passengers(passenger_id),
     -- Empty until a driver is matched, and it stays empty forever when
     -- nobody could be found.
-    driver_id            text        REFERENCES drivers(driver_id),
+    driver_id            integer     REFERENCES drivers(driver_id),
     status               text        NOT NULL,
 
     pickup_point         geometry(Point, 4326)      NOT NULL,
     dropoff_point        geometry(Point, 4326)      NOT NULL,
-    pickup_zone_id       text,
-    dropoff_zone_id      text,
+    pickup_zone_id       smallint,
+    dropoff_zone_id      smallint,
     -- The path pgRouting chose, kept so it can be drawn on a map later.
     -- Plain geometry rather than LineString: joining the chosen road
     -- segments usually gives one continuous line, but where the imported

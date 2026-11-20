@@ -141,9 +141,9 @@ class _TripSpec:
     """Everything about one trip decided before routing - reproducible for a
     given seed, independent of whether pgRouting finds a path."""
 
-    trip_id: str
-    rider: str
-    driver: str | None
+    trip_id: int
+    rider: int
+    driver: int | None
     outcome: str
     hour: int
     period: str
@@ -375,8 +375,8 @@ def _spec_chunk(
     to_route: list[_TripSpec] = []
     no_driver_rows: list[dict] = []
     no_driver_events: list[list] = []
-    for _ in range(start, end):
-        spec = _next_spec(settings, rng, zone_ids, day_start)
+    for seq in range(start, end):
+        spec = _next_spec(settings, rng, zone_ids, day_start, seq)
         if spec.outcome == "no_driver_found":
             row, event = _no_driver_rows(spec)
             no_driver_rows.append(row)
@@ -391,6 +391,7 @@ def _next_spec(
     rng: random.Random,
     zone_ids: list[str],
     day_start: datetime,
+    seq: int,
 ) -> _TripSpec:
     """Decide everything about one trip that does not depend on routing."""
     hour = _pick_hour(rng)
@@ -423,7 +424,7 @@ def _next_spec(
     pickup_lat, pickup_lon = zones.pooled_road_point_in_zone(pickup_zone, rng)
     dropoff_lat, dropoff_lon = zones.pooled_road_point_in_zone(dropoff_zone, rng)
 
-    trip_id = new_trip_id(requested_at, rng)
+    trip_id = new_trip_id(requested_at, seq)
     passenger_count = rng.choices(PARTY_SIZES, PARTY_WEIGHTS)[0]
     allowed = [tier for tier in redis_client.VEHICLE_TYPES
                if TIER_SEATS[tier] >= passenger_count]
@@ -731,14 +732,14 @@ def _finish_trip(
         share = step / max(steps - 1, 1)
         moment = started_at + timedelta(seconds=int(actual_s * share))
         week.driver_positions.append(
-            [str(uuid.uuid4()), spec.driver, spec.trip_id, "on_trip", lat, lon,
+            [spec.driver, spec.trip_id, "on_trip", lat, lon,
              float(rng.uniform(0, 360)), float(route_km / (actual_s / 3600) if actual_s else 0),
              spec.pickup_zone, moment]
         )
         # The rider's phone reports less often and less precisely.
         if step % 2 == 0:
             week.rider_positions.append(
-                [str(uuid.uuid4()), spec.rider, spec.trip_id, lat, lon,
+                [spec.rider, spec.trip_id, lat, lon,
                  float(rng.uniform(4, 40)), spec.pickup_zone, moment]
             )
 

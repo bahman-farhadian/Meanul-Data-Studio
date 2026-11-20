@@ -20,7 +20,7 @@ from hailpath_common.logging import get_logger
 log = get_logger(__name__)
 
 
-def surge_for(redis, zone_id: str, period: str) -> float:
+def surge_for(redis, zone_id: int, period: str) -> float:
     """How much to multiply the price by in this zone right now.
 
     1.0 when nothing is known. A missing hotspot score should mean ordinary

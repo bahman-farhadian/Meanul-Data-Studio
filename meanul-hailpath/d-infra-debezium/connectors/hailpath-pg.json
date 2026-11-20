@@ -17,7 +17,7 @@
     "publication.autocreate.mode": "filtered",
 
     "snapshot.mode": "initial",
-    "table.include.list": "hailpath.drivers,hailpath.passengers,hailpath.trips,hailpath.city_zones,hailpath.vehicles,hailpath.trip_ratings,hailpath.driver_sessions",
+    "table.include.list": "hailpath.drivers,hailpath.passengers,hailpath.trips,hailpath.city_zones,hailpath.vehicles",
     "column.exclude.list": "hailpath.trips.route",
     "tombstones.on.delete": "true",
     "heartbeat.interval.ms": "10000",

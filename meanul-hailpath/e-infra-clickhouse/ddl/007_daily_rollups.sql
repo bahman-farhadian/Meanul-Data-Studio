@@ -14,8 +14,8 @@
 CREATE TABLE IF NOT EXISTS hailpath.trip_stats_daily
 (
     day              Date,
-    pickup_zone_id   LowCardinality(String),
-    completed_trips  UInt64,
+    pickup_zone_id   UInt16,
+    completed_trips  UInt32,
     -- Decimal64(2), not Float64: this column is summed inside background
     -- merges in an order nobody controls, and float addition is not
     -- associative, so the stored total depended on merge history - the
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS hailpath.trip_stats_daily
     payout_total     Decimal64(2),
     surge_sum        Float64,
     route_km_total   Float64,
-    overrun_trips    UInt64
+    overrun_trips    UInt32
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(day)
@@ -56,9 +56,9 @@ GROUP BY day, pickup_zone_id;
 CREATE TABLE IF NOT EXISTS hailpath.od_matrix_daily
 (
     day               Date,
-    pickup_zone_id    LowCardinality(String),
-    dropoff_zone_id   LowCardinality(String),
-    completed_trips   UInt64,
+    pickup_zone_id    UInt16,
+    dropoff_zone_id   UInt16,
+    completed_trips   UInt32,
     revenue           Decimal64(2),
     route_km_total    Float64
 )

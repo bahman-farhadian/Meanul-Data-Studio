@@ -39,7 +39,7 @@ UPDATE_PASSENGER_RATING = """
 """
 
 
-def rate_and_maintain(trip_id: str, rider_id: str, driver_id: str, rng: random.Random) -> None:
+def rate_and_maintain(trip_id: int, rider_id: int, driver_id: int, rng: random.Random) -> None:
     """Rate a just-completed trip in both directions, then refresh both averages.
 
     Most trips go fine, so most ratings cluster near the top - the same

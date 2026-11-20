@@ -26,32 +26,32 @@ _DEFAULT_ZONE_HOUR_WEIGHT = 0.1
 # Same reasoning for an OD pair the sample month never recorded: the
 # caller's own distance-decay fallback is used instead of treating an
 # unseen pair as literally impossible.
-_ZONE_WEIGHTS: dict[tuple[str, int, int], float] | None = None
-_OD_SHARES: dict[tuple[str, str], float] | None = None
+_ZONE_WEIGHTS: dict[tuple[int, int, int], float] | None = None
+_OD_SHARES: dict[tuple[int, int], float] | None = None
 
 ZONE_DEMAND_SQL = "SELECT zone_id, hour_of_day, day_of_week, weight FROM zone_demand_calibration"
 OD_PAIR_SQL = "SELECT pickup_zone_id, dropoff_zone_id, trip_share FROM od_pair_calibration"
 
 
-def _load_zone_weights() -> dict[tuple[str, int, int], float]:
+def _load_zone_weights() -> dict[tuple[int, int, int], float]:
     global _ZONE_WEIGHTS
     if _ZONE_WEIGHTS is None:
         with postgres.read_connection() as conn:
             rows = postgres.fetch_all(conn, ZONE_DEMAND_SQL)
         _ZONE_WEIGHTS = {
-            (row["zone_id"], int(row["hour_of_day"]), int(row["day_of_week"])): float(row["weight"])
+            (int(row["zone_id"]), int(row["hour_of_day"]), int(row["day_of_week"])): float(row["weight"])
             for row in rows
         }
     return _ZONE_WEIGHTS
 
 
-def _load_od_shares() -> dict[tuple[str, str], float]:
+def _load_od_shares() -> dict[tuple[int, int], float]:
     global _OD_SHARES
     if _OD_SHARES is None:
         with postgres.read_connection() as conn:
             rows = postgres.fetch_all(conn, OD_PAIR_SQL)
         _OD_SHARES = {
-            (row["pickup_zone_id"], row["dropoff_zone_id"]): float(row["trip_share"])
+            (int(row["pickup_zone_id"]), int(row["dropoff_zone_id"])): float(row["trip_share"])
             for row in rows
         }
     return _OD_SHARES
@@ -71,7 +71,7 @@ def preload() -> None:
     _load_od_shares()
 
 
-def zone_weight(zone_id: str, hour: int, day_of_week: int) -> float:
+def zone_weight(zone_id: int, hour: int, day_of_week: int) -> float:
     """How busy this zone actually was at this hour on this day of the
     week, in a real month of trips - 1.0 is average, the same semantic
     the code this replaces already used.
@@ -81,12 +81,12 @@ def zone_weight(zone_id: str, hour: int, day_of_week: int) -> float:
     calibration table was built with, so a caller can pass a real
     datetime's .weekday() straight through with no translation.
     """
-    return _load_zone_weights().get((zone_id, hour % 24, day_of_week % 7), _DEFAULT_ZONE_HOUR_WEIGHT)
+    return _load_zone_weights().get((int(zone_id), hour % 24, day_of_week % 7), _DEFAULT_ZONE_HOUR_WEIGHT)
 
 
-def od_share(pickup_zone_id: str, dropoff_zone_id: str) -> float | None:
+def od_share(pickup_zone_id: int, dropoff_zone_id: int) -> float | None:
     """Share of this pickup zone's real trips that actually went to this
     dropoff zone, or None if the calibration month has no record of the
     pair - the caller's own fallback (distance decay) applies then, not a
     silent zero."""
-    return _load_od_shares().get((pickup_zone_id, dropoff_zone_id))
+    return _load_od_shares().get((int(pickup_zone_id), int(dropoff_zone_id)))

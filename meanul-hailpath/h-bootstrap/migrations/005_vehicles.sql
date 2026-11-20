@@ -6,8 +6,8 @@
 -- fleet-composition rollups this project's ClickHouse schema is missing.
 
 CREATE TABLE IF NOT EXISTS vehicles (
-    vehicle_id    text PRIMARY KEY,
-    driver_id     text        NOT NULL REFERENCES drivers(driver_id),
+    vehicle_id    integer PRIMARY KEY,
+    driver_id     integer     NOT NULL REFERENCES drivers(driver_id),
     -- What dispatch actually matches a request's tier against.
     vehicle_type  text        NOT NULL DEFAULT 'economy',
     seats         integer     NOT NULL DEFAULT 4,
@@ -29,7 +29,7 @@ CREATE INDEX IF NOT EXISTS vehicles_type_idx   ON vehicles (vehicle_type);
 -- deterministic vehicle_id source.
 INSERT INTO vehicles (vehicle_id, driver_id, make, model, year, plate, colour)
 SELECT
-    'veh-' || right(driver_id, 6),
+    driver_id,
     driver_id,
     vehicle->>'make',
     vehicle->>'model',

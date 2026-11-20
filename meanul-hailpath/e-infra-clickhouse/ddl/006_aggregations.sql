@@ -10,7 +10,7 @@
 CREATE TABLE IF NOT EXISTS hailpath.trip_duration_percentiles_hourly
 (
     hour           DateTime('UTC'),
-    pickup_zone_id LowCardinality(String),
+    pickup_zone_id UInt16,
     -- Nullable(UInt32), not UInt32: actual_duration_s is itself Nullable
     -- (trip_events) and quantileState() over a Nullable column
     -- produces a Nullable-typed state - confirmed directly, ClickHouse
@@ -57,8 +57,8 @@ GROUP BY hour, pickup_zone_id;
 CREATE TABLE IF NOT EXISTS hailpath.active_entities_hourly
 (
     hour         DateTime('UTC'),
-    driver_state AggregateFunction(uniq, FixedString(11)),
-    rider_state  AggregateFunction(uniq, FixedString(11))
+    driver_state AggregateFunction(uniq, UInt32),
+    rider_state  AggregateFunction(uniq, UInt32)
 )
 ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)

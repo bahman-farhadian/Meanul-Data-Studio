@@ -15,8 +15,8 @@ in `hailpath-kafka-secrets`). Host: **9094**. ksqlDB: `PROXY_KSQLDB_PORT`
 (default 8089) onto 8088. Schema Registry: 8081 on the network only.
 
 `make kafka-certs` writes the CA, broker PKCS12, and client.properties
-before the broker starts. `KAFKA_CLUSTER_ID` is the KRaft disk UUID — one
-broker still needs it.
+before the broker starts. It skips when those files already exist.
+`KAFKA_CLUSTER_ID` is the KRaft disk UUID — one broker still needs it.
 
 Image pins, heaps, and memory are in the root `.env`.
 

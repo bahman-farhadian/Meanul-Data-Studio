@@ -17,17 +17,17 @@
 CREATE TABLE IF NOT EXISTS hailpath.trip_facts
 (
     event_id                UUID,
-    trip_id                 FixedString(21),
-    rider_id                FixedString(11),
-    driver_id               Nullable(FixedString(11)),
+    trip_id                 UInt64,
+    rider_id                UInt32,
+    driver_id               Nullable(UInt32),
     -- How the trip ended. Only terminal statuses reach this table, so this
     -- is never a status the trip merely passed through.
     final_status            Enum8(
                                 'completed' = 6, 'cancelled_by_passenger' = 7,
                                 'cancelled_by_driver' = 8, 'no_driver_found' = 9
                             ),
-    pickup_zone_id          LowCardinality(String),
-    dropoff_zone_id         LowCardinality(String),
+    pickup_zone_id          UInt16,
+    dropoff_zone_id         UInt16,
     passenger_count         UInt8,
     requested_vehicle_type  Enum8('economy' = 1, 'xl' = 2, 'premium' = 3),
 
@@ -139,18 +139,18 @@ WHERE status IN ('completed', 'cancelled_by_passenger', 'cancelled_by_driver', '
 CREATE TABLE IF NOT EXISTS hailpath.fulfilment_hourly
 (
     hour                    DateTime('UTC'),
-    pickup_zone_id          LowCardinality(String),
-    trips_ended             UInt64,
-    completed               UInt64,
-    cancelled_by_passenger  UInt64,
-    cancelled_by_driver     UInt64,
-    no_driver_found         UInt64,
-    cancelled_after_arrival UInt64,
+    pickup_zone_id          UInt16,
+    trips_ended             UInt32,
+    completed               UInt32,
+    cancelled_by_passenger  UInt32,
+    cancelled_by_driver     UInt32,
+    no_driver_found         UInt32,
+    cancelled_after_arrival UInt32,
     -- Summed, divided at query time - never a stored ratio.
     match_s_sum             UInt64,
-    matched_trips           UInt64,
+    matched_trips           UInt32,
     wait_s_sum              UInt64,
-    waited_trips            UInt64
+    waited_trips            UInt32
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)

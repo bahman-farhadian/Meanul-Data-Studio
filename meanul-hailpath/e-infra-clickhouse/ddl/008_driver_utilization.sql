@@ -4,20 +4,18 @@
 -- into ClickHouse today (clickhouse-sink only consumes the Kafka topics
 -- listed in its own TOPICS constant, none of which are cdc.* - Debezium's
 -- CDC topics feed Redis, through cache-updater, not the warehouse).
--- driver_positions already reports every driver's real status every
--- few seconds, which is a finer-grained utilization signal than session
--- start/end would be anyway - online_ticks vs busy_ticks per hour, not
--- just online-vs-offline per shift.
+-- On-trip GPS in driver_positions (idle GPS is last-known only).
+-- online_ticks vs busy_ticks per hour from those ticks.
 
 CREATE TABLE IF NOT EXISTS hailpath.driver_utilization_hourly
 (
     hour          DateTime('UTC'),
-    driver_id     FixedString(11),
+    driver_id     UInt32,
     -- Ticks where the driver reported anything but offline - the
     -- denominator for "what share of online time was spent on a trip".
-    online_ticks  UInt64,
+    online_ticks  UInt32,
     -- Ticks where the driver reported on_trip specifically.
-    busy_ticks    UInt64
+    busy_ticks    UInt32
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)

@@ -55,25 +55,25 @@ class HotspotCache:
     def __init__(self, redis, refresh_seconds: float) -> None:
         self._redis = redis
         self._refresh_seconds = refresh_seconds
-        self._scores: dict[str, float] = {}
+        self._scores: dict[int, float] = {}
         self._loaded_at = 0.0
 
-    def score(self, zone_id: str | None) -> float | None:
-        if not zone_id:
+    def score(self, zone_id: int | str | None) -> float | None:
+        if zone_id is None or zone_id == "":
             return None
         if time.monotonic() - self._loaded_at >= self._refresh_seconds:
             self._reload()
-        return self._scores.get(zone_id)
+        return self._scores.get(int(zone_id))
 
     def _reload(self) -> None:
         period = day_period(utc_now())
-        scores: dict[str, float] = {}
+        scores: dict[int, float] = {}
         for key in self._redis.scan_iter(match=f"hotspot:*:{period}", count=200):
             raw = self._redis.get(key)
             if not raw:
                 continue
             try:
-                zone_id = key.split(":")[1]
+                zone_id = int(key.split(":")[1])
                 scores[zone_id] = float(json.loads(raw)["demand_score"])
             except (IndexError, KeyError, ValueError, TypeError):
                 continue
@@ -142,21 +142,37 @@ def _collect(batches: Batches, topic: str, value: dict,
              hotspots: HotspotCache, threshold: float) -> None:
     """Turn one message into one row waiting to be inserted."""
     if topic == "driver_location":
-        batches.add("hailpath.driver_positions", [
-            value["event_id"],
-            value["driver_id"], value.get("trip_id"), value.get("status"),
+        zone_id = _zone(value.get("zone_id"))
+        if zone_id is None:
+            return
+        trip_id = value.get("trip_id")
+        event_time = _moment(value["event_time"])
+        last_known = [
+            value["driver_id"], trip_id, value.get("status"),
             value["lat"], value["lon"],
             value.get("heading_deg"), value.get("speed_kmh"),
-            value.get("zone_id") or "", _moment(value["event_time"]),
-        ])
+            zone_id, event_time,
+        ]
+        batches.add("hailpath.driver_last_known", last_known)
+        # Idle GPS stays on last-known. MergeTree only holds on-trip ticks.
+        if trip_id is not None:
+            batches.add("hailpath.driver_positions", [
+                value["driver_id"], trip_id, value.get("status"),
+                value["lat"], value["lon"],
+                value.get("heading_deg"), value.get("speed_kmh"),
+                zone_id, event_time,
+            ])
         return
 
     if topic == "rider_location":
+        trip_id = value.get("trip_id")
+        zone_id = _zone(value.get("zone_id"))
+        if trip_id is None or zone_id is None:
+            return
         batches.add("hailpath.rider_positions", [
-            value["event_id"],
-            value["rider_id"], value.get("trip_id"),
+            value["rider_id"], trip_id,
             value["lat"], value["lon"], value.get("accuracy_m"),
-            value.get("zone_id") or "", _moment(value["event_time"]),
+            zone_id, _moment(value["event_time"]),
         ])
         return
 
@@ -188,11 +204,14 @@ def _collect(batches: Batches, topic: str, value: dict,
         score = hotspots.score(value.get("pickup_zone_id"))
         is_hotspot = None if score is None else int(score >= threshold)
 
+        pickup_zone = _zone(value.get("pickup_zone_id"))
+        dropoff_zone = _zone(value.get("dropoff_zone_id"))
+        event_time = _moment(value["event_time"])
         batches.add("hailpath.trip_events", [
             value["event_id"],
             value["trip_id"], value["rider_id"], value.get("driver_id"),
-            value["status"], value.get("pickup_zone_id") or "",
-            value.get("dropoff_zone_id") or "",
+            value["status"], pickup_zone or 0,
+            dropoff_zone or 0,
             value.get("passenger_count") or 1,
             value.get("requested_vehicle_type") or "economy",
             value.get("route_km"), predicted, actual, delta, longer,
@@ -206,7 +225,12 @@ def _collect(batches: Batches, topic: str, value: dict,
             _moment_or_none(value.get("arrived_at")),
             _moment_or_none(value.get("started_at")),
             _moment_or_none(value.get("ended_at")),
-            _moment(value["event_time"]),
+            event_time,
+        ])
+        batches.add("hailpath.trip_last_status", [
+            value["trip_id"], value["rider_id"], value.get("driver_id"),
+            value["status"], pickup_zone or 0, dropoff_zone or 0,
+            predicted, value.get("fare_estimate"), event_time,
         ])
         return
 
@@ -223,7 +247,7 @@ def _collect(batches: Batches, topic: str, value: dict,
         batches.add("hailpath.dispatch_offers", [
             value["event_id"], value["trip_id"], value["driver_id"],
             value["sequence"], value["status"],
-            value.get("pickup_zone_id") or "",
+            _zone(value.get("pickup_zone_id")) or 0,
             value.get("eta_seconds"), value.get("distance_to_pickup_m"),
             value.get("surge_multiplier"), response_s,
             _moment(offered), _moment(value["event_time"]),
@@ -233,6 +257,13 @@ def _collect(batches: Batches, topic: str, value: dict,
     # trip_requests is consumed but not stored on its own: every request also
     # appears on trip_lifecycle, either as a match or as no_driver_found, and
     # storing both would count the same trip twice.
+
+
+def _zone(value) -> int | None:
+    """TLC LocationID as int. Avro int, Redis string, or missing."""
+    if value is None or value == "":
+        return None
+    return int(value)
 
 
 def _moment_or_none(millis) -> object | None:

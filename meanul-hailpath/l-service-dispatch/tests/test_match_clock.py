@@ -22,7 +22,7 @@ def test_matched_at_is_after_the_route_and_not_before_the_request(monkeypatch):
 
     offers = [
         Offer(
-            driver_id="drv-0000001",
+            driver_id=1,
             sequence=1,
             status="accepted",
             eta_seconds=60,
@@ -39,9 +39,9 @@ def test_matched_at_is_after_the_route_and_not_before_the_request(monkeypatch):
     monkeypatch.setattr(dispatch.pricing, "surge_for", lambda *_a, **_k: 1.0)
     monkeypatch.setattr(
         dispatch, "find_candidates",
-        lambda *_a, **_k: [("drv-0000001", -73.99, 40.75, 60, 400)],
+        lambda *_a, **_k: [(1, -73.99, 40.75, 60, 400)],
     )
-    monkeypatch.setattr(dispatch, "run_chain", lambda *_a, **_k: ("drv-0000001", offers))
+    monkeypatch.setattr(dispatch, "run_chain", lambda *_a, **_k: (1, offers))
     monkeypatch.setattr(dispatch, "accept_already_stored", lambda _trip_id: False)
     monkeypatch.setattr(dispatch, "record_offers", lambda *_a, **_k: True)
     monkeypatch.setattr(dispatch, "announce_offers", lambda *_a, **_k: None)
@@ -79,14 +79,14 @@ def test_matched_at_is_after_the_route_and_not_before_the_request(monkeypatch):
 
     trip = dispatch.assign(
         {
-            "trip_id": "trp-20261005-clock001",
-            "rider_id": "psg-0000001",
+            "trip_id": 2026100500000001,
+            "rider_id": 1,
             "pickup_lat": 40.75,
             "pickup_lon": -73.99,
             "dropoff_lat": 40.751,
             "dropoff_lon": -73.988,
-            "pickup_zone_id": "1",
-            "dropoff_zone_id": "1",
+            "pickup_zone_id": 1,
+            "dropoff_zone_id": 1,
             "requested_vehicle_type": "economy",
             "passenger_count": 1,
             "requested_at": requested,

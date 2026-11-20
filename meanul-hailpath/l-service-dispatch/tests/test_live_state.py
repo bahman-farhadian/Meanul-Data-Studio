@@ -33,13 +33,13 @@ NOW = datetime(2026, 9, 25, 12, 0, 0, tzinfo=UTC)
 
 def _trip(**overrides) -> ActiveTrip:
     fields = {
-        "trip_id": "trp-00000000000000001",
-        "rider_id": "psg-0000001",
-        "driver_id": "drv-0000001",
+        "trip_id": 1,
+        "rider_id": 1,
+        "driver_id": 1,
         "pickup_lat": 40.75, "pickup_lon": -73.98,
         "dropoff_lat": 40.71, "dropoff_lon": -74.01,
         "driver_lat": 40.76, "driver_lon": -73.97,
-        "pickup_zone_id": "161", "dropoff_zone_id": "237",
+        "pickup_zone_id": 161, "dropoff_zone_id": 237,
         "route_km": 7.4,
         "predicted_duration_s": 880,
         "surge_multiplier": 1.35,
@@ -58,7 +58,7 @@ def test_live_state_is_json_serializable_with_decimal_money():
     # The assertion is that this does not raise. json.dumps is the exact
     # call store_live_state makes.
     encoded = json.dumps(payload)
-    assert json.loads(encoded)["trip_id"] == "trp-00000000000000001"
+    assert json.loads(encoded)["trip_id"] == 1
 
 
 def test_live_state_money_survives_as_a_number():

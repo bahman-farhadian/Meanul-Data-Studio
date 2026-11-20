@@ -33,6 +33,7 @@ services:
       # into any file in this repository.
       CLICKHOUSE_USER: ${CH_USER:-hailpath}
       CLICKHOUSE_PASSWORD: ${CH_PASSWORD:?set it in e-infra-clickhouse/.env}
+      CLICKHOUSE_DB: hailpath
       # Read by from_env in config.d/memory.xml and users.d/profiles.xml.
       # Bytes. Compose defaults are the 8g deploy sizes; the laptop .env
       # lowers CH_MEM and these together.
@@ -49,6 +50,7 @@ services:
       # default-user.xml into users.d; a read-only directory mount stops it.
       - ./config/clickhouse/config.d/memory.xml:/etc/clickhouse-server/config.d/memory.xml:ro
       - ./config/clickhouse/users.d/profiles.xml:/etc/clickhouse-server/users.d/profiles.xml:ro
+      - ./config/clickhouse/users.d/grants.xml:/etc/clickhouse-server/users.d/grants.xml:ro
       - hailpath-clickhouse-data:/var/lib/clickhouse
     healthcheck:
       test:

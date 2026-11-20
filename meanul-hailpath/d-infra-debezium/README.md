@@ -27,7 +27,7 @@ publication.
 | `connectors/register.py` | PUT to Connect. |
 | `.env.example` | Standalone copy of the settings this piece reads. |
 
-Host port: `PROXY_DEBEZIUM_PORT` (default 8083). Image and heap are in the
+Host port: `127.0.0.1:${PROXY_DEBEZIUM_PORT:-8083}` (loopback only). Image and heap are in the
 root `.env`.
 
 ## Verify (worker)

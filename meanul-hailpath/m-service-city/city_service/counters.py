@@ -25,9 +25,9 @@ class ZoneCounter:
 
     # Trips whose pickup is in this zone and which have not been given a
     # driver yet. This is the demand side.
-    waiting_riders: set[str] = field(default_factory=set)
+    waiting_riders: set[int] = field(default_factory=set)
     # Drivers seen free in this zone recently. The supply side.
-    free_drivers: set[str] = field(default_factory=set)
+    free_drivers: set[int] = field(default_factory=set)
     # Speeds reported by cars on a trip inside this zone.
     speed_total: float = 0.0
     speed_samples: int = 0

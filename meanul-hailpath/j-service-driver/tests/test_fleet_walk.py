@@ -19,7 +19,7 @@ def _on_l(lat: float, lon: float, tol: float = 2e-5) -> bool:
 
 def _walk(path, ticks=80, speed_kmh=50.0, seconds=3.0):
     start = path[0]
-    driver = Driver("drv-0000001", start[0], start[1], "1")
+    driver = Driver(1, start[0], start[1], 1)
     driver.set_status(IDLE)
     driver.follow(path)
     rng = random.Random(0)
@@ -53,7 +53,7 @@ def test_two_point_chord_is_the_failing_shape():
 
 
 def test_follow_empty_path_does_not_move():
-    driver = Driver("drv-0000002", 40.75, -73.99, "1")
+    driver = Driver(2, 40.75, -73.99, 1)
     driver.set_status(IDLE)
     driver.follow([])
     driver.move(3.0, 40.0, random.Random(1))
@@ -63,7 +63,7 @@ def test_follow_empty_path_does_not_move():
 
 def test_become_idle_clears_the_polyline():
     path = linestring_vertices(L_WKT)
-    driver = Driver("drv-0000003", path[0][0], path[0][1], "1")
+    driver = Driver(3, path[0][0], path[0][1], 1)
     driver.set_status(IDLE)
     driver.follow(path)
     driver.become_idle()

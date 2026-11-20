@@ -29,8 +29,8 @@
           "type": "grafana-clickhouse-datasource",
           "uid": "hailpath-clickhouse"
         },
-        "definition": "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
-        "query": "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_positions WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
+        "definition": "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_last_known ORDER BY 1 LIMIT 500",
+        "query": "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_last_known ORDER BY 1 LIMIT 500",
         "refresh": 2,
         "sort": 1,
         "includeAll": false,
@@ -71,7 +71,7 @@
           "editorType": "sql",
           "format": 1,
           "queryType": "table",
-          "rawSql": "SELECT\n    argMax(status, event_time) AS status,\n    argMax(lat, event_time) AS lat,\n    argMax(lon, event_time) AS lon,\n    argMax(speed_kmh, event_time) AS speed_kmh,\n    argMax(trip_id, event_time) AS trip_id\nFROM hailpath.driver_positions\nWHERE driver_id = '${driver_id}'\n",
+          "rawSql": "SELECT\n    status,\n    lat,\n    lon,\n    speed_kmh,\n    trip_id\nFROM hailpath.driver_last_known FINAL\nWHERE driver_id = '${driver_id}'\n",
           "refId": "A",
           "pluginVersion": "4.23.5"
         }

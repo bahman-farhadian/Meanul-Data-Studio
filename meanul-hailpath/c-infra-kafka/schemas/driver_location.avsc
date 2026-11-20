@@ -8,14 +8,14 @@
     {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
     {"name": "producer", "type": "string", "doc": "Which service sent this: hailpath-driver, hailpath-passenger, hailpath-dispatch or hailpath-city. The first question asked when a stream looks wrong is who wrote it."},
     {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
-    {"name": "driver_id", "type": "string", "doc": "The driver this report is about."},
-    {"name": "trip_id", "type": ["null", "string"], "default": null, "doc": "The trip the driver is working on, or null when the driver is free."},
+    {"name": "driver_id", "type": "int", "doc": "The driver this report is about. UInt32 in the warehouse; Avro int."},
+    {"name": "trip_id", "type": ["null", "long"], "default": null, "doc": "The trip the driver is working on, or null when the driver is free. UInt64 in the warehouse."},
     {"name": "status", "type": {"type": "enum", "name": "DriverStatus", "symbols": ["offline", "idle", "en_route_pickup", "on_trip"]}, "doc": "What the driver was doing at the moment of the report."},
     {"name": "lat", "type": "double", "doc": "Latitude in degrees (WGS84)."},
     {"name": "lon", "type": "double", "doc": "Longitude in degrees (WGS84)."},
     {"name": "heading_deg", "type": ["null", "float"], "default": null, "doc": "Direction of travel, 0 to 360 degrees, clockwise from north."},
     {"name": "speed_kmh", "type": ["null", "float"], "default": null, "doc": "Speed at the moment of the report."},
-    {"name": "zone_id", "type": ["null", "string"], "default": null, "doc": "City zone the position falls into, filled in by the sender to save a lookup later."},
+    {"name": "zone_id", "type": ["null", "int"], "default": null, "doc": "TLC LocationID 1..263. UInt16 in the warehouse; Avro int."},
     {"name": "event_time", "type": {"type": "long", "logicalType": "timestamp-millis"}, "doc": "When the device produced the report. Always UTC."}
   ]
 }

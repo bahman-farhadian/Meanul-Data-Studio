@@ -86,9 +86,9 @@ docker compose exec hailpath-kafka /opt/kafka/bin/kafka-consumer-groups.sh \
 
 # a change in the database should appear in Redis within a second or two
 docker compose exec hailpath-postgres psql -U postgres -c \
-  "UPDATE drivers SET rating = 4.9 WHERE driver_id = 'drv-000001';"
+  "UPDATE drivers SET rating = 4.9 WHERE driver_id = 1;"
 
-docker compose exec hailpath-redis redis-cli get driver:drv-000001
+docker compose exec hailpath-redis redis-cli get driver:1
 
 # how many keys of each kind the cache holds
 docker compose exec hailpath-redis redis-cli --scan --pattern 'driver:*' | wc -l

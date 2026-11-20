@@ -112,7 +112,7 @@ PASSENGER_ARRIVED_REASON = "wait_too_long"
 def find_candidates(
     redis, lat: float, lon: float, radius_km: float, vehicle_type: str,
     limit: int, offer_speed_kmh: float,
-) -> list[tuple[str, float, float, int, int]]:
+) -> list[tuple[int, float, float, int, int]]:
     """The nearest free drivers of the requested tier, nearest first.
 
     Returns (driver_id, lon, lat, eta_seconds, distance_m) per candidate.
@@ -138,12 +138,12 @@ def find_candidates(
         sort="ASC", count=limit,
         withcoord=True, withdist=True,
     )
-    candidates: list[tuple[str, float, float, int, int]] = []
+    candidates: list[tuple[int, float, float, int, int]] = []
     for member, distance_km_away, (driver_lon, driver_lat) in found:
         distance_m = int(float(distance_km_away) * 1000)
         eta_seconds = int(float(distance_km_away) / max(offer_speed_kmh, 1.0) * 3600)
         candidates.append(
-            (str(member), float(driver_lon), float(driver_lat), eta_seconds, distance_m)
+            (int(member), float(driver_lon), float(driver_lat), eta_seconds, distance_m)
         )
     return candidates
 
@@ -197,7 +197,7 @@ def announce(producer: AvroTopicProducer, trip: ActiveTrip, status: str,
     )
 
 
-def announce_offers(producer: AvroTopicProducer, trip_id: str, zone_id: str,
+def announce_offers(producer: AvroTopicProducer, trip_id: int, zone_id: int,
                     surge: float, offers: list[Offer], now: datetime) -> None:
     """Publish the whole offer chain: the refusals as well as the accept.
 
@@ -226,7 +226,7 @@ def announce_offers(producer: AvroTopicProducer, trip_id: str, zone_id: str,
         )
 
 
-def accept_already_stored(trip_id: str) -> bool:
+def accept_already_stored(trip_id: int) -> bool:
     """True when this trip already has the one accepted offer the index allows.
 
     Read on the write connection, the same place this process inserts
@@ -247,7 +247,7 @@ def accept_already_stored(trip_id: str) -> bool:
     return row is not None
 
 
-def record_offers(trip_id: str, offers: list[Offer]) -> bool:
+def record_offers(trip_id: int, offers: list[Offer]) -> bool:
     """Keep the chain in PostgreSQL, where the live funnel is queried.
 
     False means the accept was already stored (a replay). The caller must
@@ -705,7 +705,7 @@ def _as_datetime(value) -> datetime | None:
 
 
 def _no_driver(producer: AvroTopicProducer, offer_producer: AvroTopicProducer,
-               request: dict, trip_id: str, zone_id: str, now: datetime,
+               request: dict, trip_id: int, zone_id: int, now: datetime,
                offers: list[Offer], surge: float | None) -> None:
     """Record and announce that nobody could take this trip.
 

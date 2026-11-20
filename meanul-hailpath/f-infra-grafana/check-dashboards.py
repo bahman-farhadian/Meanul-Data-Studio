@@ -59,7 +59,7 @@ AGGREGATE = re.compile(
 # argued about per panel.
 AVERAGE = re.compile(r"(?i)\bavg(If|Merge|)\s*\(")
 
-LIVE_REQUIRED = {"trip_events", "driver_positions"}
+LIVE_REQUIRED = {"trip_events", "driver_last_known", "trip_last_status"}
 HISTORICAL_ANY = {
     "trip_stats_daily",
     "trip_duration_percentiles_hourly",
@@ -84,29 +84,27 @@ def warehouse_tables() -> set[str]:
 
 
 def _check_live_ops_open_trips(dash: dict) -> list[str]:
-    """trip_events rows are status changes, not heartbeats.
+    """Home last-status comes from trip_last_status, not a 6h fold.
 
-    A current in_progress trip whose last event is older than a short
-    minute window must still appear. The lookback has to be hours, then
-    argMax(status). The stat panel must show every GROUP BY status row
-    (values=true), not collapse to lastNotNull of one series.
+    trip_events rows are status changes, not heartbeats. The last-status
+    table is one row per trip (ReplacingMergeTree). The stat panel must
+    show every GROUP BY status row (values=true).
     """
     errors: list[str] = []
+    if dash.get("timezone") != "UTC":
+        errors.append("hailpath-live-ops timezone must be UTC")
+    if dash.get("refresh") not in {"30s", "1m"}:
+        errors.append("hailpath-live-ops refresh must be 30s or slower")
     by_title = {p.get("title"): p for p in dash.get("panels") or []}
 
     open_panel = by_title.get("Open trips by last status")
     if open_panel is None:
         return ["hailpath-live-ops missing panel 'Open trips by last status'"]
     sql = (open_panel.get("targets") or [{}])[0].get("rawSql") or ""
-    if not re.search(r"INTERVAL\s+\d+\s+HOUR", sql, re.I):
-        errors.append(
-            "Open trips lookback must be INTERVAL n HOUR: "
-            "trip_events are status changes, not heartbeats"
-        )
-    if re.search(r"INTERVAL\s+\d+\s+MINUTE", sql, re.I):
-        errors.append("Open trips lookback must not use INTERVAL n MINUTE on trip_events")
-    if "argMax(status" not in sql:
-        errors.append("Open trips must take last status via argMax(status, event_time)")
+    if "trip_last_status" not in sql:
+        errors.append("Open trips must read hailpath.trip_last_status")
+    if re.search(r"INTERVAL\s+6\s+HOUR", sql, re.I):
+        errors.append("Open trips must not fold INTERVAL 6 HOUR of trip_events")
     values = (
         (open_panel.get("options") or {})
         .get("reduceOptions", {})
@@ -123,12 +121,10 @@ def _check_live_ops_open_trips(dash: dict) -> list[str]:
         errors.append("hailpath-live-ops missing panel 'In-progress trips'")
     else:
         sql = (inprog.get("targets") or [{}])[0].get("rawSql") or ""
-        if not re.search(r"INTERVAL\s+\d+\s+HOUR", sql, re.I):
-            errors.append("In-progress trips lookback must be INTERVAL n HOUR")
-        if re.search(r"INTERVAL\s+\d+\s+MINUTE", sql, re.I):
-            errors.append("In-progress trips lookback must not use INTERVAL n MINUTE")
-        if "HAVING" not in sql or "argMax(status" not in sql:
-            errors.append("In-progress trips must HAVING argMax(status, event_time)")
+        if "trip_last_status" not in sql:
+            errors.append("In-progress trips must read hailpath.trip_last_status")
+        if re.search(r"INTERVAL\s+6\s+HOUR", sql, re.I):
+            errors.append("In-progress trips must not fold INTERVAL 6 HOUR")
     return errors
 
 

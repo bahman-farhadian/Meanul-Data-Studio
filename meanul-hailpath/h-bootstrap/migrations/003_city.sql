@@ -10,7 +10,7 @@
 -- data once, on the host (see h-bootstrap/lion-prepare/taxi-zones.sql);
 -- zones.py copies it in here, computing servicable per real zone.
 CREATE TABLE IF NOT EXISTS city_zones (
-    zone_id     text PRIMARY KEY,
+    zone_id     smallint PRIMARY KEY,
     name        text        NOT NULL,
     -- TLC's own neighborhood name and borough for this zone - real
     -- metadata this project never had with the synthetic grid, and

@@ -92,7 +92,7 @@ def party_and_tier(rng) -> tuple[int, str]:
     return size, rng.choices(allowed, weights)[0]
 
 
-def load_rider_ids(redis) -> list[str]:
+def load_rider_ids(redis) -> list[int]:
     """Every passenger id the cache knows about.
 
     Only the ids are kept. The service does not need names or preferences to
@@ -103,7 +103,7 @@ def load_rider_ids(redis) -> list[str]:
     for key in redis.scan_iter(match="passenger:*", count=500):
         # The key is passenger:<id>, so the id can be taken from the name
         # itself - no need to fetch and parse the value.
-        ids.append(key.split(":", 1)[1])
+        ids.append(int(key.split(":", 1)[1]))
     return ids
 
 
@@ -123,7 +123,8 @@ def main() -> int:
     # state too (DB_TRIP), which dispatch-service - not this one - owns.
     redis_passenger = redis_client.primary(redis_client.DB_PASSENGER)
     redis_trip = redis_client.primary(redis_client.DB_TRIP)
-    wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
+    redis_system = redis_client.primary(redis_client.DB_SYSTEM)
+    wait_for_bootstrap(redis_system, shutdown)
 
     # Same as driver-service: the profiles reach Redis through cache-updater
     # once Debezium has replayed the seeded rows, so an empty cache right
@@ -163,7 +164,7 @@ def main() -> int:
 
     # Trips this service is currently following, so it knows whose phone
     # should be reporting: trip_id -> rider_id.
-    travelling: dict[str, str] = {}
+    travelling: dict[int, int] = {}
     requested = 0
     positions = 0
 
@@ -202,7 +203,10 @@ def main() -> int:
                 dropoff_zone = rng.choices(zone_ids, weights=dropoff_weights, k=1)[0]
                 pickup_lat, pickup_lon = routing.pooled_road_point_in_zone(grid, pickup_zone, rng)
                 dropoff_lat, dropoff_lon = routing.pooled_road_point_in_zone(grid, dropoff_zone, rng)
-                trip_id = new_trip_id(now, rng)
+                seq = int(redis_system.incr(
+                    redis_client.trip_seq_key(now.strftime("%Y%m%d"))
+                ))
+                trip_id = new_trip_id(now, seq)
                 passenger_count, vehicle_type = party_and_tier(rng)
 
                 new_trips.append(
@@ -262,8 +266,13 @@ def main() -> int:
                     continue
                 trip_id = value.get("trip_id")
                 status = value.get("status")
+                if trip_id is None:
+                    continue
+                trip_id = int(trip_id)
                 if status in TRAVELLING:
-                    travelling[trip_id] = value.get("rider_id")
+                    rider = value.get("rider_id")
+                    if rider is not None:
+                        travelling[trip_id] = int(rider)
                 elif status in FINISHED:
                     travelling.pop(trip_id, None)
 

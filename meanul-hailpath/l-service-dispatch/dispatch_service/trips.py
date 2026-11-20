@@ -46,17 +46,17 @@ NO_SHOW_CHANCE_SHARE = 0.6
 
 @dataclass
 class ActiveTrip:
-    trip_id: str
-    rider_id: str
-    driver_id: str
+    trip_id: int
+    rider_id: int
+    driver_id: int
     pickup_lat: float
     pickup_lon: float
     dropoff_lat: float
     dropoff_lon: float
     driver_lat: float
     driver_lon: float
-    pickup_zone_id: str
-    dropoff_zone_id: str
+    pickup_zone_id: int
+    dropoff_zone_id: int
 
     route_km: float
     predicted_duration_s: int

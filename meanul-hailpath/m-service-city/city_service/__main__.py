@@ -90,10 +90,12 @@ def main() -> int:
         from_beginning=False,
     )
 
-    zones: dict[str, ZoneCounter] = defaultdict(ZoneCounter)
+    zones: dict[int, ZoneCounter] = defaultdict(ZoneCounter)
     # Which zone each waiting trip belongs to, so it can be removed from the
     # right counter when it stops waiting.
-    waiting_zone: dict[str, str] = {}
+    waiting_zone: dict[int, int] = {}
+    last_kafka_score: dict[int, float] = {}
+    last_kafka_at = 0.0
 
     last_score = time.monotonic()
     last_traffic = time.monotonic()
@@ -145,9 +147,13 @@ def main() -> int:
                 # half one interval, not the other half forever.
                 if now_monotonic - last_score >= score_seconds:
                     last_score = now_monotonic
+                    kafka_due = now_monotonic - last_kafka_at >= 300.0
                     published += _publish_scores(
-                        zones, grid, redis, producer, hotspot_ttl, hotspot_threshold
+                        zones, grid, redis, producer, hotspot_ttl, hotspot_threshold,
+                        last_kafka_score, kafka_due,
                     )
+                    if kafka_due:
+                        last_kafka_at = now_monotonic
                     consumer.commit()
 
                 if now_monotonic - last_traffic >= traffic_minutes * 60:
@@ -172,11 +178,12 @@ def main() -> int:
     return 0
 
 
-def _note_driver(zones: dict[str, ZoneCounter], grid: CityGrid, value: dict) -> None:
+def _note_driver(zones: dict[int, ZoneCounter], grid: CityGrid, value: dict) -> None:
     """Update the supply side and the speed picture from one position report."""
-    zone_id = value.get("zone_id") or grid.zone_of(value["lat"], value["lon"])
+    raw_zone = value.get("zone_id")
+    zone_id = int(raw_zone) if raw_zone is not None else grid.zone_of(value["lat"], value["lon"])
     counter = zones[zone_id]
-    driver_id = value["driver_id"]
+    driver_id = int(value["driver_id"])
     status = value.get("status")
 
     if status == "idle":
@@ -189,11 +196,12 @@ def _note_driver(zones: dict[str, ZoneCounter], grid: CityGrid, value: dict) -> 
 
 
 def _note_trip(
-    zones: dict[str, ZoneCounter], waiting_zone: dict[str, str], value: dict
+    zones: dict[int, ZoneCounter], waiting_zone: dict[int, int], value: dict
 ) -> None:
     """Update the demand side from one trip status change."""
-    trip_id = value["trip_id"]
-    zone_id = value.get("pickup_zone_id")
+    trip_id = int(value["trip_id"])
+    raw_zone = value.get("pickup_zone_id")
+    zone_id = int(raw_zone) if raw_zone is not None else None
     status = value.get("status")
 
     if status in WAITING and zone_id:
@@ -206,14 +214,16 @@ def _note_trip(
 
 
 def _publish_scores(
-    zones: dict[str, ZoneCounter], grid: CityGrid, redis,
+    zones: dict[int, ZoneCounter], grid: CityGrid, redis,
     producer: AvroTopicProducer, ttl_seconds: int, threshold: float,
+    last_kafka_score: dict[int, float], kafka_due: bool,
 ) -> int:
-    """Write the current demand score of every zone to Redis and to Kafka."""
+    """Redis every tick. Kafka/CH when the score changes, or every 5 minutes."""
     now = utc_now()
     period = day_period(now)
     event_time = to_millis(now)
     hot = 0
+    kafka_rows = 0
 
     with redis.pipeline() as pipe:
         for zone_id in grid.all_zone_ids():
@@ -242,17 +252,26 @@ def _publish_scores(
                 ex=ttl_seconds,
             )
 
-            producer.send(key=zone_id, value={**payload, "computed_at": event_time})
+            previous = last_kafka_score.get(zone_id)
+            if kafka_due or previous is None or previous != score:
+                producer.send(key=zone_id, value={**payload, "computed_at": event_time})
+                last_kafka_score[zone_id] = score
+                kafka_rows += 1
         pipe.execute()
 
     log.info(
         "scores published",
-        extra={"zones": len(grid.all_zone_ids()), "hot_zones": hot, "period": period},
+        extra={
+            "zones": len(grid.all_zone_ids()),
+            "hot_zones": hot,
+            "period": period,
+            "kafka_rows": kafka_rows,
+        },
     )
-    return len(grid.all_zone_ids())
+    return kafka_rows
 
 
-def _update_traffic(zones: dict[str, ZoneCounter], traffic_producer: AvroTopicProducer) -> None:
+def _update_traffic(zones: dict[int, ZoneCounter], traffic_producer: AvroTopicProducer) -> None:
     """Push what cars are really doing back into the routing costs.
 
     This is the slowest thing the service does: it touches every road segment

@@ -22,8 +22,8 @@
 
 CREATE TABLE IF NOT EXISTS dispatch_offers (
     offer_id             bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    trip_id              text        NOT NULL REFERENCES trips(trip_id),
-    driver_id            text        NOT NULL REFERENCES drivers(driver_id),
+    trip_id              bigint      NOT NULL REFERENCES trips(trip_id),
+    driver_id            integer     NOT NULL REFERENCES drivers(driver_id),
     -- Position in the offer chain for this trip, starting at 1. The chain
     -- is the object of interest, not the individual offer.
     sequence             smallint    NOT NULL,

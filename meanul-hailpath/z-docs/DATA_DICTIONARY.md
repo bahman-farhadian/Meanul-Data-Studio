@@ -20,12 +20,12 @@ services, Debezium, and the archiver.
 
 | Column | Type |
 | --- | --- |
-| `driver_id` | text PRIMARY KEY |
+| `driver_id` | integer PRIMARY KEY |
 | `full_name` | text NOT NULL |
 | `phone` | text |
 | `rating` | numeric(2,1) NOT NULL DEFAULT 5.0 |
 | `status` | text NOT NULL DEFAULT 'offline' |
-| `home_zone_id` | text |
+| `home_zone_id` | smallint |
 | `last_lat` | double precision |
 | `last_lon` | double precision |
 | `last_seen_at` | timestamptz |
@@ -37,11 +37,11 @@ services, Debezium, and the archiver.
 
 | Column | Type |
 | --- | --- |
-| `passenger_id` | text PRIMARY KEY |
+| `passenger_id` | integer PRIMARY KEY |
 | `full_name` | text NOT NULL |
 | `phone` | text |
 | `rating` | numeric(2,1) NOT NULL DEFAULT 5.0 |
-| `home_zone_id` | text |
+| `home_zone_id` | smallint |
 | `preferences` | jsonb NOT NULL DEFAULT '{}'::jsonb |
 | `device` | jsonb NOT NULL DEFAULT '{}'::jsonb |
 | `created_at` | timestamptz NOT NULL DEFAULT now() |
@@ -51,14 +51,14 @@ services, Debezium, and the archiver.
 
 | Column | Type |
 | --- | --- |
-| `trip_id` | text PRIMARY KEY |
-| `rider_id` | text NOT NULL REFERENCES passengers(passenger_id) |
-| `driver_id` | text REFERENCES drivers(driver_id) |
+| `trip_id` | bigint PRIMARY KEY |
+| `rider_id` | integer NOT NULL REFERENCES passengers(passenger_id) |
+| `driver_id` | integer REFERENCES drivers(driver_id) |
 | `status` | text NOT NULL |
 | `pickup_point` | geometry(Point, 4326) NOT NULL |
 | `dropoff_point` | geometry(Point, 4326) NOT NULL |
-| `pickup_zone_id` | text |
-| `dropoff_zone_id` | text |
+| `pickup_zone_id` | smallint |
+| `dropoff_zone_id` | smallint |
 | `route` | geometry(Geometry, 4326) |
 | `route_km` | double precision |
 | `predicted_duration_s` | integer |
@@ -85,7 +85,7 @@ services, Debezium, and the archiver.
 
 | Column | Type |
 | --- | --- |
-| `zone_id` | text PRIMARY KEY |
+| `zone_id` | smallint PRIMARY KEY |
 | `name` | text NOT NULL |
 | `borough` | text NOT NULL |
 | `boundary` | geometry(MultiPolygon, 4326) NOT NULL |
@@ -107,8 +107,8 @@ services, Debezium, and the archiver.
 
 | Column | Type |
 | --- | --- |
-| `vehicle_id` | text PRIMARY KEY |
-| `driver_id` | text NOT NULL REFERENCES drivers(driver_id) |
+| `vehicle_id` | integer PRIMARY KEY |
+| `driver_id` | integer NOT NULL REFERENCES drivers(driver_id) |
 | `vehicle_type` | text NOT NULL DEFAULT 'economy' |
 | `seats` | integer NOT NULL DEFAULT 4 |
 | `make` | text NOT NULL |
@@ -123,7 +123,7 @@ services, Debezium, and the archiver.
 | Column | Type |
 | --- | --- |
 | `rating_id` | bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY |
-| `trip_id` | text NOT NULL REFERENCES trips(trip_id) |
+| `trip_id` | bigint NOT NULL REFERENCES trips(trip_id) |
 | `rater_type` | text NOT NULL |
 | `rating` | smallint NOT NULL |
 | `created_at` | timestamptz NOT NULL DEFAULT now() |
@@ -133,16 +133,16 @@ services, Debezium, and the archiver.
 | Column | Type |
 | --- | --- |
 | `session_id` | bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY |
-| `driver_id` | text NOT NULL REFERENCES drivers(driver_id) |
+| `driver_id` | integer NOT NULL REFERENCES drivers(driver_id) |
 | `started_at` | timestamptz NOT NULL |
 | `ended_at` | timestamptz |
-| `zone_id` | text NOT NULL |
+| `zone_id` | smallint NOT NULL |
 
 ### `zone_demand_calibration`
 
 | Column | Type |
 | --- | --- |
-| `zone_id` | text NOT NULL REFERENCES city_zones(zone_id) |
+| `zone_id` | smallint NOT NULL REFERENCES city_zones(zone_id) |
 | `hour_of_day` | smallint NOT NULL |
 | `day_of_week` | smallint NOT NULL |
 | `weight` | numeric(8, 4) NOT NULL |
@@ -153,8 +153,8 @@ services, Debezium, and the archiver.
 
 | Column | Type |
 | --- | --- |
-| `pickup_zone_id` | text NOT NULL REFERENCES city_zones(zone_id) |
-| `dropoff_zone_id` | text NOT NULL REFERENCES city_zones(zone_id) |
+| `pickup_zone_id` | smallint NOT NULL REFERENCES city_zones(zone_id) |
+| `dropoff_zone_id` | smallint NOT NULL REFERENCES city_zones(zone_id) |
 | `trip_share` | numeric(8, 6) NOT NULL |
 | `avg_fare` | numeric(10, 2) |
 | `avg_duration_s` | integer |
@@ -166,8 +166,8 @@ services, Debezium, and the archiver.
 | Column | Type |
 | --- | --- |
 | `offer_id` | bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY |
-| `trip_id` | text NOT NULL REFERENCES trips(trip_id) |
-| `driver_id` | text NOT NULL REFERENCES drivers(driver_id) |
+| `trip_id` | bigint NOT NULL REFERENCES trips(trip_id) |
+| `driver_id` | integer NOT NULL REFERENCES drivers(driver_id) |
 | `sequence` | smallint NOT NULL |
 | `offered_at` | timestamptz NOT NULL |
 | `expires_at` | timestamptz NOT NULL |
@@ -198,19 +198,32 @@ These are the tables services and dashboards query. Each one is
 stored on the one ClickHouse. A materialized view is a trigger,
 not a table, and is not listed.
 
-### `hailpath.driver_positions`
+### `hailpath.driver_last_known`
 
 | Column | Type |
 | --- | --- |
-| `event_id` | UUID |
-| `driver_id` | FixedString(11) |
-| `trip_id` | Nullable(FixedString(21)) |
+| `driver_id` | UInt32 |
+| `trip_id` | Nullable(UInt64) |
 | `status` | Enum8('offline' = 1, 'idle' = 2, 'en_route_pickup' = 3, 'on_trip' = 4) |
 | `lat` | Float64 |
 | `lon` | Float64 |
 | `heading_deg` | Nullable(Float32) |
 | `speed_kmh` | Nullable(Float32) |
-| `zone_id` | LowCardinality(String) |
+| `zone_id` | UInt16 |
+| `event_time` | DateTime64(3, 'UTC') |
+
+### `hailpath.driver_positions`
+
+| Column | Type |
+| --- | --- |
+| `driver_id` | UInt32 |
+| `trip_id` | UInt64 |
+| `status` | Enum8('offline' = 1, 'idle' = 2, 'en_route_pickup' = 3, 'on_trip' = 4) |
+| `lat` | Float64 |
+| `lon` | Float64 |
+| `heading_deg` | Nullable(Float32) |
+| `speed_kmh` | Nullable(Float32) |
+| `zone_id` | UInt16 |
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
@@ -218,13 +231,12 @@ not a table, and is not listed.
 
 | Column | Type |
 | --- | --- |
-| `event_id` | UUID |
-| `rider_id` | FixedString(11) |
-| `trip_id` | Nullable(FixedString(21)) |
+| `rider_id` | UInt32 |
+| `trip_id` | UInt64 |
 | `lat` | Float64 |
 | `lon` | Float64 |
 | `accuracy_m` | Nullable(Float32) |
-| `zone_id` | LowCardinality(String) |
+| `zone_id` | UInt16 |
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
@@ -233,12 +245,12 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `event_id` | UUID |
-| `trip_id` | FixedString(21) |
-| `rider_id` | FixedString(11) |
-| `driver_id` | Nullable(FixedString(11)) |
+| `trip_id` | UInt64 |
+| `rider_id` | UInt32 |
+| `driver_id` | Nullable(UInt32) |
 | `status` | Enum8( 'requested' = 1, 'matched' = 2, 'accepted' = 3, 'en_route_pickup' = 4, 'in_progress' = 5, 'completed' = 6, 'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8, 'no_driver_found' = 9, 'arrived' = 10 ) |
-| `pickup_zone_id` | LowCardinality(String) |
-| `dropoff_zone_id` | LowCardinality(String) |
+| `pickup_zone_id` | UInt16 |
+| `dropoff_zone_id` | UInt16 |
 | `passenger_count` | UInt8 |
 | `requested_vehicle_type` | Enum8('economy' = 1, 'xl' = 2, 'premium' = 3) |
 | `route_km` | Nullable(Float64) |
@@ -263,12 +275,26 @@ not a table, and is not listed.
 | `event_time` | DateTime64(3, 'UTC') |
 | `event_date` | Date MATERIALIZED toDate(event_time) |
 
+### `hailpath.trip_last_status`
+
+| Column | Type |
+| --- | --- |
+| `trip_id` | UInt64 |
+| `rider_id` | UInt32 |
+| `driver_id` | Nullable(UInt32) |
+| `status` | Enum8( 'requested' = 1, 'matched' = 2, 'accepted' = 3, 'en_route_pickup' = 4, 'in_progress' = 5, 'completed' = 6, 'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8, 'no_driver_found' = 9, 'arrived' = 10 ) |
+| `pickup_zone_id` | UInt16 |
+| `dropoff_zone_id` | UInt16 |
+| `predicted_duration_s` | Nullable(UInt32) |
+| `fare_estimate` | Nullable(Decimal64(2)) |
+| `event_time` | DateTime64(3, 'UTC') |
+
 ### `hailpath.hotspot_history`
 
 | Column | Type |
 | --- | --- |
 | `event_id` | UUID |
-| `zone_id` | LowCardinality(String) |
+| `zone_id` | UInt16 |
 | `period` | Enum8('night' = 1, 'morning' = 2, 'afternoon' = 3, 'evening' = 4) |
 | `demand_score` | Float64 |
 | `open_requests` | UInt32 |
@@ -282,20 +308,20 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `pickup_zone_id` | LowCardinality(String) |
-| `completed_trips` | UInt64 |
+| `pickup_zone_id` | UInt16 |
+| `completed_trips` | UInt32 |
 | `revenue` | Decimal64(2) |
 | `payout_total` | Decimal64(2) |
 | `surge_sum` | Float64 |
 | `route_km_total` | Float64 |
-| `overrun_trips` | UInt64 |
+| `overrun_trips` | UInt32 |
 
 ### `hailpath.trip_duration_percentiles_hourly`
 
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `pickup_zone_id` | LowCardinality(String) |
+| `pickup_zone_id` | UInt16 |
 | `p50_state` | AggregateFunction(quantile(0.5), Nullable(UInt32)) |
 | `p95_state` | AggregateFunction(quantile(0.95), Nullable(UInt32)) |
 
@@ -304,30 +330,30 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `driver_state` | AggregateFunction(uniq, FixedString(11)) |
-| `rider_state` | AggregateFunction(uniq, FixedString(11)) |
+| `driver_state` | AggregateFunction(uniq, UInt32) |
+| `rider_state` | AggregateFunction(uniq, UInt32) |
 
 ### `hailpath.trip_stats_daily`
 
 | Column | Type |
 | --- | --- |
 | `day` | Date |
-| `pickup_zone_id` | LowCardinality(String) |
-| `completed_trips` | UInt64 |
+| `pickup_zone_id` | UInt16 |
+| `completed_trips` | UInt32 |
 | `revenue` | Decimal64(2) |
 | `payout_total` | Decimal64(2) |
 | `surge_sum` | Float64 |
 | `route_km_total` | Float64 |
-| `overrun_trips` | UInt64 |
+| `overrun_trips` | UInt32 |
 
 ### `hailpath.od_matrix_daily`
 
 | Column | Type |
 | --- | --- |
 | `day` | Date |
-| `pickup_zone_id` | LowCardinality(String) |
-| `dropoff_zone_id` | LowCardinality(String) |
-| `completed_trips` | UInt64 |
+| `pickup_zone_id` | UInt16 |
+| `dropoff_zone_id` | UInt16 |
+| `completed_trips` | UInt32 |
 | `revenue` | Decimal64(2) |
 | `route_km_total` | Float64 |
 
@@ -336,16 +362,16 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `driver_id` | FixedString(11) |
-| `online_ticks` | UInt64 |
-| `busy_ticks` | UInt64 |
+| `driver_id` | UInt32 |
+| `online_ticks` | UInt32 |
+| `busy_ticks` | UInt32 |
 
 ### `hailpath.segment_traffic_history`
 
 | Column | Type |
 | --- | --- |
 | `event_id` | UUID |
-| `zone_id` | LowCardinality(String) |
+| `zone_id` | UInt16 |
 | `period` | Enum8('night' = 1, 'morning' = 2, 'afternoon' = 3, 'evening' = 4) |
 | `congestion_factor` | Float64 |
 | `speed_samples` | UInt32 |
@@ -358,11 +384,11 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `event_id` | UUID |
-| `trip_id` | FixedString(21) |
-| `driver_id` | FixedString(11) |
+| `trip_id` | UInt64 |
+| `driver_id` | UInt32 |
 | `sequence` | UInt8 |
 | `status` | Enum8( 'offered' = 1, 'accepted' = 2, 'declined' = 3, 'expired' = 4, 'cancelled' = 5 ) |
-| `pickup_zone_id` | LowCardinality(String) |
+| `pickup_zone_id` | UInt16 |
 | `eta_seconds` | Nullable(UInt32) |
 | `distance_to_pickup_m` | Nullable(UInt32) |
 | `surge_multiplier` | Nullable(Float64) |
@@ -376,29 +402,29 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `pickup_zone_id` | LowCardinality(String) |
-| `offers_made` | UInt64 |
-| `offers_accepted` | UInt64 |
-| `offers_declined` | UInt64 |
-| `offers_expired` | UInt64 |
-| `offers_cancelled` | UInt64 |
+| `pickup_zone_id` | UInt16 |
+| `offers_made` | UInt32 |
+| `offers_accepted` | UInt32 |
+| `offers_declined` | UInt32 |
+| `offers_expired` | UInt32 |
+| `offers_cancelled` | UInt32 |
 | `eta_seconds_sum` | UInt64 |
-| `eta_offers` | UInt64 |
+| `eta_offers` | UInt32 |
 | `accepted_eta_sum` | UInt64 |
 | `response_s_sum` | UInt64 |
-| `responses` | UInt64 |
+| `responses` | UInt32 |
 
 ### `hailpath.trip_facts`
 
 | Column | Type |
 | --- | --- |
 | `event_id` | UUID |
-| `trip_id` | FixedString(21) |
-| `rider_id` | FixedString(11) |
-| `driver_id` | Nullable(FixedString(11)) |
+| `trip_id` | UInt64 |
+| `rider_id` | UInt32 |
+| `driver_id` | Nullable(UInt32) |
 | `final_status` | Enum8( 'completed' = 6, 'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8, 'no_driver_found' = 9 ) |
-| `pickup_zone_id` | LowCardinality(String) |
-| `dropoff_zone_id` | LowCardinality(String) |
+| `pickup_zone_id` | UInt16 |
+| `dropoff_zone_id` | UInt16 |
 | `passenger_count` | UInt8 |
 | `requested_vehicle_type` | Enum8('economy' = 1, 'xl' = 2, 'premium' = 3) |
 | `requested_at` | Nullable(DateTime64(3, 'UTC')) |
@@ -430,31 +456,31 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `pickup_zone_id` | LowCardinality(String) |
-| `trips_ended` | UInt64 |
-| `completed` | UInt64 |
-| `cancelled_by_passenger` | UInt64 |
-| `cancelled_by_driver` | UInt64 |
-| `no_driver_found` | UInt64 |
-| `cancelled_after_arrival` | UInt64 |
+| `pickup_zone_id` | UInt16 |
+| `trips_ended` | UInt32 |
+| `completed` | UInt32 |
+| `cancelled_by_passenger` | UInt32 |
+| `cancelled_by_driver` | UInt32 |
+| `no_driver_found` | UInt32 |
+| `cancelled_after_arrival` | UInt32 |
 | `match_s_sum` | UInt64 |
-| `matched_trips` | UInt64 |
+| `matched_trips` | UInt32 |
 | `wait_s_sum` | UInt64 |
-| `waited_trips` | UInt64 |
+| `waited_trips` | UInt32 |
 
 ### `hailpath.driver_activity_hourly`
 
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `zone_id` | LowCardinality(String) |
-| `positions` | SimpleAggregateFunction(sum, UInt64) |
-| `drivers` | AggregateFunction(uniq, FixedString(11)) |
-| `idle_positions` | SimpleAggregateFunction(sum, UInt64) |
-| `en_route_positions` | SimpleAggregateFunction(sum, UInt64) |
-| `on_trip_positions` | SimpleAggregateFunction(sum, UInt64) |
+| `zone_id` | UInt16 |
+| `positions` | SimpleAggregateFunction(sum, UInt32) |
+| `drivers` | AggregateFunction(uniq, UInt32) |
+| `idle_positions` | SimpleAggregateFunction(sum, UInt32) |
+| `en_route_positions` | SimpleAggregateFunction(sum, UInt32) |
+| `on_trip_positions` | SimpleAggregateFunction(sum, UInt32) |
 | `speed_kmh_sum` | SimpleAggregateFunction(sum, Float64) |
-| `speed_samples` | SimpleAggregateFunction(sum, UInt64) |
+| `speed_samples` | SimpleAggregateFunction(sum, UInt32) |
 | `max_speed_kmh` | SimpleAggregateFunction(max, Float32) |
 
 ### `hailpath.rider_activity_hourly`
@@ -462,9 +488,9 @@ not a table, and is not listed.
 | Column | Type |
 | --- | --- |
 | `hour` | DateTime('UTC') |
-| `zone_id` | LowCardinality(String) |
-| `positions` | SimpleAggregateFunction(sum, UInt64) |
-| `riders` | AggregateFunction(uniq, FixedString(11)) |
-| `trips` | AggregateFunction(uniq, Nullable(FixedString(21))) |
+| `zone_id` | UInt16 |
+| `positions` | SimpleAggregateFunction(sum, UInt32) |
+| `riders` | AggregateFunction(uniq, UInt32) |
+| `trips` | AggregateFunction(uniq, UInt64) |
 | `accuracy_m_sum` | SimpleAggregateFunction(sum, Float64) |
-| `accuracy_samples` | SimpleAggregateFunction(sum, UInt64) |
+| `accuracy_samples` | SimpleAggregateFunction(sum, UInt32) |

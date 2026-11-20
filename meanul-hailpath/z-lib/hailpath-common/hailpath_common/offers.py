@@ -75,7 +75,7 @@ MAX_ACCEPT_CHANCE = 0.95
 class Offer:
     """One offer and its outcome, ready to store and announce."""
 
-    driver_id: str
+    driver_id: int
     sequence: int
     status: str
     eta_seconds: int | None

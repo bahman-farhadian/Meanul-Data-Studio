@@ -69,7 +69,7 @@ def load(conn) -> None:
         cur.execute(
             """
             CREATE TABLE city_zones (
-                zone_id text PRIMARY KEY,
+                zone_id smallint PRIMARY KEY,
                 name text NOT NULL,
                 borough text NOT NULL,
                 boundary geometry(MultiPolygon, 4326) NOT NULL,
@@ -81,7 +81,7 @@ def load(conn) -> None:
         cur.execute(
             """
             CREATE TABLE trips (
-                trip_id text PRIMARY KEY,
+                trip_id bigint PRIMARY KEY,
                 pickup_point geometry(Point, 4326) NOT NULL,
                 dropoff_point geometry(Point, 4326) NOT NULL,
                 route geometry,
@@ -155,7 +155,7 @@ def load(conn) -> None:
             """
             INSERT INTO city_zones (zone_id, name, borough, boundary, centroid, servicable)
             VALUES (
-                '1',
+                1,
                 'sample-land',
                 'Manhattan',
                 ST_Multi(ST_GeomFromText(

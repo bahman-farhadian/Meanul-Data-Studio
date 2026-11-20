@@ -88,7 +88,7 @@ services:
       # retries gave up at 105 and marked a perfectly healthy worker unhealthy.
       start_period: 240s
     ports:
-      - "${PROXY_DEBEZIUM_PORT:-8083}:8083"
+      - "127.0.0.1:${PROXY_DEBEZIUM_PORT:-8083}:8083"
     depends_on:
       hailpath-kafka:
         condition: service_healthy

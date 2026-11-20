@@ -7,22 +7,13 @@
 
 CREATE TABLE IF NOT EXISTS hailpath.trip_events
 (
-    -- FixedString/Enum8 for the ids and status this codebase mints itself
-    -- (hailpath_common/ids.py) and constrains itself (Avro's TripStatus, and
-    -- Postgres's own CHECK) - see driver_positions/rider_positions in
-    -- 002_positions.sql. pickup_zone_id is LowCardinality(String), not
-    -- FixedString: it's TLC's own variable-width LocationID, not a format
-    -- this codebase controls.
-    -- The message's own identity, from the Avro envelope every producer
-    -- stamps. UUID is 16 bytes against 36 for the text form, and the sink
-    -- refuses an id it has already written: ClickHouse does not deduplicate
-    -- on its own - ReplacingMergeTree only collapses eventually, only within
-    -- a partition, and only on merge - so uniqueness has to hold before the
-    -- warehouse or no count here can be trusted.
+    -- Integer ids this codebase mints (hailpath_common/ids.py). Zones are
+    -- TLC LocationID, UInt16. ReplacingMergeTree collapses replay on
+    -- event_id; uniqueness still has to hold before the warehouse.
     event_id                   UUID,
-    trip_id                    FixedString(21),
-    rider_id                   FixedString(11),
-    driver_id                  Nullable(FixedString(11)),
+    trip_id                    UInt64,
+    rider_id                   UInt32,
+    driver_id                  Nullable(UInt32),
     -- 'arrived' is 10, appended after 'no_driver_found' rather than placed
     -- in its lifecycle position between en_route_pickup and in_progress.
     -- An Enum8's numbers are what is stored; inserting a symbol in the
@@ -35,8 +26,8 @@ CREATE TABLE IF NOT EXISTS hailpath.trip_events
                                    'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8,
                                    'no_driver_found' = 9, 'arrived' = 10
                                ),
-    pickup_zone_id             LowCardinality(String),
-    dropoff_zone_id            LowCardinality(String),
+    pickup_zone_id             UInt16,
+    dropoff_zone_id            UInt16,
 
     -- Party size and the tier asked for. Both existed upstream and neither
     -- ever reached the warehouse, so nothing here could group by tier or
@@ -101,18 +92,37 @@ CREATE TABLE IF NOT EXISTS hailpath.trip_events
     event_time                 DateTime64(3, 'UTC'),
     event_date                 Date MATERIALIZED toDate(event_time)
 )
-ENGINE = MergeTree
--- Daily, because the TTL is now shorter than a month. Under monthly
--- partitions a 30-day expiry drops nothing until an entire month has
--- aged out, so the table would hold up to sixty days to honour a
--- thirty-day contract. Daily means expiry removes exactly one day's
--- directory, and thirty-odd partitions is a healthy count.
+ENGINE = ReplacingMergeTree(event_time)
 PARTITION BY event_date
-ORDER BY (trip_id, event_time)
+ORDER BY (event_id)
 -- Trips are the business record, so they are kept far longer than positions.
 -- Thirty days, cut from ninety and originally a year. Measured each time
 -- with make capacity rather than chosen: this project's full-scale scope is
 -- SEVEN DAYS of history, so thirty days is still over four times the data
 -- that will ever exist in it.
 TTL event_date + INTERVAL 30 DAY;
+
+
+-- One row per trip, last status. Grafana live-ops reads this instead of
+-- folding hours of trip_events. Sink writes every lifecycle event.
+CREATE TABLE IF NOT EXISTS hailpath.trip_last_status
+(
+    trip_id                UInt64,
+    rider_id               UInt32,
+    driver_id              Nullable(UInt32),
+    status                 Enum8(
+                               'requested' = 1, 'matched' = 2, 'accepted' = 3,
+                               'en_route_pickup' = 4, 'in_progress' = 5, 'completed' = 6,
+                               'cancelled_by_passenger' = 7, 'cancelled_by_driver' = 8,
+                               'no_driver_found' = 9, 'arrived' = 10
+                           ),
+    pickup_zone_id         UInt16,
+    dropoff_zone_id        UInt16,
+    predicted_duration_s   Nullable(UInt32),
+    fare_estimate          Nullable(Decimal64(2)),
+    event_time             DateTime64(3, 'UTC')
+)
+ENGINE = ReplacingMergeTree(event_time)
+ORDER BY trip_id
+TTL toDate(event_time) + INTERVAL 2 DAY;
 

@@ -25,7 +25,7 @@ support, not a step in the build order.
 | `clickhouse.py` | Batched inserts through the entry tier. |
 | `geo.py` | Small geography helpers: distance between two points, which part of the day a moment belongs to, and points spaced along a route line. |
 | `citygrid.py` | The city's zone grid, shared so every component draws the same zones from the same bounds. |
-| `ids.py` | Every entity id format (driver, passenger, trip) in one place, so the width and shape never drift between components. |
+| `ids.py` | Integer mint (UInt32 driver/passenger/vehicle, UInt64 trip). Display prefixes are formatters only. |
 | `routing.py` | The pgRouting query, with traffic-weighted costs — shared by dispatch-service (live) and h-bootstrap (seeded history). |
 
 ## How a component uses it

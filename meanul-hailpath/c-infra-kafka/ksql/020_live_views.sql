@@ -66,4 +66,4 @@ EMIT CHANGES;
 --   SELECT pickup_zone_id, offers_made, offers_accepted,
 --          eta_seconds_sum / eta_offers AS mean_eta_s
 --   FROM offer_funnel_by_zone_1m
---   WHERE pickup_zone_id = '142';
+--   WHERE pickup_zone_id = 142;

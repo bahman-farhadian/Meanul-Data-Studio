@@ -24,17 +24,17 @@ log = get_logger(__name__)
 # writer stores something nobody reads and the reader finds nothing, and
 # neither of them fails.
 
-def driver_key(driver_id: str) -> str:
+def driver_key(driver_id: int | str) -> str:
     """Profile and current status of one driver. Written by cache-updater."""
-    return f"driver:{driver_id}"
+    return f"driver:{int(driver_id)}"
 
 
-def passenger_key(passenger_id: str) -> str:
+def passenger_key(passenger_id: int | str) -> str:
     """Profile of one passenger. Written by cache-updater."""
-    return f"passenger:{passenger_id}"
+    return f"passenger:{int(passenger_id)}"
 
 
-def vehicle_key(driver_id: str) -> str:
+def vehicle_key(driver_id: int | str) -> str:
     """The vehicle a driver drives. Written by cache-updater from cdc.vehicles.
 
     A separate key from driver_key rather than a merged one: two CDC streams
@@ -43,39 +43,44 @@ def vehicle_key(driver_id: str) -> str:
     replay, one row overwrites one key" invariant. One vehicle per driver
     today, so keying by driver_id is enough.
     """
-    return f"vehicle:{driver_id}"
+    return f"vehicle:{int(driver_id)}"
 
 
-def trip_active_key(trip_id: str) -> str:
+def trip_active_key(trip_id: int | str) -> str:
     """State of a trip while it runs, including route and predicted duration.
 
     Written by dispatch-service, read by the generators and the sink.
     """
-    return f"trip:{trip_id}:active"
+    return f"trip:{int(trip_id)}:active"
 
 
-def trip_key(trip_id: str) -> str:
+def trip_key(trip_id: int | str) -> str:
     """The stored trip row, as it is in PostgreSQL. Written by cache-updater.
 
     Not the same thing as trip_active_key: this is the database record, that
     one is the live state dispatch keeps while the trip is running.
     """
-    return f"trip:{trip_id}"
+    return f"trip:{int(trip_id)}"
 
 
-def zone_key(zone_id: str) -> str:
+def trip_seq_key(day: str) -> str:
+    """Redis INCR for live trip ids on one UTC calendar day. DB_SYSTEM."""
+    return f"trip:seq:{day}"
+
+
+def zone_key(zone_id: int | str) -> str:
     """One city zone. Written by cache-updater, read by anything that needs
     the name or the middle of a zone without asking PostgreSQL."""
-    return f"zone:{zone_id}"
+    return f"zone:{int(zone_id)}"
 
 
-def hotspot_key(zone_id: str, period: str) -> str:
+def hotspot_key(zone_id: int | str, period: str) -> str:
     """Demand score of one zone in one part of the day.
 
     Written by city-service with a six-hour lifetime, read by the drivers
     (where should I go) and by dispatch (what should this cost).
     """
-    return f"hotspot:{zone_id}:{period}"
+    return f"hotspot:{int(zone_id)}:{period}"
 
 
 # Kept in sync with vehicles.vehicle_type's CHECK constraint

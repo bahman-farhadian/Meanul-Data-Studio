@@ -107,8 +107,8 @@ even if each store is internally consistent.
 | S2 | Migrations | Plain ordered SQL (`001_*.sql`, `002_*.sql`, …), applied once by bootstrap | A second migration framework, or unordered ad-hoc DDL from generators | `bootstrap` migrations directory |
 | S3 | Documents | Semi-structured payloads are PostgreSQL `jsonb`. No document database in compose | MongoDB (or equivalent) as a store for JSON-like payloads | Migrations; version compose |
 | S4 | Closed sets | Status / type / period columns have a `CHECK (… IN (…))`. The symbol list is the Avro enum and the warehouse `Enum8` | A symbol accepted in one store and rejected in another | Pytest reads migrations, `.avsc`, warehouse DDL |
-| S5 | Minted ids | Entity ids this codebase creates are minted in `shared-lib` only, with a declared width | Ad-hoc `uuid4()` / mixed prefixes in a generator | `shared-lib` id module; warehouse `FixedString(N)` |
-| S6 | External ids | Ids minted outside the codebase (city codes, IATA, catalog ids) are `text` / `String` / `LowCardinality(String)`, not `FixedString` | Forcing an external variable-width id into `FixedString` | Warehouse DDL vs the mint module |
+| S5 | Minted ids | Entity ids this codebase creates are minted in `shared-lib` only, as integers (`UInt32` / `UInt64`). Display prefixes are formatters, not stored keys | Ad-hoc `uuid4()` / string `drv-` keys in the warehouse | `shared-lib` id module; warehouse integer columns |
+| S6 | External ids | TLC zone ids are `smallint` / `UInt16` (1..263). Other external codes stay `text` / `String` | Storing TLC LocationID as `text` or `FixedString` | Warehouse DDL vs the mint module |
 | S7 | Foreign keys | Generated references (`REFERENCES`) exist. Bootstrap and live inserts satisfy them | Orphan `rider_id` / equivalent | Migrations; version `verify-data` |
 | S8 | Time | Columns are `timestamptz`. Stored values are UTC (`TZ=UTC`). Demand / local calendars use `SIM_TIMEZONE` | Naive local time stored; slim image missing `tzdata` so `ZoneInfo` is silently UTC | Compose `TZ` / `SIM_TIMEZONE`; `shared-lib` clock helper |
 | S9 | No tick table | High-frequency playhead / position / progress is **not** an OLTP tick table. OLTP may hold a last-known point on the entity row | `INSERT` per tick into Postgres | Migrations (absence of the tick table); warehouse table for the stream |
@@ -119,7 +119,7 @@ even if each store is internally consistent.
 | # | Bar | Pass | Fail | Instrument kind |
 | --- | --- | --- | --- | --- |
 | S11 | Client names | Services and dashboards query the warehouse table names (`hailpath.trip_events`, `hailpath.driver_positions`, …), never `*_local`, never Kafka, never Redis, never OLTP | Grafana SQL on `*_local` or on a `cdc.*` topic | Version dashboard check |
-| S12 | Minted id type | Warehouse columns for minted ids are `FixedString(N)` where `N` is the mint width in `shared-lib` | `FixedString` reject at insert; or `String` for a mint this codebase controls | Warehouse DDL; `shared-lib` |
+| S12 | Minted id type | Warehouse columns for minted ids are `UInt32` (driver/passenger/vehicle) and `UInt64` (trip). Zone is `UInt16` | `FixedString` / `String` for a mint this codebase controls | Warehouse DDL; `shared-lib` |
 | S13 | Closed-set type | Warehouse columns for S4 sets are `Enum8` with the same symbols, same spelling | A new category silently accepted as a string | Warehouse DDL vs Avro vs `CHECK` |
 | S14 | Event time | Event timestamps are `DateTime64(3, 'UTC')` (or equivalent UTC DateTime64) | Timezone-less DateTime, or a non-UTC timezone | Warehouse DDL |
 | S15 | One server | The one ClickHouse answers, and its tables use a MergeTree engine | Server down, or a queried table missing | Version `verify-ch` |
@@ -295,7 +295,7 @@ This profile binds §§3–8 to shipped files and Makefile targets in
 | --- | --- |
 | S1, G3, G4, C6 | `make verify-data` |
 | S4, S12, S13, S17, G7 | `make verify-walk`; `test_assessment_standard.py` |
-| S5 | `z-lib/hailpath-common/hailpath_common/ids.py` (`drv-` 11, `psg-` 11, `trp-` 21) |
+| S5 | `z-lib/hailpath-common/hailpath_common/ids.py` (integer driver/passenger/trip) |
 | S8 | Compose `TZ=UTC`, `SIM_TIMEZONE`; `hailpath_common/geo.py` |
 | S9, M5 | No `driver_positions` table in `h-bootstrap/migrations/`; ticks on `driver_location` → `hailpath.driver_positions` |
 | S10 | `d-infra-debezium/connectors/hailpath-pg.json` `column.exclude.list` includes `hailpath.trips.route` |
@@ -509,7 +509,7 @@ Assessment SQL, `profile.sql`.
 
 | Bar | Pass | Fail | Instrument |
 | --- | --- | --- | --- |
-| IDs | `drv-` width 11, `psg-` width 11, `trp-` width 21 | ClickHouse `FixedString` rejects the id | `z-lib/hailpath-common/hailpath_common/ids.py`; `make verify-walk` |
+| IDs | integer driver/passenger (`UInt32`) and trip (`UInt64` day×10M+seq) | String `drv-` / `trp-` stored as the join key | `z-lib/hailpath-common/hailpath_common/ids.py`; `make verify-walk` |
 | Chord | `is_chord_path(..., min_km=0.2)` is true iff the path has exactly two points ≥ 0.2 km apart | Treating a short two-vertex LION block as a chord | `make verify-walk` |
 | Route geometry | `ROUTE_GEOMETRY_SQL` orients edges (`ST_Reverse` when traversed target→source) then `ST_MakeLine` in visit order | `ST_LineMerge(ST_Collect)` without path order | `z-lib/hailpath-common/hailpath_common/routing.py`; live `make verify-positions` |
 
@@ -563,15 +563,16 @@ Default small seed used to prove this file: `SEED_DRIVERS=800`,
 `TRIP_REQUESTS_PER_MINUTE=40.0`, `SKIP_MAP_IMPORT=false`. Those values are
 `.env` knobs, not additional bars.
 
-From `z-lib/hailpath-common/hailpath_common/ids.py` (ClickHouse `FixedString` matches):
+From `z-lib/hailpath-common/hailpath_common/ids.py` (warehouse integers match):
 
-| Entity | Prefix / shape | Length |
+| Entity | Stored type | Display (logs only) |
 | --- | --- | --- |
-| Driver | `drv-` + 7 digits (`drv-0000001`) | 11 |
-| Passenger | `psg-` + 7 digits (`psg-0000001`) | 11 |
-| Trip | `trp-` + `YYYYMMDD` + `-` + 8 hex (`trp-20250824-a1b2c3d4`) | 21 |
+| Driver | `UInt32` / PG `integer` | `drv-0000001` |
+| Passenger | `UInt32` / PG `integer` | `psg-0000001` |
+| Vehicle | `UInt32` / PG `integer` | `veh-000001` |
+| Trip | `UInt64` = `YYYYMMDD * 10_000_000 + seq` | `trp-20261001-0000042` |
 
-`zone_id` is TLC LocationID (`"1"`..`"263"`), not minted here (S6).
+`zone_id` is TLC LocationID 1..263, stored `UInt16` / `smallint` (S6).
 
 Stored timestamps are UTC (`TZ=UTC`, ClickHouse `DateTime64(3, 'UTC')`).
 Demand, `day_period`, and TLC `zone_weight` use `SIM_TIMEZONE`

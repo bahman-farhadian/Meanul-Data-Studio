@@ -17,6 +17,7 @@ ReplacingMergeTree (rollups). Query names are the tables. There is no
 | `docker-compose.yaml` | `hailpath-clickhouse` and `ch-ddl-init`. |
 | `config/clickhouse/config.d/memory.xml` | Server memory ceiling. Mounted. |
 | `config/clickhouse/users.d/profiles.xml` | Per-query limits. Mounted. |
+| `config/clickhouse/users.d/grants.xml` | `hailpath` default database and grants on `hailpath.*` only. |
 | `ddl/*.sql` | Tables, in name order. `IF NOT EXISTS`. |
 | `ddl/apply-ddl.sh` | Applies those files. Safe to re-run. |
 | `.env.example` | Standalone copy of the settings this piece reads. |
@@ -33,10 +34,11 @@ Lists MergeTree tables in database `hailpath`.
 
 ## Connecting
 
-User `CH_USER` (default `hailpath`), database `hailpath`, password
-`CH_PASSWORD`. On the network: `hailpath-clickhouse:8123` (HTTP) and
-`:9000` (native). On the host: `PROXY_CH_HTTP_PORT` and
-`PROXY_CH_NATIVE_PORT`.
+User `CH_USER` (default `hailpath`), database `hailpath` (`CLICKHOUSE_DB`),
+password `CH_PASSWORD`. Login `currentDatabase()` is `hailpath`. Grants are
+on `hailpath.*` only (`users.d/grants.xml`). On the network:
+`hailpath-clickhouse:8123` (HTTP) and `:9000` (native). On the host:
+`PROXY_CH_HTTP_PORT` and `PROXY_CH_NATIVE_PORT`.
 
 ```bash
 make ch-client

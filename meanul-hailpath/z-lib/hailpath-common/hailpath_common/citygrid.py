@@ -33,7 +33,7 @@ ZONES_SQL = """
 
 @dataclass(frozen=True)
 class Zone:
-    zone_id: str
+    zone_id: int
     name: str
     borough: str
     boundary: object  # a shapely Polygon or MultiPolygon
@@ -43,9 +43,9 @@ class Zone:
 
 @dataclass(frozen=True)
 class CityGrid:
-    zones: dict[str, Zone]
+    zones: dict[int, Zone]
     index: STRtree = field(repr=False)
-    index_zone_ids: list[str] = field(repr=False)
+    index_zone_ids: list[int] = field(repr=False)
 
     @classmethod
     def load(cls, from_leader: bool = False) -> "CityGrid":
@@ -65,10 +65,11 @@ class CityGrid:
         with connect() as conn:
             rows = postgres.fetch_all(conn, ZONES_SQL)
 
-        zones: dict[str, Zone] = {}
+        zones: dict[int, Zone] = {}
         for row in rows:
-            zones[row["zone_id"]] = Zone(
-                zone_id=row["zone_id"],
+            zid = int(row["zone_id"])
+            zones[zid] = Zone(
+                zone_id=zid,
                 name=row["name"],
                 borough=row["borough"],
                 boundary=shapely.from_wkt(row["boundary_wkt"]),
@@ -80,10 +81,10 @@ class CityGrid:
         index = STRtree([zones[zid].boundary for zid in index_zone_ids])
         return cls(zones=zones, index=index, index_zone_ids=index_zone_ids)
 
-    def all_zone_ids(self) -> list[str]:
+    def all_zone_ids(self) -> list[int]:
         return list(self.zones.keys())
 
-    def zone_of(self, lat: float, lon: float) -> str:
+    def zone_of(self, lat: float, lon: float) -> int:
         """Which zone a point falls in.
 
         A point outside every zone (open water, the harbor) is pulled to
@@ -103,17 +104,17 @@ class CityGrid:
             key=lambda zid: distance_km(lat, lon, self.zones[zid].lat, self.zones[zid].lon),
         )
 
-    def bounds_of(self, zone_id: str) -> tuple[float, float, float, float]:
+    def bounds_of(self, zone_id: int) -> tuple[float, float, float, float]:
         """The (south, west, north, east) edges of one zone's bounding box."""
-        west, south, east, north = self.zones[zone_id].boundary.bounds
+        west, south, east, north = self.zones[int(zone_id)].boundary.bounds
         return south, west, north, east
 
-    def centre_of(self, zone_id: str) -> tuple[float, float]:
+    def centre_of(self, zone_id: int) -> tuple[float, float]:
         """The middle of one zone - its real centroid, not a bounding-box average."""
-        zone = self.zones[zone_id]
+        zone = self.zones[int(zone_id)]
         return zone.lat, zone.lon
 
-    def random_point_in(self, zone_id: str, rng) -> tuple[float, float]:
+    def random_point_in(self, zone_id: int, rng) -> tuple[float, float]:
         """A random point inside one zone's real polygon.
 
         Rejection sampling in the polygon's own bounding box: real NYC
@@ -122,7 +123,7 @@ class CityGrid:
         EWR. Falls back to the centroid in the practically-impossible case
         every attempt misses.
         """
-        polygon = self.zones[zone_id].boundary
+        polygon = self.zones[int(zone_id)].boundary
         west, south, east, north = polygon.bounds
         for _ in range(50):
             lat = rng.uniform(south, north)
@@ -132,7 +133,7 @@ class CityGrid:
         return self.centre_of(zone_id)
 
     def distance_decay_weights(
-        self, from_zone_id: str, zone_ids: list[str], base_weights: list[float], decay_km: float = 5.0,
+        self, from_zone_id: int, zone_ids: list[int], base_weights: list[float], decay_km: float = 5.0,
     ) -> list[float]:
         """Fold "how far from from_zone_id" into a set of zone popularity weights.
 

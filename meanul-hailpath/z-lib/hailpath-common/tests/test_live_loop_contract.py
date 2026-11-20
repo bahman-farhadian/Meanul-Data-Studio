@@ -117,5 +117,5 @@ def test_live_ops_json_has_ingest_and_lag_panels():
     assert "Trip events per minute" in titles
     assert "Driver positions per minute" in titles
     assert any("trip_events lag" in t for t in titles), titles
-    assert any("driver_positions lag" in t for t in titles), titles
+    assert any("last-known lag" in t or "driver_positions lag" in t for t in titles), titles
     assert "Trip events per minute" in blob

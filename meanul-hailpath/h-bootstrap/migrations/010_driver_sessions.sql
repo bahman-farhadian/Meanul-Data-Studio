@@ -9,12 +9,12 @@
 
 CREATE TABLE IF NOT EXISTS driver_sessions (
     session_id  bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    driver_id   text        NOT NULL REFERENCES drivers(driver_id),
+    driver_id   integer     NOT NULL REFERENCES drivers(driver_id),
     started_at  timestamptz NOT NULL,
     -- NULL while the shift is still open - driver-service closes it when
     -- the driver goes offline again.
     ended_at    timestamptz,
-    zone_id     text        NOT NULL
+    zone_id     smallint    NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS driver_sessions_driver_idx ON driver_sessions (driver_id, started_at DESC);

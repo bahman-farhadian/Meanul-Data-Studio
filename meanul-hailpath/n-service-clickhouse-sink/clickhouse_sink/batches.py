@@ -40,14 +40,21 @@ COLUMNS = {
         "pickup_zone_id", "eta_seconds", "distance_to_pickup_m",
         "surge_multiplier", "response_s", "offered_at", "event_time",
     ],
+    "hailpath.driver_last_known": [
+        "driver_id", "trip_id", "status", "lat", "lon",
+        "heading_deg", "speed_kmh", "zone_id", "event_time",
+    ],
     "hailpath.driver_positions": [
-        "event_id",
         "driver_id", "trip_id", "status", "lat", "lon",
         "heading_deg", "speed_kmh", "zone_id", "event_time",
     ],
     "hailpath.rider_positions": [
-        "event_id",
         "rider_id", "trip_id", "lat", "lon", "accuracy_m", "zone_id", "event_time",
+    ],
+    "hailpath.trip_last_status": [
+        "trip_id", "rider_id", "driver_id", "status",
+        "pickup_zone_id", "dropoff_zone_id",
+        "predicted_duration_s", "fare_estimate", "event_time",
     ],
     "hailpath.hotspot_history": [
         "event_id",

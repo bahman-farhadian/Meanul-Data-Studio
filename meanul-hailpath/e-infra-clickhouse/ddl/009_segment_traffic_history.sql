@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS hailpath.segment_traffic_history
     -- a partition, and only on merge - so uniqueness has to hold before the
     -- warehouse or no count here can be trusted.
     event_id           UUID,
-    zone_id            LowCardinality(String),
+    zone_id            UInt16,
     period             Enum8('night' = 1, 'morning' = 2, 'afternoon' = 3, 'evening' = 4),
     congestion_factor  Float64,
     speed_samples      UInt32,

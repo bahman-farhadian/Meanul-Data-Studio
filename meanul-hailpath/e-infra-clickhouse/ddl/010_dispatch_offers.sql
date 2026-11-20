@@ -19,8 +19,8 @@ CREATE TABLE IF NOT EXISTS hailpath.dispatch_offers
     -- event_id it has already written, because ClickHouse does not
     -- deduplicate on its own.
     event_id             UUID,
-    trip_id              FixedString(21),
-    driver_id            FixedString(11),
+    trip_id              UInt64,
+    driver_id            UInt32,
     -- Position in the offer chain for this trip, from 1. A chain of five
     -- means dispatch asked five drivers before one took it, which is the
     -- supply signal - not a detail.
@@ -29,9 +29,9 @@ CREATE TABLE IF NOT EXISTS hailpath.dispatch_offers
                              'offered' = 1, 'accepted' = 2, 'declined' = 3,
                              'expired' = 4, 'cancelled' = 5
                          ),
-    -- LowCardinality(String) for the same reason as everywhere else: this
+    -- UInt16 for the same reason as everywhere else: this
     -- is TLC's own variable-width LocationID, not an id this codebase mints.
-    pickup_zone_id       LowCardinality(String),
+    pickup_zone_id       UInt16,
     -- The two inputs to whether a driver accepts, stored as they were
     -- offered and never recomputed. The ride-sourcing literature finds
     -- pickup time depresses acceptance and surge raises it, so these are
@@ -46,14 +46,9 @@ CREATE TABLE IF NOT EXISTS hailpath.dispatch_offers
     event_time           DateTime64(3, 'UTC'),
     event_date           Date MATERIALIZED toDate(offered_at)
 )
-ENGINE = MergeTree
--- Daily, because the TTL is now shorter than a month. Under monthly
--- partitions a 30-day expiry drops nothing until an entire month has
--- aged out, so the table would hold up to sixty days to honour a
--- thirty-day contract. Daily means expiry removes exactly one day's
--- directory, and thirty-odd partitions is a healthy count.
+ENGINE = ReplacingMergeTree(event_time)
 PARTITION BY event_date
-ORDER BY (trip_id, sequence)
+ORDER BY (event_id)
 -- Kept as long as the trip record it explains. An offer chain is only
 -- interesting next to the trip it did or did not produce.
 -- Thirty days, cut from ninety and originally a year. Measured each time
@@ -69,20 +64,20 @@ TTL event_date + INTERVAL 30 DAY;
 CREATE TABLE IF NOT EXISTS hailpath.dispatch_funnel_hourly
 (
     hour              DateTime('UTC'),
-    pickup_zone_id    LowCardinality(String),
-    offers_made       UInt64,
-    offers_accepted   UInt64,
-    offers_declined   UInt64,
-    offers_expired    UInt64,
-    offers_cancelled  UInt64,
+    pickup_zone_id    UInt16,
+    offers_made       UInt32,
+    offers_accepted   UInt32,
+    offers_declined   UInt32,
+    offers_expired    UInt32,
+    offers_cancelled  UInt32,
     -- Summed, never averaged: divide by the matching count at query time.
     -- An average of per-node averages would be wrong, the same trap
     -- surge_sum avoids in trip_stats_hourly.
     eta_seconds_sum   UInt64,
-    eta_offers        UInt64,
+    eta_offers        UInt32,
     accepted_eta_sum  UInt64,
     response_s_sum    UInt64,
-    responses         UInt64
+    responses         UInt32
 )
 ENGINE = SummingMergeTree
 PARTITION BY toYYYYMM(hour)

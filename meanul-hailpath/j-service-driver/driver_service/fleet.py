@@ -27,13 +27,13 @@ ON_TRIP = "on_trip"
 
 @dataclass
 class Driver:
-    driver_id: str
+    driver_id: int
     lat: float
     lon: float
-    home_zone_id: str
+    home_zone_id: int
     vehicle_type: str = "economy"
     status: str = OFFLINE
-    trip_id: str | None = None
+    trip_id: int | None = None
     # Where this driver is currently heading, if anywhere.
     target_lat: float | None = None
     target_lon: float | None = None
@@ -55,7 +55,7 @@ class Driver:
         """Free means online and not working on a trip."""
         return self.status == IDLE
 
-    def set_status(self, status: str, trip_id: str | None = None) -> None:
+    def set_status(self, status: str, trip_id: int | None = None) -> None:
         if self.status != status or self.trip_id != trip_id:
             self.status = status
             self.trip_id = trip_id
@@ -137,7 +137,8 @@ class Driver:
             self.path_i = 0
 
         self.speed_kmh = actual_speed
-        self.dirty = True
+        # GPS lives on Kafka. Postgres last-seen is status-change only
+        # (set_status) plus a long timer in __main__, not every tick.
 
 
 def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -146,7 +147,7 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return math.hypot((lat2 - lat1) * KM_PER_LAT_DEGREE, (lon2 - lon1) * km_per_lon_degree)
 
 
-def pick_target_zone(zone_scores: dict[str, float], zone_ids: list[str], rng: random.Random) -> str:
+def pick_target_zone(zone_scores: dict[int, float], zone_ids: list[int], rng: random.Random) -> int:
     """Choose where an idle driver should drift towards.
 
     Busy zones pull harder, which is the whole point of publishing hotspot

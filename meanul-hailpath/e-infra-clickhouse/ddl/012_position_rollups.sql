@@ -38,22 +38,22 @@
 CREATE TABLE IF NOT EXISTS hailpath.driver_activity_hourly
 (
     hour                DateTime('UTC'),
-    zone_id             LowCardinality(String),
+    zone_id             UInt16,
 
-    positions           SimpleAggregateFunction(sum, UInt64),
+    positions           SimpleAggregateFunction(sum, UInt32),
     -- Not summable, hence a state: the same driver in two hours is one
     -- driver. This is the only column here that could not be a plain sum.
-    drivers             AggregateFunction(uniq, FixedString(11)),
+    drivers             AggregateFunction(uniq, UInt32),
 
     -- The status mix, which is what makes this a fleet-presence table
     -- rather than a row count. offline never reaches the warehouse, so
     -- these three are the whole population.
-    idle_positions      SimpleAggregateFunction(sum, UInt64),
-    en_route_positions  SimpleAggregateFunction(sum, UInt64),
-    on_trip_positions   SimpleAggregateFunction(sum, UInt64),
+    idle_positions      SimpleAggregateFunction(sum, UInt32),
+    en_route_positions  SimpleAggregateFunction(sum, UInt32),
+    on_trip_positions   SimpleAggregateFunction(sum, UInt32),
 
     speed_kmh_sum       SimpleAggregateFunction(sum, Float64),
-    speed_samples       SimpleAggregateFunction(sum, UInt64),
+    speed_samples       SimpleAggregateFunction(sum, UInt32),
     max_speed_kmh       SimpleAggregateFunction(max, Float32)
 )
 ENGINE = AggregatingMergeTree
@@ -81,19 +81,19 @@ GROUP BY hour, zone_id;
 CREATE TABLE IF NOT EXISTS hailpath.rider_activity_hourly
 (
     hour                DateTime('UTC'),
-    zone_id             LowCardinality(String),
+    zone_id             UInt16,
 
-    positions           SimpleAggregateFunction(sum, UInt64),
-    riders              AggregateFunction(uniq, FixedString(11)),
+    positions           SimpleAggregateFunction(sum, UInt32),
+    riders              AggregateFunction(uniq, UInt32),
     -- A rider only reports while on a trip, so this doubles as "trips in
     -- flight through this zone" without joining anything.
-    trips               AggregateFunction(uniq, Nullable(FixedString(21))),
+    trips               AggregateFunction(uniq, UInt64),
 
     -- How good the phone's fix was. Summed with its own count, because a
     -- mean accuracy is the number anyone actually wants and a stored one
     -- could not be re-aggregated across hours.
     accuracy_m_sum      SimpleAggregateFunction(sum, Float64),
-    accuracy_samples    SimpleAggregateFunction(sum, UInt64)
+    accuracy_samples    SimpleAggregateFunction(sum, UInt32)
 )
 ENGINE = AggregatingMergeTree
 PARTITION BY toYYYYMM(hour)

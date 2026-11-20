@@ -12,9 +12,9 @@
 CREATE TABLE IF NOT EXISTS hailpath.trip_stats_hourly
 (
     hour             DateTime('UTC'),
-    -- LowCardinality(String), not FixedString - see 002_positions.sql.
-    pickup_zone_id   LowCardinality(String),
-    completed_trips  UInt64,
+    -- UInt16, not FixedString - see 002_positions.sql.
+    pickup_zone_id   UInt16,
+    completed_trips  UInt32,
     -- Decimal64(2), not Float64: this column is summed inside background
     -- merges in an order nobody controls, and float addition is not
     -- associative, so the stored total depended on merge history - the
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS hailpath.trip_stats_hourly
     -- Divide by completed_trips at query time to get the real average.
     surge_sum        Float64,
     route_km_total   Float64,
-    overrun_trips    UInt64
+    overrun_trips    UInt32
 )
 -- SummingMergeTree, not AggregatingMergeTree: every metric here is a plain
 -- additive sum (a count, or sum() over a column), which is exactly what

@@ -69,7 +69,7 @@ containers.
 | `DRIVER_SPEED_KMH` | `25.0` | Average speed; each driver varies around it. |
 | `DRIVER_ONLINE_SHARE` | `0.6` | Share of the fleet working at any moment. |
 | `DRIVER_SHIFT_CHANGE_CHANCE` | `0.01` | Chance per driver per tick of starting or ending a shift. |
-| `DRIVER_DB_SYNC_SECONDS` | `30.0` | How often the last known state reaches PostgreSQL. |
+| `DRIVER_DB_SYNC_SECONDS` | `300.0` | How often last-seen and status reach PostgreSQL. GPS stays on Kafka. |
 | `DRIVER_HOTSPOT_REFRESH_SECONDS` | `60.0` | How often drivers look up which zones are busy. |
 | `CITY_*` | a box around New York | The city grid. Must match every other component. |
 | `RANDOM_SEED` | `20250824` | Same seed, same behaviour — a run that repeats can be debugged. |

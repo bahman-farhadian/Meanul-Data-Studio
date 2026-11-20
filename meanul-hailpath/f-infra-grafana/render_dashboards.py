@@ -266,13 +266,14 @@ def dashboard(
     templating: list[dict] | None = None,
     description: str = "",
     live: bool = False,
+    timezone: str = "America/New_York",
 ) -> dict:
     return {
         "uid": uid,
         "title": title,
         "description": description,
         "tags": tags,
-        "timezone": "America/New_York",
+        "timezone": timezone,
         "schemaVersion": 39,
         "version": 11,
         "refresh": refresh,
@@ -312,8 +313,9 @@ LIVE_OPS = dashboard(
     ),
     tags=["hailpath", "live"],
     time_from="now-15m",
-    refresh="10s",
+    refresh="30s",
     live=True,
+    timezone="UTC",
     panels=[
         panel(
             1,
@@ -321,16 +323,15 @@ LIVE_OPS = dashboard(
             "stat",
             f"""
 SELECT status, count() AS trips
-FROM (
-    SELECT trip_id, argMax(status, event_time) AS status
-    FROM hailpath.trip_events
-    WHERE event_time >= now() - INTERVAL 6 HOUR
-    GROUP BY trip_id
-)
+FROM hailpath.trip_last_status FINAL
 WHERE status IN ({OPEN_STATUSES})
 GROUP BY status
 """,
             0, 0, 16, 6,
+            description=(
+                "Open trips by last status from trip_last_status, one row "
+                "per trip. Not a fold of six hours of trip_events."
+            ),
             extra={
                 "options": {
                     "reduceOptions": {"calcs": ["lastNotNull"], "fields": "/.*/", "values": True},
@@ -351,6 +352,7 @@ SELECT dateDiff('second', max(event_time), now()) AS lag_s
 FROM hailpath.trip_events
 """,
             16, 0, 8, 3,
+            description="Seconds behind now of the newest trip_events row.",
             extra={
                 "fieldConfig": {
                     "defaults": {
@@ -370,13 +372,14 @@ FROM hailpath.trip_events
         ),
         panel(
             3,
-            "driver_positions lag (seconds behind now)",
+            "driver last-known lag (seconds behind now)",
             "stat",
             """
 SELECT dateDiff('second', max(event_time), now()) AS lag_s
-FROM hailpath.driver_positions
+FROM hailpath.driver_last_known
 """,
             16, 3, 8, 3,
+            description="Seconds behind now of the fleet last-known table.",
             extra={
                 "fieldConfig": {
                     "defaults": {
@@ -472,20 +475,19 @@ ORDER BY time
         ),
         panel(
             7,
-            "Last driver positions (2 minutes)",
+            "Last driver positions",
             "geomap",
             """
 SELECT
     driver_id,
-    argMax(lat, event_time) AS lat,
-    argMax(lon, event_time) AS lon,
-    argMax(status, event_time) AS status,
-    max(event_time) AS last_seen
-FROM hailpath.driver_positions
-WHERE event_time >= now() - INTERVAL 2 MINUTE
-GROUP BY driver_id
+    lat,
+    lon,
+    status,
+    event_time AS last_seen
+FROM hailpath.driver_last_known FINAL
 """,
             0, 22, 14, 20,
+            description="One last-known point per driver. Idle GPS is not folded from driver_positions.",
             extra={"options": geomap_options("Drivers")},
         ),
         panel(
@@ -495,38 +497,33 @@ GROUP BY driver_id
             """
 SELECT
     trip_id,
-    argMax(driver_id, event_time) AS driver_id,
-    argMax(rider_id, event_time) AS rider_id,
-    argMax(pickup_zone_id, event_time) AS pickup_zone,
-    argMax(dropoff_zone_id, event_time) AS dropoff_zone,
-    argMax(predicted_duration_s, event_time) AS predicted_s,
-    argMax(fare_estimate, event_time) AS fare_estimate,
-    max(event_time) AS last_event
-FROM hailpath.trip_events
-WHERE event_time >= now() - INTERVAL 6 HOUR
-GROUP BY trip_id
-HAVING argMax(status, event_time) = 'in_progress'
-ORDER BY last_event DESC
+    driver_id,
+    rider_id,
+    pickup_zone_id AS pickup_zone,
+    dropoff_zone_id AS dropoff_zone,
+    predicted_duration_s AS predicted_s,
+    fare_estimate,
+    event_time AS last_event
+FROM hailpath.trip_last_status FINAL
+WHERE status = 'in_progress'
+ORDER BY event_time DESC
 LIMIT 15
 """,
             14, 22, 10, 20,
+            description="Open in-progress trips from trip_last_status, not a 6-hour trip_events fold.",
         ),
         panel(
             9,
-            "Fleet last status (2 minutes)",
+            "Fleet last status",
             "table",
             """
 SELECT status, count() AS drivers
-FROM (
-    SELECT driver_id, argMax(status, event_time) AS status
-    FROM hailpath.driver_positions
-    WHERE event_time >= now() - INTERVAL 2 MINUTE
-    GROUP BY driver_id
-)
+FROM hailpath.driver_last_known FINAL
 GROUP BY status
 LIMIT 5
 """,
             0, 42, 24, 8,
+            description="Fleet mix from driver_last_known FINAL. One row per driver.",
         ),
     ],
 )
@@ -547,8 +544,8 @@ DRIVER = dashboard(
         qvar(
             "driver_id",
             "Driver",
-            "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_positions "
-            "WHERE event_time >= now() - INTERVAL 1 HOUR ORDER BY 1 LIMIT 500",
+            "SELECT DISTINCT toString(driver_id) FROM hailpath.driver_last_known "
+            "ORDER BY 1 LIMIT 500",
         )
     ],
     panels=[
@@ -558,12 +555,12 @@ DRIVER = dashboard(
             "stat",
             """
 SELECT
-    argMax(status, event_time) AS status,
-    argMax(lat, event_time) AS lat,
-    argMax(lon, event_time) AS lon,
-    argMax(speed_kmh, event_time) AS speed_kmh,
-    argMax(trip_id, event_time) AS trip_id
-FROM hailpath.driver_positions
+    status,
+    lat,
+    lon,
+    speed_kmh,
+    trip_id
+FROM hailpath.driver_last_known FINAL
 WHERE driver_id = '${driver_id}'
 """,
             0, 0, 24, 4,

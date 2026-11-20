@@ -8,7 +8,7 @@
     {"name": "event_version", "type": "int", "default": 1, "doc": "Version of this record's shape. Bumped when an existing field changes meaning, not when a new one is added - adding is what the Registry's own compatibility rules already cover."},
     {"name": "producer", "type": "string", "doc": "Which service sent this: hailpath-driver, hailpath-passenger, hailpath-dispatch or hailpath-city. The first question asked when a stream looks wrong is who wrote it."},
     {"name": "correlation_id", "type": ["null", "string"], "default": null, "doc": "Ties every message belonging to one trip together across topics - the trip_id on trip-scoped streams, null when the message belongs to no trip."},
-    {"name": "zone_id", "type": "string", "doc": "The city zone this score is about."},
+    {"name": "zone_id", "type": "int", "doc": "TLC LocationID this score is about. UInt16 in the warehouse; Avro int."},
     {"name": "period", "type": {"type": "enum", "name": "DayPeriod", "symbols": ["night", "morning", "afternoon", "evening"]}, "doc": "Which six-hour part of the day the score belongs to. The day is split into four."},
     {"name": "demand_score", "type": "double", "doc": "Demand against supply in this zone, normalised to roughly 0..1. Higher means more riders per free driver."},
     {"name": "open_requests", "type": "int", "doc": "Ride requests in the zone that had no driver yet when the score was computed."},

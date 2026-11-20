@@ -1,7 +1,8 @@
 #!/bin/sh
 # Write a local CA, broker PKCS12, truststore, and Kafka client.properties.
-# Run before hailpath-kafka starts. Regenerates certs each time so the
-# advertised host stays in the SAN. Passwords come from the environment.
+# Run before hailpath-kafka starts. Skips when the files already exist so
+# a running broker is not left holding a cert this script just replaced.
+# Passwords come from the environment.
 set -eu
 
 OUT=/secrets
@@ -12,6 +13,11 @@ HOST="${KAFKA_ADVERTISED_HOST:-localhost}"
 
 mkdir -p "$OUT"
 cd "$OUT"
+
+if [ -f kafka.p12 ] && [ -f ca.crt ] && [ -f trust.p12 ] && [ -f client.properties ]; then
+    echo "kafka TLS files already present; skipping generate"
+    exit 0
+fi
 
 SAN="DNS:hailpath-kafka,DNS:localhost,IP:127.0.0.1"
 case "$HOST" in

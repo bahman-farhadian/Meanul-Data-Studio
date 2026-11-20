@@ -37,18 +37,17 @@ nothing_to_judge AS (
          + ((SELECT count() FROM hailpath.trip_facts) = 0) AS n
 ),
 dupes AS (
+    -- Small tables only. uniqExact on driver_positions OOMs a 2g cgroup.
+    -- Positions have no event_id; last-known is ReplacingMergeTree.
     SELECT
-        (SELECT count() - uniqExact(event_id) FROM hailpath.trip_events)
-      + (SELECT count() - uniqExact(event_id) FROM hailpath.dispatch_offers)
-      + (SELECT count() - uniqExact(event_id) FROM hailpath.driver_positions)
-      + (SELECT count() - uniqExact(event_id) FROM hailpath.rider_positions)
-      + (SELECT count() - uniqExact(event_id) FROM hailpath.hotspot_history) AS n
+        (SELECT count() - uniq(event_id) FROM hailpath.trip_events)
+      + (SELECT count() - uniq(event_id) FROM hailpath.dispatch_offers)
+      + (SELECT count() - uniq(event_id) FROM hailpath.hotspot_history) AS n
 ),
 blank_ids AS (
     SELECT
         (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.trip_events)
-      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.dispatch_offers)
-      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.driver_positions) AS n
+      + (SELECT countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000')) FROM hailpath.dispatch_offers) AS n
 ),
 -- A trip's clock must run forwards. Int32 on purpose, so a state-machine
 -- bug shows as a negative number instead of wrapping into a huge positive.

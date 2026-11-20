@@ -181,12 +181,6 @@ SELECT * FROM (
     UNION ALL SELECT 'dispatch_offers', count(), uniqExact(event_id),
            countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
     FROM hailpath.dispatch_offers
-    UNION ALL SELECT 'driver_positions', count(), uniqExact(event_id),
-           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
-    FROM hailpath.driver_positions
-    UNION ALL SELECT 'rider_positions', count(), uniqExact(event_id),
-           countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
-    FROM hailpath.rider_positions
     UNION ALL SELECT 'hotspot_history', count(), uniqExact(event_id),
            countIf(event_id = toUUID('00000000-0000-0000-0000-000000000000'))
     FROM hailpath.hotspot_history

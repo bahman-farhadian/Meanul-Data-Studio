@@ -493,55 +493,80 @@ def test_the_two_warehouse_writers_agree_on_every_column():
         ("hailpath.trip_events", "TRIP_EVENT_COLUMNS"),
         ("hailpath.dispatch_offers", "DISPATCH_OFFER_COLUMNS"),
         ("hailpath.driver_positions", "DRIVER_POSITION_COLUMNS"),
+        ("hailpath.driver_last_known", "DRIVER_LAST_KNOWN_COLUMNS"),
         ("hailpath.rider_positions", "RIDER_POSITION_COLUMNS"),
         ("hailpath.hotspot_history", "HOTSPOT_COLUMNS"),
+        ("hailpath.trip_last_status", "TRIP_LAST_STATUS_COLUMNS"),
     ):
         assert sink_columns(table) == bootstrap_columns(constant), table
 
 
 def test_every_warehouse_table_carries_an_event_id():
-    """Uniqueness has to hold before ClickHouse, so every table needs the id.
+    """Business-event tables carry event_id. GPS last-known does not.
 
-    ClickHouse does not deduplicate on its own, which is the whole reason
-    the envelope exists. A table without event_id is a table whose counts
-    cannot be checked, and the quality bar in step 7 would silently pass it.
+    Position ticks are identified by (driver_id, event_time). UUID on
+    every GPS row was 16 bytes times millions of idle reports.
     """
     ddl_dir = HAILPATH / "e-infra-clickhouse" / "ddl"
+    skip_event_id = {
+        "hailpath.driver_positions",
+        "hailpath.rider_positions",
+        "hailpath.driver_last_known",
+        "hailpath.trip_last_status",
+    }
     missing = []
     for path in sorted(ddl_dir.glob("*.sql")):
         for match in re.finditer(r"CREATE TABLE IF NOT EXISTS (hailpath\.\w+)", path.read_text()):
             table = match.group(1)
-            # A rollup holds aggregates of many events, not one event, so
-            # it has no single id to carry - and it inherits the guarantee
-            # from the table it is built on.
             if table.endswith(("_hourly", "_daily")):
+                continue
+            if table in skip_event_id:
                 continue
             if "event_id" not in _ch_columns(path.read_text(), table):
                 missing.append(table)
     assert missing == [], f"warehouse tables with no event_id: {missing}"
 
 
-def test_minted_id_widths_match_warehouse():
+def test_minted_id_types_match_warehouse():
+    """Stored keys are integers. Prefixes are formatters, not columns."""
     ids = (HAILPATH / "z-lib" / "hailpath-common" / "hailpath_common" / "ids.py").read_text()
     ddl = "\n".join(
         path.read_text()
         for path in sorted((HAILPATH / "e-infra-clickhouse" / "ddl").glob("*.sql"))
     )
-
-    def _length(name: str) -> str:
-        match = re.search(rf"^{name}\s*=\s*(\d+)", ids, re.M)
-        assert match, name
-        return match.group(1)
-
-    driver_n = _length("DRIVER_ID_LENGTH")
-    passenger_n = _length("PASSENGER_ID_LENGTH")
-    trip_n = _length("TRIP_ID_LENGTH")
-    assert re.search(rf"driver_id\s+FixedString\({driver_n}\)", ddl)
-    assert re.search(rf"rider_id\s+FixedString\({passenger_n}\)", ddl)
-    assert re.search(rf"trip_id\s+FixedString\({trip_n}\)", ddl)
+    migrations = "\n".join(
+        path.read_text()
+        for path in sorted((HAILPATH / "h-bootstrap" / "migrations").glob("*.sql"))
+    )
+    assert "DRIVER_ID_LENGTH" not in ids
+    assert "TRIP_ID_LENGTH" not in ids
+    assert "TRIP_ID_DAY_SCALE" in ids
+    assert re.search(r"\bdriver_id\s+UInt32\b", ddl)
+    assert re.search(r"\brider_id\s+UInt32\b", ddl)
+    assert re.search(r"\btrip_id\s+UInt64\b", ddl)
+    assert re.search(r"\bzone_id\s+UInt16\b", ddl)
+    assert "FixedString(11)" not in ddl
+    assert "FixedString(21)" not in ddl
+    assert re.search(r"\bdriver_id\s+integer\b", migrations)
+    assert re.search(r"\btrip_id\s+bigint\b", migrations)
+    assert re.search(r"\bzone_id\s+smallint\b", migrations)
+    schemas = HAILPATH / "c-infra-kafka" / "schemas"
+    avro = "\n".join(path.read_text() for path in sorted(schemas.glob("*.avsc")))
+    assert '"name": "driver_id", "type": "int"' in avro or '"name": "driver_id", "type": ["null", "int"]' in avro
+    assert '"name": "trip_id", "type": "long"' in avro or '"name": "trip_id", "type": ["null", "long"]' in avro
+    assert '"name": "zone_id", "type": "int"' in avro or '"name": "zone_id", "type": ["null", "int"]' in avro
+    quality = (HAILPATH / "z-config" / "quality.sql").read_text()
+    assert "uniqExact(event_id) FROM hailpath.driver_positions" not in quality
+    live_ops = (
+        HAILPATH / "f-infra-grafana" / "provisioning" / "dashboards" / "json"
+        / "hailpath-live-ops.json"
+    ).read_text()
+    assert '"timezone": "UTC"' in live_ops
+    assert '"refresh": "30s"' in live_ops
+    assert "INTERVAL 6 HOUR" not in live_ops
     text = _standard()
-    assert "FixedString" in text
-    assert driver_n in text and passenger_n in text and trip_n in text
+    assert "UInt64" in text and "UInt32" in text
+    assert "FixedString(N)" not in text
 
 
 def test_one_clickhouse_merge_tree():
@@ -1021,40 +1046,30 @@ def test_the_two_bars_that_learned_this_still_carry_it():
 
 
 def test_a_trip_id_has_enough_room_for_a_full_scale_day() -> None:
-    """The suffix is a birthday problem over ONE DAY's trips, not the seed.
-
-    Eight hex digits is 2^32. At the 655,000 trips a day .env.example
-    targets, N^2/2M is 50 expected collisions EVERY DAY - a certainty, not
-    a risk. It cost a 141-minute bootstrap at the 50% scale rung: two trips
-    held one id, so one trip appeared to accept two offers and Postgres
-    refused it on dispatch_offers_one_accepted_idx.
-
-    The width cannot grow - trip_id is FixedString(21) in six ClickHouse
-    columns - so the alphabet carries the whole margin, and this is the bar
-    it has to clear.
-    """
-    from hailpath_common import ids
-
-    space = len(ids._TRIP_ID_ALPHABET) ** ids._TRIP_ID_SUFFIX_LENGTH
-    per_day = 655_000
-    expected = per_day ** 2 / (2 * space)
-    assert expected < 0.01, (
-        f"{expected:.3f} expected id collisions per day at {per_day:,} trips - "
-        f"a suffix space of {space:,} is not enough for full scale"
-    )
-
-
-def test_a_trip_id_is_still_exactly_the_width_the_warehouse_stores() -> None:
-    """FixedString rejects a wrong-length id outright; it does not truncate."""
-    import random
+    """Sequential seq, not a birthday problem. 10M slots per UTC day."""
     from datetime import datetime
 
     from hailpath_common import ids
 
-    for seed in range(200):
-        made = ids.new_trip_id(datetime(2026, 10, 1), random.Random(seed))
-        assert len(made) == ids.TRIP_ID_LENGTH, made
-        assert made.startswith("trp-20261001-"), made
+    per_day = 655_000
+    assert per_day < ids.TRIP_ID_DAY_SCALE
+    first = ids.new_trip_id(datetime(2026, 10, 1), 0)
+    last = ids.new_trip_id(datetime(2026, 10, 1), per_day)
+    assert isinstance(first, int) and isinstance(last, int)
+    assert last - first == per_day
+    assert first == 20261001 * ids.TRIP_ID_DAY_SCALE
+
+
+def test_a_trip_id_is_an_integer_not_a_display_string() -> None:
+    from datetime import datetime
+
+    from hailpath_common import ids
+
+    made = ids.new_trip_id(datetime(2026, 10, 1), 42)
+    assert made == 20261001 * ids.TRIP_ID_DAY_SCALE + 42
+    assert ids.format_trip_id(made).startswith("trp-")
+    assert ids.driver_id(7) == 7
+    assert ids.format_driver_id(7) == "drv-0000007"
 
 
 def _inventory():

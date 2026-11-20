@@ -94,8 +94,8 @@ def settled_caches(redis):
 
 
 def load_roster(
-    redis, grid: CityGrid, rng: random.Random, zone_ids: list[str]
-) -> tuple[dict[str, Driver], int]:
+    redis, grid: CityGrid, rng: random.Random, zone_ids: list[int]
+) -> tuple[dict[int, Driver], int]:
     """Read the drivers out of Redis, and say how many lost their car.
 
     Redis, not PostgreSQL: the profiles are in the cache because
@@ -110,20 +110,20 @@ def load_roster(
     matches within the requested tier, so every xl and premium request went
     unmatched - which reads downstream as a supply problem and is not one.
     """
-    drivers: dict[str, Driver] = {}
+    drivers: dict[int, Driver] = {}
     missing_vehicles = 0
     for key in redis.scan_iter(match="driver:*", count=500):
         raw = redis.get(key)
         if not raw:
             continue
         row = json.loads(raw)
-        driver_id = row["driver_id"]
+        driver_id = int(row["driver_id"])
         # zone_ids, not grid.all_zone_ids(): a driver homed in a zone whose
         # own centroid cannot reach a real road would keep re-hitting the
         # unsnapped-point fallback forever. This is only the defensive
         # fallback for a profile with no home_zone_id at all - bootstrap
         # already homes every real driver in a servicable zone.
-        home = row.get("home_zone_id") or rng.choice(zone_ids)
+        home = int(row["home_zone_id"]) if row.get("home_zone_id") is not None else rng.choice(zone_ids)
         lat = row.get("last_lat")
         lon = row.get("last_lon")
         if lat is None or lon is None:
@@ -141,7 +141,7 @@ def load_roster(
     return drivers, missing_vehicles
 
 
-def read_hotspots(redis, zone_ids: list[str]) -> dict[str, float]:
+def read_hotspots(redis, zone_ids: list[int]) -> dict[int, float]:
     """The current demand score of every servicable zone.
 
     One round trip for all zones instead of one per zone: at 36 zones the
@@ -151,7 +151,7 @@ def read_hotspots(redis, zone_ids: list[str]) -> dict[str, float]:
     keys = [redis_client.hotspot_key(zone_id, period) for zone_id in zone_ids]
     values = redis.mget(keys)
 
-    scores: dict[str, float] = {}
+    scores: dict[int, float] = {}
     for zone_id, raw in zip(zone_ids, values):
         if not raw:
             continue
@@ -162,7 +162,7 @@ def read_hotspots(redis, zone_ids: list[str]) -> dict[str, float]:
     return scores
 
 
-def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], redis) -> int:
+def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[int, Driver], redis) -> int:
     """Read whatever trip news is waiting, without blocking the tick.
 
     The service cannot sit and wait for messages: it has a fleet to move. So
@@ -180,7 +180,7 @@ def apply_trip_news(consumer: AvroTopicConsumer, drivers: dict[str, Driver], red
             continue
 
         driver_id = value.get("driver_id")
-        driver = drivers.get(driver_id) if driver_id else None
+        driver = drivers.get(int(driver_id)) if driver_id is not None else None
         if driver is None:
             continue
 
@@ -333,12 +333,11 @@ def install_opening_paths(
     )
 
 
-def sync_to_database(drivers: dict[str, Driver]) -> int:
+def sync_to_database(drivers: dict[int, Driver]) -> int:
     """Write the last known state of every changed driver.
 
-    Only the changed ones, and only on a timer. The stream of positions lives
-    in Kafka; the database keeps the answer to "where was this driver last
-    seen", which does not need updating twenty times a minute.
+    Only the changed ones, and only on a long timer. GPS lives in Kafka.
+    Status changes set dirty; movement ticks do not.
     """
     changed = [d for d in drivers.values() if d.dirty]
     if not changed:
@@ -374,7 +373,7 @@ def sync_to_database(drivers: dict[str, Driver]) -> int:
     return len(changed)
 
 
-def record_shift_changes(starts: list[tuple[str, str]], ends: list[str]) -> None:
+def record_shift_changes(starts: list[tuple[int, int]], ends: list[int]) -> None:
     """Open a session for every driver going online, close one for every
     driver going offline - this tick's shift changes only."""
     with postgres.write_connection() as conn:
@@ -421,7 +420,7 @@ def main() -> int:
     speed_kmh = config.number("DRIVER_SPEED_KMH", 25.0)
     online_share = config.number("DRIVER_ONLINE_SHARE", 0.6)
     shift_change_chance = config.number("DRIVER_SHIFT_CHANGE_CHANCE", 0.01)
-    db_sync_seconds = config.number("DRIVER_DB_SYNC_SECONDS", 30.0)
+    db_sync_seconds = config.number("DRIVER_DB_SYNC_SECONDS", 300.0)
     hotspot_refresh_seconds = config.number("DRIVER_HOTSPOT_REFRESH_SECONDS", 60.0)
     road_point_pool_size = config.integer("ROAD_POINT_POOL_SIZE", 300)
     road_point_pool_workers = config.integer("ROAD_POINT_POOL_WORKERS", 8)
@@ -547,11 +546,11 @@ def main() -> int:
             # at a time (see redis_client.geo_available_drivers_key), so the
             # publish side has to group the same way.
             free_drivers: dict[str, list[tuple]] = {t: [] for t in redis_client.VEHICLE_TYPES}
-            busy_drivers: dict[str, list[str]] = {t: [] for t in redis_client.VEHICLE_TYPES}
-            session_starts: list[tuple[str, str]] = []
-            session_ends: list[str] = []
+            busy_drivers: dict[str, list[int]] = {t: [] for t in redis_client.VEHICLE_TYPES}
+            session_starts: list[tuple[int, int]] = []
+            session_ends: list[int] = []
             idle_jobs: list[tuple[Driver, tuple[float, float]]] = []
-            queued: set[str] = set()
+            queued: set[int] = set()
 
             for driver in drivers.values():
                 # Drivers start and end shifts. Without this the fleet would
@@ -630,10 +629,12 @@ def main() -> int:
                     key = redis_client.geo_available_drivers_key(vehicle_type)
                     if free_drivers[vehicle_type]:
                         pipe.geoadd(key, [
-                            item for driver in free_drivers[vehicle_type] for item in driver
+                            item
+                            for lon, lat, did in free_drivers[vehicle_type]
+                            for item in (lon, lat, str(did))
                         ])
                     if busy_drivers[vehicle_type]:
-                        pipe.zrem(key, *busy_drivers[vehicle_type])
+                        pipe.zrem(key, *[str(did) for did in busy_drivers[vehicle_type]])
                 pipe.execute()
 
             if session_starts or session_ends:

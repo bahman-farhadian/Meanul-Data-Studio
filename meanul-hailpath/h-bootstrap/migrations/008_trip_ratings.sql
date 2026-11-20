@@ -8,7 +8,7 @@
 
 CREATE TABLE IF NOT EXISTS trip_ratings (
     rating_id   bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    trip_id     text        NOT NULL REFERENCES trips(trip_id),
+    trip_id     bigint      NOT NULL REFERENCES trips(trip_id),
     -- Who left this rating: the rider rating the driver, or the reverse.
     rater_type  text        NOT NULL,
     rating      smallint    NOT NULL,
