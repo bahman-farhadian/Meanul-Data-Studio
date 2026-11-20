@@ -1,6 +1,8 @@
-# Schema review — what a real ride-hail platform models, and what we do not
+# Schema review — archive
 
-Step 2 of `TODO.md`. Writing only; no server time, no code.
+Open work is [ISSUES.md](../ISSUES.md). This file is historical.
+
+Step 2 of the old `TODO.md`. Writing only; no server time, no code.
 
 This is not a review of a schema I had already decided was fine. Every
 finding below starts from a published description of how a real platform

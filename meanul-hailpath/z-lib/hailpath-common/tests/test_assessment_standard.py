@@ -1179,11 +1179,8 @@ _SHIPPED_SUFFIXES = {
 }
 _SHIPPED_NAMES = {"Makefile", ".dockerignore"}
 _NOT_SOURCE = {".git", ".venv", ".pytest_cache", "__pycache__", "node_modules"}
-# TODO.md keeps the 2026-10-06 archive verbatim - `nus-pg-3`, `nus-etcd-1`,
-# the four-node warehouse. Those readings were taken on containers with
-# those names, and rewriting them would make the evidence say something
-# that was never measured. uv.lock is generated. This file names the old
-# containers on purpose, to assert they are gone.
+# uv.lock is generated. This file names old container names on purpose,
+# to assert they are gone.
 _NOT_CHECKED = {"TODO.md", "uv.lock", Path(__file__).name}
 
 
