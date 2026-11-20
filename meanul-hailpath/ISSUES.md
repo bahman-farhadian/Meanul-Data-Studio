@@ -75,11 +75,17 @@ uncompressed**, on a 2g cgroup. `countIf(trip_id IS NULL)` = 11,494,581
 **12,304,017** messages. TTL is 2 days; the table is already this size
 in hours.
 
-The live map reads Redis, not this table (`002_positions.sql` says so).
+Services read Redis (`driver:*`, GEO sets). Grafana does not. Live-ops
+geomap “Last driver positions (2 minutes)” and “Fleet last status (2
+minutes)” query `hailpath.driver_positions` every 10s with
+`argMax` / `GROUP BY driver_id` over `INTERVAL 2 MINUTE`
+(`hailpath-live-ops.json`). The DDL comment that the live map reads
+Redis is wrong for Grafana.
 
 **Do:** Integer `driver_id`. Do not store `trip_id` on idle ticks. Do not
-land every GPS tick in MergeTree; sample, or keep only `on_trip` /
-last-known in the warehouse. Idle stream stays on Kafka/Redis.
+land every GPS tick in MergeTree. Sampling the warehouse is not enough
+if Grafana still folds this table every 10s: give the dashboard a
+last-known table (or Redis), not 12M raw ticks.
 
 ### 2.2 `hotspot_history` is a 30-second snapshot dump
 570,624 rows, 9.5 MiB disk. Kafka `city_hotspots` **564,992** messages.
@@ -142,19 +148,21 @@ INSERT. `ch-ddl-init` needs CREATE.
 
 ## 3. Services (they produce this schema)
 
-### 3.1 Driver writes GPS into Postgres every tick → CDC storm
-`sync_to_database` `UPDATE drivers SET last_lat, last_lon, status …`
-for every dirty driver (`driver_service/__main__.py`). Tick log:
-`database_rows_updated` ~600. Debezium tails `hailpath.drivers`.
+### 3.1 Driver last-seen sync every 30s → CDC storm
+Movement tick is `DRIVER_TICK_SECONDS` (default 3s) and writes Kafka
+`driver_location` (12.3M messages). Postgres is separate:
+`DRIVER_DB_SYNC_SECONDS` (default **30s**) runs `sync_to_database`
+(`UPDATE drivers SET last_lat, last_lon, status …` for dirty rows).
+The log line `"tick"` with `database_rows_updated` ~600 is inside that
+30s timer (`driver_service/__main__.py`), not the 3s movement loop.
 
-Kafka **`cdc.drivers` 1,343,555 messages** for **1060** driver rows.
-The profile is 696 kB in Postgres. The change stream is the GPS stream
-copied into WAL.
-
-Positions belong on `driver_location`, not in `drivers` at tick rate.
+~600 dirty rows / 30s × ~18h ≈ **`cdc.drivers` 1,343,555 messages**
+for **1060** driver rows (696 kB in Postgres). Debezium tails every
+`UPDATE`. The change stream is last-seen copied into WAL on a 30s
+clock, not every 3s GPS tick.
 
 **Do:** Persist last-seen on a long timer (minutes) or on status change
-only. Keep GPS on Kafka. That also cuts WAL and `cdc.drivers`.
+only. Keep GPS on Kafka. That cuts WAL and `cdc.drivers`.
 
 ### 3.2 CDC tables nobody consumes
 Connector `table.include.list` has `driver_sessions` and `trip_ratings`.
