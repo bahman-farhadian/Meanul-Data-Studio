@@ -22,7 +22,7 @@ from collections import defaultdict
 
 from psycopg.errors import OperationalError, QueryCanceled
 
-from hailpath_common import config, postgres, redis_client
+from hailpath_common import clickhouse, config, postgres, redis_client
 from hailpath_common.citygrid import CityGrid
 from hailpath_common.geo import day_period, to_millis, utc_now
 from hailpath_common.kafka import AvroTopicConsumer, AvroTopicProducer
@@ -31,12 +31,20 @@ from hailpath_common.logging import get_logger, setup_logging
 
 from city_service.counters import ZoneCounter, surge_from_score
 from city_service.drain import drain_budget_seconds, drain_queue_dry
+from city_service.supply import (
+    LAST_KNOWN_SPEEDS_SQL,
+    apply_last_known_speeds,
+    refresh_free_from_geo,
+)
 
 log = get_logger(__name__)
 
 HOTSPOT_TOPIC = "city_hotspots"
 TRAFFIC_TOPIC = "segment_traffic_updates"
-WATCHED_TOPICS = ["driver_location", "rider_location", "trip_lifecycle"]
+# trip_lifecycle only. Free drivers and speeds are last-per-driver
+# (Redis GEO and ClickHouse driver_last_known). driver_location is the
+# GPS firehose; city must not ingest it to score demand.
+WATCHED_TOPICS = ["trip_lifecycle"]
 
 # A trip in one of these statuses is a rider still waiting for a car.
 WAITING = {"requested", "matched"}
@@ -75,9 +83,9 @@ def main() -> int:
     hotspot_ttl = config.integer("HOTSPOT_TTL_SECONDS", redis_client.HOTSPOT_TTL_SECONDS)
     hotspot_threshold = config.number("HOTSPOT_SCORE_THRESHOLD", 0.6)
 
-    # This service only ever writes hotspot scores - its whole domain is
-    # DB_DEMAND.
+    # Hotspot writes are DB_DEMAND. Free-driver GEO lives on DB_DRIVER.
     redis = redis_client.primary(redis_client.DB_DEMAND)
+    redis_driver = redis_client.primary(redis_client.DB_DRIVER)
     wait_for_bootstrap(redis_client.primary(redis_client.DB_SYSTEM), shutdown)
 
     producer = AvroTopicProducer(HOTSPOT_TOPIC, "hailpath-city")
@@ -126,14 +134,8 @@ def main() -> int:
                     topic, _, value = message
                     if not value:
                         continue
-
-                    if topic == "driver_location":
-                        _note_driver(zones, grid, value)
-                    elif topic == "trip_lifecycle":
+                    if topic == "trip_lifecycle":
                         _note_trip(zones, waiting_zone, value)
-                    # rider_location is watched but not counted: a rider's phone
-                    # says where a trip already under way is, which the driver's
-                    # device already told us more accurately.
 
                 now_monotonic = time.monotonic()
 
@@ -147,6 +149,7 @@ def main() -> int:
                 # half one interval, not the other half forever.
                 if now_monotonic - last_score >= score_seconds:
                     last_score = now_monotonic
+                    refresh_free_from_geo(zones, grid, redis_driver)
                     kafka_due = now_monotonic - last_kafka_at >= 300.0
                     published += _publish_scores(
                         zones, grid, redis, producer, hotspot_ttl, hotspot_threshold,
@@ -158,6 +161,11 @@ def main() -> int:
 
                 if now_monotonic - last_traffic >= traffic_minutes * 60:
                     last_traffic = now_monotonic
+                    try:
+                        rows = clickhouse.client().query(LAST_KNOWN_SPEEDS_SQL).result_rows
+                        apply_last_known_speeds(zones, rows)
+                    except Exception:
+                        log.exception("last-known speeds unread; traffic uses existing samples")
                     _update_traffic(zones, traffic_producer)
             except Exception:
                 # Confirmed live: a single QueryCanceled on UPDATE_TRAFFIC
@@ -176,23 +184,6 @@ def main() -> int:
         log.info("stopped", extra={"scores_published": published})
 
     return 0
-
-
-def _note_driver(zones: dict[int, ZoneCounter], grid: CityGrid, value: dict) -> None:
-    """Update the supply side and the speed picture from one position report."""
-    raw_zone = value.get("zone_id")
-    zone_id = int(raw_zone) if raw_zone is not None else grid.zone_of(value["lat"], value["lon"])
-    counter = zones[zone_id]
-    driver_id = int(value["driver_id"])
-    status = value.get("status")
-
-    if status == "idle":
-        counter.free_drivers.add(driver_id)
-    else:
-        counter.free_drivers.discard(driver_id)
-
-    if status == "on_trip":
-        counter.note_speed(float(value.get("speed_kmh") or 0.0))
 
 
 def _note_trip(

@@ -1,9 +1,9 @@
 """What the city looks like right now, counted per zone.
 
-The service listens to three streams and keeps a small running picture of
-each zone in memory: how many riders are waiting, how many drivers are free,
-and how fast cars are actually moving. Everything it publishes is worked out
-from those three numbers.
+Waiting riders come from `trip_lifecycle`. Free drivers and on-trip
+speeds are last-per-driver (Redis GEO and `driver_last_known`), not the
+GPS firehose. Everything it publishes is worked out from those three
+numbers.
 
 Nothing is stored anywhere while it is being counted. If the service
 restarts, the picture rebuilds itself within a minute from the streams, which

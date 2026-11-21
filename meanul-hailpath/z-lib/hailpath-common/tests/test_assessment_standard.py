@@ -868,6 +868,20 @@ def test_prepare_writes_the_provenance_the_loader_reads():
         assert "source_month" in block, block
 
 
+def test_city_scores_from_last_known_not_gps_firehose():
+    """Demand must not ingest driver_location. ISSUES 3.6."""
+    main = (HAILPATH / "m-service-city" / "city_service" / "__main__.py").read_text()
+    supply = (HAILPATH / "m-service-city" / "city_service" / "supply.py").read_text()
+    compose = (HAILPATH / "m-service-city" / "docker-compose.yaml").read_text()
+    assert 'WATCHED_TOPICS = ["trip_lifecycle"]' in main
+    assert "_note_driver" not in main
+    assert "refresh_free_from_geo" in main
+    assert "geo:drivers:available:" in supply
+    assert "driver_last_known" in supply
+    assert "driver_positions" not in supply
+    assert "CH_HOST:" in compose
+
+
 def test_a_timed_tick_sets_its_clock_before_doing_the_work():
     """city-service's two halves must not be able to starve each other.
 

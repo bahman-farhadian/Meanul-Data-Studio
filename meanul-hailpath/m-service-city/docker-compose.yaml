@@ -1,6 +1,6 @@
 # m-service-city — demand scores and traffic factors.
 #
-# It watches the live streams and answers two questions the rest of the stack
+# It watches trip_lifecycle and last-per-driver state, and answers two questions the rest of the stack
 # depends on:
 #
 #   "which zones are busy right now" -> Redis, read by drivers (where to go)
@@ -45,6 +45,8 @@ services:
         condition: service_healthy
       hailpath-postgres:
         condition: service_healthy
+      hailpath-clickhouse:
+        condition: service_healthy
     environment:
       TZ: ${TZ:-UTC}
       SIM_TIMEZONE: ${SIM_TIMEZONE:-America/New_York}
@@ -66,6 +68,12 @@ services:
       PG_DATABASE: ${PG_DATABASE:-hailpath}
       PG_USER: ${PG_USER:-postgres}
       PG_PASSWORD: ${PG_PASSWORD:?must match a-infra-postgres/.env}
+
+      CH_HOST: ${CH_HOST:-hailpath-clickhouse}
+      CH_HTTP_PORT: ${CH_HTTP_PORT:-8123}
+      CH_DATABASE: ${CH_DATABASE:-hailpath}
+      CH_USER: ${CH_USER:-hailpath}
+      CH_PASSWORD: ${CH_PASSWORD:?must match e-infra-clickhouse/.env}
 
       CITY_SCORE_SECONDS: ${CITY_SCORE_SECONDS:-30.0}
       CITY_TRAFFIC_UPDATE_MINUTES: ${CITY_TRAFFIC_UPDATE_MINUTES:-5.0}

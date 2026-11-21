@@ -1,7 +1,9 @@
 # m-service-city — demand scores and traffic factors
 
-Watches the live streams and answers the two questions the rest of the stack
-keeps asking about the city.
+Watches `trip_lifecycle` and last-per-driver state (Redis GEO idle
+positions, ClickHouse `driver_last_known` speeds). It does not ingest
+`driver_location`. Answers the two questions the rest of the stack keeps
+asking about the city.
 
 | Question | Answer goes to | Read by | How often |
 | --- | --- | --- | --- |
@@ -29,12 +31,13 @@ Where the two numbers come from:
 
 - **waiting** — trips seen on `trip_lifecycle` at `requested` or `matched`,
   removed as soon as they reach any later status;
-- **free** — drivers seen on `driver_location` reporting `idle`, removed as
-  soon as they report anything else.
+- **free** — last idle position per driver in Redis
+  `geo:drivers:available:*`, mapped to a zone each score tick.
 
 ## How traffic factors are worked out
 
-Cars on a trip report their speed. Averaged per zone, that gives:
+Last on-trip speed per driver is read from `hailpath.driver_last_known`
+on the traffic clock. Averaged per zone, that gives:
 
 ```
 congestion_factor = free_flow_speed / observed_speed
@@ -80,6 +83,7 @@ path itself moves with the traffic.
 | `Dockerfile` | Two stages; runs as a normal user. |
 | `city_service/counters.py` | The running picture of a zone and the arithmetic on it. |
 | `city_service/__main__.py` | The loop and the two clocks. |
+| `city_service/supply.py` | Last-per-driver free GEO and last-known speeds. |
 | `.env.example` | Template for the untracked `.env`. |
 
 ## Environment variables (`.env`)
@@ -117,8 +121,8 @@ docker compose exec hailpath-postgres psql -U postgres -c \
      FROM segment_traffic GROUP BY period ORDER BY period;"
 ```
 
-If `last_update` never moves, no car has reported a usable speed — check
-that `driver-service` is producing positions with `status = on_trip`.
+If `last_update` never moves, no on-trip last-known row has a usable
+speed — check `driver_last_known` and that `clickhouse-sink` is writing it.
 
 If every zone scores 0.0, there are no waiting riders: either
 `passenger-service` is not running, or `dispatch-service` is matching every
