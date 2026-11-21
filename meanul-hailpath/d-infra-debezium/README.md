@@ -27,8 +27,10 @@ publication.
 | `connectors/register.py` | PUT to Connect. |
 | `.env.example` | Standalone copy of the settings this piece reads. |
 
-Host port: `127.0.0.1:${PROXY_DEBEZIUM_PORT:-8083}` (loopback only). Image and heap are in the
-root `.env`.
+Host port: `127.0.0.1:${PROXY_DEBEZIUM_PORT:-8083}` (loopback only). Image,
+cgroup, and heap are in the root `.env`. Laptop `DEBEZIUM_MEM=1280m` with
+heap `-Xmx384m`: RSS after the CDC cut is ~830 MiB, which filled a 640m
+cgroup. Do not shrink the heap to chase a percentage.
 
 ## Verify (worker)
 

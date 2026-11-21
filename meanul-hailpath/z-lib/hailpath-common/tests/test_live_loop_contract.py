@@ -100,6 +100,8 @@ def test_env_example_pins_laptop_seed_and_service_ceilings():
     assert pin("CITY_SERVICE_CPUS") == "0.5"
     assert pin("CLICKHOUSE_SINK_CPUS") == "0.75"
     assert pin("ARCHIVER_SERVICE_CPUS") == "0.25"
+    assert pin("DEBEZIUM_MEM") == "1280m"
+    assert pin("DEBEZIUM_HEAP_OPTS") == "-Xmx384m -Xms384m"
 
 
 def test_live_ops_json_has_ingest_and_lag_panels():
