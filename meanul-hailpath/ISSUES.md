@@ -10,11 +10,12 @@ issue per change.
 **Live 2026-11-21.** Integer keys, last-known GPS, ReplacingMergeTree,
 CDC include-list, Connect loopback, cert skip, Grafana live-ops
 UTC/30s/15m, `CLICKHOUSE_DB=hailpath`, grants on `hailpath.*` only,
-`quality.sql` without `uniqExact` on positions.
+`quality.sql` without `uniqExact` on positions. City scores from Redis
+GEO and `driver_last_known`, not `driver_location`. Debezium cgroup
+1280m, live RSS 46%.
 
 Still open: unused warehouse MVs (2.4), leftover rollup journals (2.5),
-city GPS firehose ingest (3.6), panel-probe `rows > 0` (4.2), LION
-tiles (4.3), Debezium RSS still filling its 640m cgroup (5.1).
+panel-probe `rows > 0` (4.2), LION tiles (4.3).
 
 ---
 
@@ -210,14 +211,17 @@ Was CDC'd, `driver_id` text.
 `integer`.
 
 ### 3.6 City drain vs 12M `driver_location`
-City consumes `driver_location` to score demand. Time-budget drain
-(`drain.py`) was added; lag still spikes then falls.
+City consumed `driver_location` to score demand. Time-budget drain
+(`drain.py`) was added; lag still spiked then fell.
 
 **Do:** Score from a sample or last-per-driver. Do not require the
 demand service to ingest the full GPS firehose.
 
-**Status:** open. Time-budget drain remains. Live `driver_location` is
-already thousands of messages per minute with 1060 drivers.
+**Status:** done. Live subscribe is `trip_lifecycle` only. Free drivers
+come from Redis `geo:drivers:available:*` each score tick. On-trip
+speeds come from `hailpath.driver_last_known FINAL` on the traffic
+clock. `driver_location` lag on group `hailpath-city` has consumer `-`
+(not assigned). Scores still publish (`kafka_rows` 0 / 256 / 2 / 1).
 
 ---
 
@@ -260,10 +264,10 @@ Was CDC storm (3.1) plus a tight cgroup.
 **Do:** Cut the CDC storm first. Then size heap so RSS stays ~70% of
 the cgroup.
 
-**Status:** partial. Storm is cut (3.1). Live `docker stats`
-Debezium **637 MiB / 640 MiB (99.5%)**. Heap is still
-`DEBEZIUM_MEM=640m` / `-Xmx384m`. RSS did not drop with the CDC cut;
-the cgroup is sized at the working set. Heap resize is a later knob.
+**Status:** done. Storm is cut (3.1). Heap stays `-Xmx384m` (Connect
+needs it). Laptop cgroup is `DEBEZIUM_MEM=1280m`. Live `docker stats`
+**592 MiB / 1.25 GiB (46%)** with the connector RUNNING. 640m was the
+working set, not headroom.
 
 ### 5.2 Connect `:8083` on `0.0.0.0`, no login
 **Do:** Bind `127.0.0.1` or do not publish.
@@ -306,8 +310,7 @@ another review file.
 
 1.1–1.5 keys and types (done, live).
 2.1–2.3, 2.6–2.7 positions, hotspots, duplicates, login, grants (done, live).
-3.1–3.5 CDC storm, unused CDC, sink, hotspots, sessions (done, live).
+3.1–3.6 CDC storm, unused CDC, sink, hotspots, sessions, city GPS (done, live).
 4.1 home dashboard (done in source).
-5.2–5.4 Connect bind, cert skip, quality.sql (done, live).
-5.1 Debezium RSS (partial).
-2.4–2.5, 3.6, 4.2, 4.3 still open.
+5.1–5.4 Debezium RSS, Connect bind, cert skip, quality.sql (done, live).
+2.4–2.5, 4.2, 4.3 still open.
